@@ -28,6 +28,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 4. `20261017_cms_payroll_settings_module.sql` — Payroll Settings permission row
 5. `20261017_cms_phase1_claims.sql` — claims list, claim detail, processing / payment / note actions (through the MEG-FORMS steps)
 6. `20261017_cms_phase1_dashboard.sql` — dashboard claim figures by stage
+7. `20261017_cms_phase1_decisions.sql` — approve / disapprove (OTCF, MTCF) and mark as done (TEC) in the CMS, signed PDF link
+8. `20261017_cms_payroll_viewer_role.sql` — Account / Payroll Viewer role (view only)
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
 and writes an audit entry. A snapshot of the database structure before Phase 0 is stored in `cms_schema_snapshots`
@@ -61,12 +63,19 @@ js/config.js        Supabase address and publishable key (public by design)
 js/api.js           sign-in and calls to the cms_ functions
 js/menu.js          every page: route, label, phase, the system it replaces, permission module
 js/icons.js         line icons
+js/claim-pdf.js     signed claim PDFs, made by the form app's own code in a hidden frame
 js/app.js           sign-in screens, sidebar, top bar, Ctrl+K search, router, pages
 db/migrations/      SQL applied to the database, in order
 assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
 ## Change log
+- **v2026.10.17-18:20** — Approve and disapprove OTCF and MTCF claims, and mark TEC claims as done, in the CMS (one at a
+  time or several at once). The signed PDF is made by the form app's own PDF code, saved where the app saves it, and the
+  claimant gets the same email the app sends. Needs a CMS role with Approve and the matching MEG-FORMS approver permission;
+  nobody can decide their own claim. PRFAF is still approved in its app (it also sets up the fund release).
+  New role **Account / Payroll Viewer**: sees claims, people, payroll and reports, changes nothing; suggested for
+  MEG-EAF V2 view-only users. Database: `20261017_cms_phase1_decisions.sql`, `20261017_cms_payroll_viewer_role.sql`.
 - **v2026.10.17-17:50** — Phase 1: claims from SCF, OTCF, MTCF, TEC (V1 and V2) and PRFAF in the CMS. Approvals is one queue
   (waiting for approval, ready to process, waiting for payment); each form has its own page; every claim opens with its
   details, the Payroll / Account checklist, mark as paid / undo, and notes. Claimants are matched to the Employee Master.
