@@ -511,7 +511,7 @@
       const items = pickedItems().filter((r) => !r.form_code.startsWith('tec'));
       if (!items.length) return;
       let reason = null;
-      const ok = await modal({ title: `Disapprove ${items.length} claim${items.length > 1 ? 's' : ''}`, ok: 'Disapprove all', danger: true, wide: true,
+      const ok = await modal({ title: `Disapprove ${items.length} claim${items.length > 1 ? 's' : ''}`, ok: `Disapprove ${items.length} claim${items.length > 1 ? 's' : ''}`, danger: true, wide: true,
         body: `<p class="small">Every claim below gets the same reason, and each claimant is notified.</p>${planList(items)}
           <label class="fld"><span>Reason (the claimants see this)</span><textarea name="reason" rows="3" maxlength="1000" required class="ta"></textarea></label>`,
         onOk: (f) => { reason = f.reason.value.trim(); if (!reason) throw new Error('Give a reason for disapproving.'); } });
@@ -521,7 +521,7 @@
     $('[data-bgo]', el).addEventListener('click', async () => {
       const items = pickedItems();
       if (!items.length) return;
-      const ok = await confirmBox(`Approve ${items.length} claim${items.length > 1 ? 's' : ''}?`, `Each one is approved (teacher tuition claims marked as done), gets its signed PDF and its claimant is notified.${planList(items)}`, 'Approve all', false);
+      const ok = await confirmBox(`Approve ${items.length} claim${items.length > 1 ? 's' : ''}?`, `Each one is approved (teacher tuition claims marked as done), gets its signed PDF and its claimant is notified.${planList(items)}`, `Approve ${items.length} claim${items.length > 1 ? 's' : ''}`, false);
       if (!ok) return;
       await runBulk(items, 'Approving', (r) => r.form_code.startsWith('tec') ? 'done' : 'approve', null);
     });
@@ -605,7 +605,14 @@
         const { error } = await API.sb().functions.invoke(`${form}-notify`, { body: { event: dec === 'approve' ? 'approved' : 'disapproved', submission_id: id } });
         if (error) throw error;
         log('Claimant notified', 'ok');
-      } catch (e) { log(`Notification not sent (${e.message || e})`, 'err'); }
+      } catch (e) {
+        // read the email function's own message (e.g. the email service is still in test mode)
+        let why = e.message || String(e);
+        try { const b = await e.context.json(); if (b && b.error) why = b.error; } catch (x) { /* keep the generic message */ }
+        log(/only send testing emails/i.test(why)
+          ? 'Email not sent: the email service (Resend) is still in test mode and only delivers to myeden.group@gmail.com. The decision stands. See Known issues in the README.'
+          : `Email not sent (${why}). The decision stands.`, 'err');
+      }
     }
     return { row: r, pdf };
   }

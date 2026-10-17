@@ -70,7 +70,15 @@ db/migrations/      SQL applied to the database, in order
 assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
+## Known issues
+- **Claim emails only reach myeden.group@gmail.com (found 17 Oct 2026).** The MEG-FORMS email functions (otcf-notify,
+  mtcf-notify, tec-notify, …) send through Resend from `onboarding@resend.dev`, which is Resend's test mode: it refuses every
+  other recipient (`403 · You can only send testing emails to your own email address`). Affects the form apps and the CMS
+  alike; the decision itself is always saved. **Fix:** verify a company domain at resend.com/domains (add its DNS records),
+  then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
+
 ## Change log
+- **v2026.10.17-19:25** — Bulk buttons name the count ("Disapprove 1 claim", "Approve 3 claims"); a failed claimant email now says why, and that the decision stands. Resend test-mode issue recorded under Known issues.
 - **v2026.10.17-19:00** — **Disapprove selected** on the Approvals and form pages (OTCF and MTCF): one required reason for
   every ticked claim, each claimant notified, OTCF disapproval PDF as in the app. Your own claims can't be ticked and are
   marked "Yours". New role **CEO / Director** (given to the two Director logins): claims submitted by a Super Admin, Admin
