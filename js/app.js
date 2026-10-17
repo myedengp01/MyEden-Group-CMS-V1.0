@@ -778,21 +778,40 @@
   setInterval(() => { const d = new Date(); const t = $('#h-time'); if (t) { t.textContent = fmtTime(d); $('#h-date').textContent = fmtDate(d); } }, 15000);
 
   // ================================================================ sign-in screens
-  function authShell(inner) {
-    document.body.innerHTML = `<div class="auth"><div class="hero-art" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="grid"></span></div>
-      <main class="auth-card">${logo3d('lg')}<h1>MyEden Group CMS</h1><p class="auth-sub">Central Management System · V1.0</p>${inner}
-      <p class="auth-foot">${esc(window.CMS_VERSION)} · One Group · One Platform</p></main></div>`;
+  const BRAND_CHIPS = ['People', 'Recruitment', 'Payroll', 'Forms &amp; Claims'];
+  function authShell(title, sub, inner) {
+    document.body.innerHTML = `<div class="auth2">
+      <aside class="auth-brand">
+        <span class="ab-blob g" aria-hidden="true"></span><span class="ab-blob o" aria-hidden="true"></span>
+        <div class="ab-top">${logo3d('lg')}<div class="ab-name"><b>MyEden Group</b><span>CMS V1.0</span></div></div>
+        <div class="ab-mid"><h2>One Group.<br>One Platform.</h2>
+          <p>Every person, from application to offboarding: people, recruitment, payroll, forms and claims in one place.</p>
+          <div class="ab-chips">${BRAND_CHIPS.map((c) => `<span>${c}</span>`).join('')}</div></div>
+        <div class="ab-foot">MyEden Group · MyEden Edu Hub · Happy Dino · Aborne Project</div>
+      </aside>
+      <main class="auth-main"><div class="auth-box">
+        <h1>${esc(title)}</h1>${sub ? `<p class="auth-sub">${sub}</p>` : ''}
+        ${inner}
+        <p class="auth-foot">${esc(window.CMS_VERSION)}</p></div></main></div>`;
     const logo = $('.logo3d'); logo?.addEventListener('click', () => { logo.classList.remove('flip'); void logo.offsetWidth; logo.classList.add('flip'); });
+    $$('[data-eye]').forEach((b) => b.addEventListener('click', () => {
+      const inp = b.parentElement.querySelector('input'); const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      b.innerHTML = icon(show ? 'eye-off' : 'eye'); b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      b.setAttribute('aria-pressed', String(show));
+    }));
   }
+  // an input inside the brand-ring box; password boxes get a show / hide button
+  const ringField = (label, name, type, ac, ic, value = '', ph = '') => `<label class="fld"><span>${label}</span>
+    <span class="ring">${icon(ic, 'ring-ic')}<input type="${type}" name="${name}" autocomplete="${ac}" value="${esc(value)}" ${ph ? `placeholder="${esc(ph)}"` : ''} required>${type === 'password' ? `<button type="button" class="eye" data-eye aria-label="Show password" aria-pressed="false">${icon('eye')}</button>` : ''}</span></label>`;
 
   function loginScreen(msg) {
-    authShell(`<form class="auth-form" id="login" novalidate>
-        <label class="fld"><span>Email</span><input type="email" name="email" autocomplete="username" required></label>
-        <label class="fld"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+    authShell('Welcome back', 'Sign in with your MEG-EAF V2 / MEG-FORMS account.', `<form class="auth-form" id="login" novalidate>
+        ${ringField('Email', 'email', 'email', 'username', 'mail', '', 'name@myeden.com.my')}
+        ${ringField('Password', 'password', 'password', 'current-password', 'lock')}
+        <div class="auth-row"><button type="button" class="lnk" id="forgot">Forgot password?</button></div>
         <p class="form-err" ${msg ? '' : 'hidden'}>${esc(msg || '')}</p>
-        <button type="submit" class="btn primary block">Sign in</button>
-        <button type="button" class="lnk center" id="forgot">Forgot password?</button>
-        <p class="muted small center">Use the same email and password as MEG-EAF V2 and MEG-FORMS.</p></form>`);
+        <button type="submit" class="btn primary block">Sign in</button></form>`);
     const f = $('#login'); const err = $('.form-err', f);
     setTimeout(() => f.email.focus(), 50);
     f.addEventListener('submit', async (e) => {
@@ -806,13 +825,13 @@
   }
 
   function forgotScreen(email) {
-    authShell(`<form class="auth-form" id="forgot-f" novalidate>
-        <p class="center">Enter your email and we will send a link to set a new password.</p>
-        <label class="fld"><span>Email</span><input type="email" name="email" autocomplete="username" value="${esc(email || '')}" required></label>
+    authShell('Reset your password', 'Enter your email and we will send a link to set a new password.', `<form class="auth-form" id="forgot-f" novalidate>
+        ${ringField('Email', 'email', 'email', 'username', 'mail', email || '', 'name@myeden.com.my')}
         <p class="form-err" hidden></p><p class="form-ok" hidden></p>
         <button type="submit" class="btn primary block">Send reset link</button>
-        <button type="button" class="lnk center" id="back">Back to sign in</button></form>`);
+        <div class="auth-row center"><button type="button" class="lnk" id="back">Back to sign in</button></div></form>`);
     const f = $('#forgot-f');
+    setTimeout(() => f.email.focus(), 50);
     $('#back').addEventListener('click', () => loginScreen());
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const err = $('.form-err', f); const ok = $('.form-ok', f); err.hidden = true; ok.hidden = true;
@@ -824,13 +843,13 @@
   }
 
   function newPasswordScreen() {
-    authShell(`<form class="auth-form" id="np" novalidate>
-        <p class="center">Choose a new password.</p>
-        <label class="fld"><span>New password</span><input type="password" name="p1" autocomplete="new-password" minlength="8" required></label>
-        <label class="fld"><span>Type it again</span><input type="password" name="p2" autocomplete="new-password" minlength="8" required></label>
+    authShell('Set a new password', 'Use at least 8 characters.', `<form class="auth-form" id="np" novalidate>
+        ${ringField('New password', 'p1', 'password', 'new-password', 'lock')}
+        ${ringField('Type it again', 'p2', 'password', 'new-password', 'lock')}
         <p class="form-err" hidden></p>
         <button type="submit" class="btn primary block">Save password</button></form>`);
     const f = $('#np');
+    setTimeout(() => f.p1.focus(), 50);
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); const err = $('.form-err', f); err.hidden = true;
       if (f.p1.value.length < 8) { err.textContent = 'Use at least 8 characters.'; err.hidden = false; return; }
@@ -842,8 +861,8 @@
 
   function noRoleScreen() {
     const a = state.access;
-    authShell(`<div class="auth-form">
-        <div class="noaccess">${icon('lock')}<div><b>No access yet</b><p>You are signed in as <b>${esc(a.email)}</b>, but this login has no CMS role. A Super Admin can grant one in Users, Roles &amp; Access.</p></div></div>
+    authShell('No access yet', '', `<div class="auth-form">
+        <div class="noaccess">${icon('lock')}<div><b>${esc(a.email)}</b><p>You are signed in, but this login has no CMS role yet. A Super Admin can grant one in Users, Roles &amp; Access.</p></div></div>
         <button type="button" class="btn ghost block" id="so">Sign out</button></div>`);
     $('#so').addEventListener('click', signOut);
   }
@@ -857,10 +876,10 @@
   async function start() {
     let session;
     try { session = await API.session(); }
-    catch (e) { authShell(`<div class="auth-form"><p class="form-err">${esc(e.message)}</p><button type="button" class="btn primary block" id="rl">Reload</button></div>`); $('#rl').addEventListener('click', () => location.reload()); return; }
+    catch (e) { authShell('Something went wrong', '', `<div class="auth-form"><p class="form-err">${esc(e.message)}</p><button type="button" class="btn primary block" id="rl">Reload</button></div>`); $('#rl').addEventListener('click', () => location.reload()); return; }
     if (recovering) { newPasswordScreen(); return; }
     if (!session) { loginScreen(); return; }
-    if (!state.access) authShell(`<div class="auth-form">${loading('Opening the CMS…')}</div>`);
+    if (!state.access) authShell('Opening the CMS…', '', loading('Checking your access…'));
     try { state.access = await API.rpc('cms_my_access'); }
     catch (e) { loginScreen(e.message); return; }
     if (justSignedIn) { justSignedIn = false; API.rpc('cms_note_sign_in').catch(() => {}); }
