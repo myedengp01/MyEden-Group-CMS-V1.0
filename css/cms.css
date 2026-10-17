@@ -294,7 +294,9 @@ table.grid.simple th, table.grid.simple td { text-align: left; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .logo3d .spin { transform: rotateY(0); }
+  /* the brand logo keeps its slow turn even when the computer asks for less motion */
+  .logo3d .spin { animation: spin3d 9s linear infinite !important; }
+  .logo3d.flip .spin { animation: flip3d 1.1s cubic-bezier(.3,.7,.2,1) 1, spin3d 9s linear 1.1s infinite !important; }
 }
 
 /* ================================================================ Phase 0 · live pages */
