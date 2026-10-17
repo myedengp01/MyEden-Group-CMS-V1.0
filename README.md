@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.17-13:30 · **Phase 0 · Foundation** (live: sign-in, roles & access, people, organisation, audit log, export)
+**Current version:** v2026.10.17-16:45 · **Phase 0 · Foundation** (live: sign-in, roles & access, people, organisation, audit log, export)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -64,6 +64,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
 ## Change log
+- **v2026.10.17-16:45** — New sign-in screens (design D): navy brand panel with the spinning logo, form with a logo-colour
+  ring on hover and focus, show/hide password button; same look for forgot-password, new-password and no-access.
+  Logo keeps spinning when Windows animation effects are off.
 - **v2026.10.17-13:30** — Phase 0 foundation: sign-in, roles & access with suggestions, login ↔ person links,
   paying company per person, live dashboard, people, organisation, approvals overview, audit log, export all data.
 - **v2026.10.17-13:00** — Theme preview: navy theme, spinning 3D logo, interactive sidebar, Ctrl+K page search,
