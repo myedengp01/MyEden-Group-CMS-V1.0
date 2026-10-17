@@ -366,7 +366,7 @@
 
   async function peoplePage(item, el) {
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
-    const f = { q: params.get('q') || '', status: params.get('q') ? 'all' : 'active', co: 'all' };
+    const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all' };
     el.innerHTML = `${pageHead(item)}<div id="people-body">${loading()}</div>`;
     let rows;
     try { [rows] = await Promise.all([API.rpc('cms_people'), loadOrg()]); state.people = rows; }
@@ -737,7 +737,7 @@
 
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
-    const plan = item.plan || []; const url = item.source && window.CMS_SOURCES[item.source];
+    const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
     el.innerHTML = `${pageHead(item)}
       <section class="card coming"><div class="coming-art">${icon(item.icon || item.groupIcon || 'sparkle')}</div>
         <div><h3>Arrives in ${esc(window.CMS_PHASES[item.phase] || 'a later phase')}</h3>
@@ -751,7 +751,7 @@
   }
 
   const LIVE = {
-    dashboard: dashboardPage, people: peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
+    dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
   };
 

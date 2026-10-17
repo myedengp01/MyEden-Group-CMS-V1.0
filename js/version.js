@@ -1,2 +1,2 @@
-window.CMS_VERSION = 'v2026.10.17-16:45';
+window.CMS_VERSION = 'v2026.10.17-17:30';
 window.CMS_STAGE = 'Phase 0 · Foundation';

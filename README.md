@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.17-16:45 · **Phase 0 · Foundation** (live: sign-in, roles & access, people, organisation, audit log, export)
+**Current version:** v2026.10.17-17:30 · **Phase 0 · Foundation** (live: sign-in, roles & access, people, organisation, audit log, export)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -25,6 +25,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 1. `20261017_cms_phase0_foundation.sql` — structure snapshot, `cms_` tables, functions, lock-down, first Super Admin
 2. `20261017_cms_phase0_patch1.sql` — centre falls back to department code; ignore placeholder form rows
 3. `20261017_cms_phase0_patch2.sql` — fixed search path on the audit-log guard
+4. `20261017_cms_payroll_settings_module.sql` — Payroll Settings permission row
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
 and writes an audit entry. A snapshot of the database structure before Phase 0 is stored in `cms_schema_snapshots`
@@ -64,6 +65,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
 ## Change log
+- **v2026.10.17-17:30** — Menu now lists every MyPayroll V2.0 page (Phase 2 placeholders with an "Open in MyPayroll V2.0" button
+  to the matching page), Former Staff page, Company Loans and Final Settlement split, OTCF moved to Forms & Claims,
+  new Payroll Settings group with its own permission row (`db/migrations/20261017_cms_payroll_settings_module.sql`).
 - **v2026.10.17-16:45** — New sign-in screens (design D): navy brand panel with the spinning logo, form with a logo-colour
   ring on hover and focus, show/hide password button; same look for forgot-password, new-password and no-access.
   Logo keeps spinning when Windows animation effects are off.
