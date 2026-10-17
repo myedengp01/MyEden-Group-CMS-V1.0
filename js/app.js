@@ -72,16 +72,16 @@
   }
 
   // modal: resolves to true after a successful submit, or null when cancelled
-  function modal({ title, body, ok = 'Save', danger = false, wide = false, onOk }) {
+  function modal({ title, body, ok = 'Save', cancel = 'Cancel', danger = false, wide = false, onOk, onOpen }) {
     return new Promise((resolve) => {
       const wrap = document.createElement('div'); wrap.className = 'modal';
       wrap.innerHTML = `<div class="modal-box ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
         <div class="modal-head"><h3>${esc(title)}</h3><button type="button" class="icon-btn sm" data-x aria-label="Close">${icon('x')}</button></div>
         <form class="modal-body" novalidate>${body}<p class="form-err" hidden></p>
-          <div class="modal-foot"><button type="button" class="btn ghost" data-x>Cancel</button>${ok ? `<button type="submit" class="btn ${danger ? 'danger' : 'primary'}">${esc(ok)}</button>` : ''}</div></form></div>`;
+          <div class="modal-foot"><button type="button" class="btn ghost" data-x>${esc(cancel)}</button>${ok ? `<button type="submit" class="btn ${danger ? 'danger' : 'primary'}">${esc(ok)}</button>` : ''}</div></form></div>`;
       document.body.appendChild(wrap);
       const close = (v) => { wrap.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
-      const onKey = (e) => { if (e.key === 'Escape') close(null); };
+      const onKey = (e) => { if (e.key === 'Escape' && [...document.querySelectorAll('.modal')].pop() === wrap) close(null); };
       document.addEventListener('keydown', onKey);
       $$('[data-x]', wrap).forEach((b) => b.addEventListener('click', () => close(null)));
       wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) close(null); });
@@ -93,7 +93,8 @@
         try { if (onOk) await onOk(form); close(true); }
         catch (x) { err.textContent = x.message || String(x); err.hidden = false; if (btn) { btn.disabled = false; btn.classList.remove('busy'); } }
       });
-      setTimeout(() => ($('input:not([type=checkbox]):not([type=radio]), select, textarea', form) || $('button[type=submit]', form))?.focus(), 30);
+      if (onOpen) onOpen(wrap, close);
+      else setTimeout(() => ($('input:not([type=checkbox]):not([type=radio]), select, textarea', form) || $('button[type=submit]', form))?.focus(), 30);
     });
   }
   const confirmBox = (title, text, ok, danger, onOk) => modal({ title, body: `<p class="confirm-txt">${text}</p>`, ok, danger, onOk });
@@ -115,7 +116,7 @@
   function sidebarHtml() {
     const link = (it, sub = false) => {
       const active = state.route === it.route;
-      const live = it.phase === 0;
+      const live = it.phase === 0 || it.live;
       return `<a href="#/${it.route}" class="nav-link ${sub ? 'sub' : ''} ${active ? 'active' : ''}" data-route="${it.route}" title="${esc(it.label)}">
         ${sub ? '<span class="dot"></span>' : icon(it.icon)}<span class="txt">${esc(it.label)}</span>${it.badge ? `<span class="badge">${esc(it.badge)}</span>` : ''}${live && !it.badge ? '<span class="live-dot" title="Live"></span>' : ''}</a>`;
     };
@@ -140,7 +141,8 @@
   function tasksFromDash(d) {
     if (!d) return [];
     const t = [];
-    if (d.claims_pending && can('approvals')) t.push({ ic: 'file-check', tone: 'orange', title: `${num(d.claims_pending)} claims waiting for approval`, sub: `${Object.entries(d.claims_pending_by_form || {}).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(' · ')} · ${money(d.claims_pending_amount)}`, href: window.CMS_SOURCES['MEG-FORMS'], ext: true, src: 'MEG-FORMS' });
+    const bs = d.claims_by_stage || {};
+    if (d.claims_pending && can('approvals')) t.push({ ic: 'file-check', tone: 'orange', title: `${num(d.claims_pending)} claims waiting`, sub: [bs.approval && `${bs.approval} to approve`, bs.processing && `${bs.processing} to process`, bs.payment && `${bs.payment} to pay`].filter(Boolean).join(' · ') + ` · ${money(d.claims_pending_amount)}`, href: '#/approvals' });
     if (d.applications_pending && can('recruitment')) t.push({ ic: 'search-user', tone: 'blue', title: `${num(d.applications_pending)} applications not yet processed`, sub: 'Office Use and decision in MEG-EAF V2', href: window.CMS_SOURCES['MEG-EAF V2'], ext: true, src: 'MEG-EAF V2' });
     if (d.handbook_outstanding && can('handbook')) t.push({ ic: 'shield', tone: 'violet', title: `${num(d.handbook_outstanding)} handbook acknowledgements outstanding`, sub: 'Assigned or viewed, not yet acknowledged', href: window.CMS_SOURCES['MEG-EAF V2'], ext: true, src: 'MEG-EAF V2' });
     if (can('admin.roles') && d.logins - d.logins_with_role > 0) t.push({ ic: 'lock', tone: 'teal', title: `${num(d.logins - d.logins_with_role)} logins have no CMS role yet`, sub: 'Review the suggested roles and accept or skip', href: '#/admin/roles' });
@@ -247,7 +249,7 @@
     const t = q.trim().toLowerCase();
     const pages = [...PAGES.values()].filter((p) => canRoute(p.route))
       .filter((p) => !t || `${p.label} ${p.group || ''} ${p.source || ''} ${p.desc || ''}`.toLowerCase().includes(t)).slice(0, t ? 8 : 12)
-      .map((p) => ({ href: '#/' + p.route, ic: p.icon || p.groupIcon || 'sparkle', title: p.label, sub: `${p.group || p.section}${p.source ? ` · now in ${p.source}` : ''}`, tag: p.phase === 0 ? 'Live' : window.CMS_PHASES[p.phase] }));
+      .map((p) => ({ href: '#/' + p.route, ic: p.icon || p.groupIcon || 'sparkle', title: p.label, sub: `${p.group || p.section}${p.source ? ` · now in ${p.source}` : ''}`, tag: (p.phase === 0 || p.live) ? 'Live' : window.CMS_PHASES[p.phase] }));
     const people = (t.length >= 2 && state.people) ? state.people.filter((x) => `${x.name} ${x.employee_id || ''} ${x.job_title || ''}`.toLowerCase().includes(t)).slice(0, 8)
       .map((x) => ({ href: `#/people?q=${encodeURIComponent(x.employee_id || x.name)}`, ic: 'users', title: x.name, sub: `${x.employee_id || 'No Employee ID'} · ${coShort(x.company_code)} · ${x.status}`, tag: 'Person' })) : [];
     palItems = [...pages, ...people]; palSel = 0;
@@ -276,7 +278,7 @@
 
   // ---------------------------------------------------------------- page head
   function pageHead(item, extra = '') {
-    const live = item.phase === 0;
+    const live = item.phase === 0 || item.live;
     return `<div class="crumbs"><a href="#/dashboard">Dashboard</a>${item.group ? ` / <span>${esc(item.group)}</span>` : ''} / <span>${esc(item.label)}</span></div>
       <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.source ? `<span class="tag src">${icon('plug')}Now in ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
   }
@@ -307,7 +309,7 @@
       ${kpi('users', 'Active employees', num(p.active), `${num(p.onboarding)} onboarding · ${num(p.applicants)} applicants`, 'blue', canRoute('people') ? '#/people' : '#/dashboard')}
       ${kpi('briefcase', 'JD positions', num(d.positions), `${num(d.departments)} departments · 4 companies`, 'green', canRoute('org') ? '#/org' : '#/dashboard')}
       ${kpi('file-check', 'Applications pending', num(d.applications_pending), 'In MEG-EAF V2', 'orange', canRoute('approvals') ? '#/approvals' : '#/dashboard')}
-      ${kpi('check-circle', 'Claims waiting', num(d.claims_pending), money(d.claims_pending_amount), 'violet', canRoute('approvals') ? '#/approvals' : '#/dashboard')}`;
+      ${kpi('check-circle', 'Claims waiting', num(d.claims_pending), `${num((d.claims_by_stage || {}).approval || 0)} to approve · ${num((d.claims_by_stage || {}).processing || 0)} to process · ${money(d.claims_pending_amount)}`, 'violet', canRoute('approvals') ? '#/approvals' : '#/dashboard')}`;
 
     const qa = (ic, title, sub, route, tone) => canRoute(route) && (route !== 'admin/export' || isSuper()) ? `<a class="qa ${tone}" href="#/${route}"><span class="qa-ic">${icon(ic)}</span><span><b>${title}</b><small>${sub}</small></span>${icon('arrow', 'qa-go')}</a>` : '';
     const tasks = tasksFromDash(d);
@@ -455,22 +457,160 @@
         ${isAdminPage ? '<p class="muted small">Editing companies, letterheads, statutory numbers and holidays comes in a later update.</p>' : ''}</section>`;
   }
 
-  // ================================================================ APPROVALS
+  // ================================================================ CLAIMS (Phase 1)
+  const STAGES = [['approval', 'Waiting for approval'], ['processing', 'Ready to process'], ['payment', 'Waiting for payment'], ['paid', 'Paid'], ['disapproved', 'Disapproved']];
+  const WAITING = ['approval', 'processing', 'payment'];
+  const FORM_APP = { scf: 'MEG-SCF', otcf: 'MEG-OTCF', mtcf: 'MEG-MTCF', tec: 'MEG-TEC', 'tec-v2': 'MEG-TEC-V2', prfaf: 'MEG-PRFAF' };
+  const stageTag = (c) => `<span class="st st-${esc(c.stage)}">${esc(c.display_status)}</span>`;
+  const fmtAmt = (c) => (c.amount === null || c.amount === undefined) ? '—' : c.amount_unit === 'RM' ? money(c.amount) : `${num(c.amount)} ${esc(c.amount_unit)}`;
+
+  // list + filters, used by Approvals (all forms) and by each form page
+  function claimsView(el, rows, { showForm, defaultFilter = 'waiting', onOpen }) {
+    const f = { stage: defaultFilter, q: '', co: 'all' };
+    const count = (k) => k === 'all' ? rows.length : k === 'waiting' ? rows.filter((r) => WAITING.includes(r.stage)).length : rows.filter((r) => r.stage === k).length;
+    const cos = [...new Set(rows.map((r) => r.company_code).filter(Boolean))].sort();
+    const chips = [['waiting', 'Waiting'], ...STAGES, ['all', 'All']];
+    el.innerHTML = `<section class="card">
+        <div class="toolbar">
+          <label class="search-in">${icon('search')}<input type="search" data-cq placeholder="Serial no., claimant or Employee ID" aria-label="Search claims"></label>
+          ${cos.length > 1 ? `<select data-cco aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>` : ''}
+          <div class="seg">${chips.map(([k, l]) => `<button type="button" data-cs="${k}" class="${f.stage === k ? 'on' : ''}">${esc(l)} <span>${count(k)}</span></button>`).join('')}</div>
+        </div>
+        <div class="table-wrap"><table class="data claims"><thead><tr><th>Serial no.</th>${showForm ? '<th>Form</th>' : ''}<th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+        <p class="muted small" data-ccount></p></section>`;
+    const draw = () => {
+      const t = f.q.trim().toLowerCase();
+      const list = rows.filter((r) => (f.stage === 'all' || (f.stage === 'waiting' ? WAITING.includes(r.stage) : r.stage === f.stage))
+        && (f.co === 'all' || r.company_code === f.co)
+        && (!t || `${r.serial_no} ${r.claimant_name} ${r.employee_id || ''}`.toLowerCase().includes(t)))
+        .sort((a, b) => new Date(b.event_at || b.submitted_at) - new Date(a.event_at || a.submitted_at));
+      $('tbody', el).innerHTML = list.length ? list.map((r) => `<tr class="click" tabindex="0" data-f="${esc(r.form_code)}" data-id="${esc(r.id)}">
+          <td><code>${esc(r.serial_no)}</code></td>${showForm ? `<td>${esc(r.form_name)}</td>` : ''}
+          <td><b>${esc(r.claimant_name)}</b>${r.employee_id ? `<br><small class="muted">${esc(r.employee_id)}</small>` : ''}</td>
+          <td>${esc(r.company_code ? coShort(r.company_code) : '—')}</td><td class="num nowrap">${fmtAmt(r)}</td>
+          <td class="nowrap">${dShort(r.submitted_at)}</td><td>${stageTag(r)}</td></tr>`).join('')
+        : `<tr><td colspan="${showForm ? 7 : 6}"><div class="empty small">${icon('check-circle')}<p>Nothing here</p><span>${f.stage === 'waiting' ? 'No claims are waiting.' : 'Try another filter or clear the search.'}</span></div></td></tr>`;
+      $('[data-ccount]', el).textContent = `${list.length} of ${rows.length} claims · drafts and deleted claims are not shown`;
+    };
+    draw();
+    $('[data-cq]', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
+    $('[data-cco]', el)?.addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+    $$('[data-cs]', el).forEach((b) => b.addEventListener('click', () => { f.stage = b.dataset.cs; $$('[data-cs]', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    const open = (tr) => tr && onOpen(tr.dataset.f, tr.dataset.id);
+    $('tbody', el).addEventListener('click', (e) => open(e.target.closest('tr[data-id]')));
+    $('tbody', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') open(e.target.closest('tr[data-id]')); });
+  }
+
+  // values in a claim, shown as label / value pairs and tables
+  const SKIP = /^(id|submitted_by|approved_by|disapproved_by|done_by|revision_returned_by|ledger_account_id|fund_in_transaction_id|purchase_out_transaction_id|pdf_url|deleted_at|deleted_by_name|approval_token|updated_at)$/;
+  const nice = (k) => String(k).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()).replace(/\bRm\b/, 'RM').replace(/\bKm\b/, 'km');
+  const showVal = (v, k) => {
+    if (v === true) return 'Yes'; if (v === false) return 'No';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return dtShort(v);
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return dShort(v);
+    if (typeof v === 'number' && /amount|total|subtotal|pay|rate|price|claim/i.test(k)) return Number(v).toLocaleString('en-MY', { maximumFractionDigits: 2 });
+    return esc(v);
+  };
+  function claimDetailsHtml(c) {
+    const scal = Object.entries(c).filter(([k, v]) => !SKIP.test(k) && v !== null && v !== '' && typeof v !== 'object');
+    const arrs = Object.entries(c).filter(([k, v]) => Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] !== null);
+    const table = (k, arr) => {
+      const cols = [...new Set(arr.flatMap((r) => Object.keys(r).filter((x) => r[x] !== null && typeof r[x] !== 'object' && !SKIP.test(x))))].slice(0, 9);
+      return `<h4>${esc(nice(k))} <span class="muted">(${arr.length})</span></h4><div class="table-wrap"><table class="data mini"><thead><tr>${cols.map((x) => `<th>${esc(nice(x))}</th>`).join('')}</tr></thead>
+        <tbody>${arr.map((r) => `<tr>${cols.map((x) => `<td>${r[x] === undefined || r[x] === null ? '' : showVal(r[x], x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    };
+    return `<dl class="kv">${scal.map(([k, v]) => `<div><dt>${esc(nice(k))}</dt><dd>${showVal(v, k)}</dd></div>`).join('')}</dl>${arrs.map(([k, v]) => table(k, v)).join('')}`;
+  }
+
+  async function openClaim(form, id, after) {
+    let changed = false;
+    await modal({
+      title: 'Claim', wide: true, ok: null, cancel: 'Close', body: `<div class="claim-body">${loading()}</div>`,
+      onOpen: (wrap) => {
+        const box = $('.claim-body', wrap); const head = $('.modal-head h3', wrap);
+        const load = async () => {
+          let d;
+          try { d = await API.rpc('cms_claim', { p_form: form, p_id: id }); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+          const row = (await API.rpc('cms_claims', { p_form: form })).find((r) => r.id === id) || {};
+          const c = d.claim; const p = d.processing || {}; const fin = d.finance || {};
+          head.textContent = `${row.form_name || form.toUpperCase()} · ${row.serial_no || c.serial_no || ''}`;
+          const app = FORM_APP[form];
+          const canPro = d.can_edit && row.processing_eligible; const paid = row.payment_status === 'done';
+          box.innerHTML = `
+            <div class="claim-top">${stageTag(row)}<span class="claim-amt">${fmtAmt(row)}</span>
+              <span class="muted">${esc(row.claimant_name || '')}${d.person ? ` · <a href="#/people?q=${encodeURIComponent(d.person.employee_id || row.claimant_name)}" data-x>${esc(d.person.employee_id || 'Employee Master')}</a>` : ' · not matched to the Employee Master'} · ${esc(d.company_code ? coShort(d.company_code) : '—')}</span></div>
+            ${row.stage === 'approval' ? `<div class="claim-note">${icon('check-circle')}<div><b>Waiting for approval</b><p>Approve or disapprove in ${esc(app)}: it creates the signed PDF and notifies the claimant. ${d.can_approve ? '' : 'Your CMS role does not include approving this form.'}</p></div>${d.app_link ? `<a class="btn primary sm" href="${esc(d.app_link)}" target="_blank" rel="noopener">Review in ${esc(app)}</a>` : ''}</div>` : ''}
+            <div class="claim-grid">
+              <section><h4>Payroll / Account processing</h4>
+                ${row.processing_eligible ? `<div class="checks col">${[['d', 'documents_checked', 'Documents checked'], ['s', 'supporting_docs_checked', 'Supporting documents checked'], ['p', 'payment_process_checked', 'Payment process checked'], ['f', 'fully_processed', 'Fully processed']].map(([k, f2, l]) => `<label><input type="checkbox" data-pc="${k}" ${p[f2] ? 'checked' : ''} ${canPro ? '' : 'disabled'}> ${l}</label>`).join('')}</div>
+                  ${p.processed_by_name ? `<p class="muted small">Processed by ${esc(p.processed_by_name)} · ${dtShort(p.processed_at)}</p>` : ''}
+                  ${canPro ? '<button type="button" class="btn sm primary" data-act="process">Save checklist</button>' : '<p class="muted small">Your CMS role can view this but not change it.</p>'}`
+                  : `<p class="muted small">${row.stage === 'disapproved' ? 'Disapproved claims are not processed.' : 'Becomes available once the claim is approved.'}</p>`}
+              </section>
+              <section><h4>Payment</h4>
+                ${!row.supports_payment ? '<p class="muted small">This form has no payment step.</p>'
+                  : paid ? `<p><span class="st st-paid">Paid</span> ${row.payment_done_at ? dtShort(row.payment_done_at) : ''}${row.payment_done_by_name ? ` · ${esc(row.payment_done_by_name)}` : ''}</p>${d.can_edit ? '<button type="button" class="btn sm ghost" data-act="unpay">Undo payment</button>' : ''}`
+                  : row.processing_eligible ? (d.can_edit ? `<p class="muted small">${row.fully_processed ? 'Processing is complete.' : 'Tip: finish the processing checklist first.'}</p><button type="button" class="btn sm primary" data-act="pay">Mark as paid</button>` : '<p class="muted small">Waiting for Finance.</p>')
+                  : '<p class="muted small">Becomes available once the claim is approved.</p>'}
+              </section>
+            </div>
+            <section class="claim-sec"><h4>Claim details</h4>${claimDetailsHtml(c)}</section>
+            <section class="claim-sec"><h4>Notes</h4>
+              ${d.notes.length ? `<ul class="notes">${d.notes.map((n) => `<li><p>${esc(n.note)}</p><small class="muted">${esc(n.by || '')} · ${dtShort(n.at)}</small></li>`).join('')}</ul>` : '<p class="muted small">No notes yet.</p>'}
+              <div class="note-add"><textarea data-note rows="2" maxlength="1000" placeholder="Add a processing note (shared with MEG-FORMS)"></textarea><button type="button" class="btn sm" data-act="note">Add note</button></div>
+            </section>
+            ${d.app_link ? `<p class="muted small">Receipts, attachments and the PDF are in <a href="${esc(d.app_link)}" target="_blank" rel="noopener">${esc(app)}</a>.</p>` : ''}`;
+          const pc = (k) => $(`[data-pc="${k}"]`, box);
+          const syncFull = () => { if (pc('f')) { const ok3 = pc('d').checked && pc('s').checked && pc('p').checked; pc('f').disabled = !canPro || !ok3; if (!ok3) pc('f').checked = false; } };
+          if (pc('d')) { ['d', 's', 'p'].forEach((k) => pc(k).addEventListener('change', syncFull)); syncFull(); }
+          box.onclick = async (e) => {
+            const b = e.target.closest('button[data-act]'); if (!b) return;
+            const act = b.dataset.act;
+            const run = async (fn, msg) => { b.disabled = true; b.classList.add('busy'); try { await fn(); changed = true; toast(msg); await load(); } catch (x) { toast(x.message, 'err'); b.disabled = false; b.classList.remove('busy'); } };
+            if (act === 'process') await run(() => API.rpc('cms_claim_process', { p_form: form, p_id: id, p_documents: pc('d').checked, p_supporting: pc('s').checked, p_payment_process: pc('p').checked, p_fully: pc('f').checked }), 'Checklist saved');
+            else if (act === 'note') { const t = $('[data-note]', box).value.trim(); if (!t) { toast('Write a note first', 'err'); return; } await run(() => API.rpc('cms_claim_note', { p_form: form, p_id: id, p_note: t }), 'Note added'); }
+            else if (act === 'pay' || act === 'unpay') {
+              const ok = await confirmBox(act === 'pay' ? 'Mark this claim as paid?' : 'Undo the payment?', act === 'pay' ? `<b>${esc(row.serial_no)}</b> · ${esc(row.claimant_name)} · ${fmtAmt(row)}<br><small class="muted">The claimant sees it as paid in ${esc(app)}.</small>` : `<b>${esc(row.serial_no)}</b> goes back to waiting for payment. SCF payments can only be undone within 60 days.`, act === 'pay' ? 'Mark as paid' : 'Undo payment', act === 'unpay');
+              if (ok) await run(() => API.rpc('cms_claim_paid', { p_form: form, p_id: id, p_done: act === 'pay' }), act === 'pay' ? 'Marked as paid' : 'Payment undone');
+            }
+          };
+        };
+        load();
+      },
+    });
+    if (changed && after) after();
+  }
+
+  async function claimsPage(item, el) {
+    const mod = moduleOf(item.route);
+    const url = item.source && window.CMS_SOURCES[item.source];
+    el.innerHTML = `${pageHead(item, url ? `<a class="tag src" href="${esc(url)}" target="_blank" rel="noopener">${icon('plug')}Open ${esc(item.source)}</a>` : '')}<div id="cl-body">${loading()}</div>
+      <p class="muted small">Staff keep submitting in ${esc(item.source || 'the form app')}. Approve or disapprove there too (it creates the signed PDF); processing, payment and notes can be done here.</p>`;
+    const body = $('#cl-body', el);
+    const reload = async () => {
+      try { const rows = await API.rpc('cms_claims', { p_form: mod }); claimsView(body, rows, { showForm: mod === 'tec', onOpen: (f, i) => openClaim(f, i, reload) }); }
+      catch (e) { body.innerHTML = errorCard(e.message); wireRetry(el); }
+    };
+    await reload();
+  }
+
   async function approvalsPage(item, el) {
-    el.innerHTML = `${pageHead(item)}<div id="ap-body">${loading()}</div>`;
-    let d; try { d = state.dash = await API.rpc('cms_dashboard'); drawBell(); } catch (e) { $('#ap-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
-    const forms = { scf: ['Staff Claims (SCF)', 'MEG-SCF'], otcf: ['Overtime (OTCF)', 'MEG-OTCF'], mtcf: ['Mileage (MTCF)', 'MEG-MTCF'], prfaf: ['Purchase & Funding (PRFAF)', 'MEG-PRFAF'], prfaf_v2: ['Purchase & Funding V2', 'MEG-PRFAF'], tec: ['Teacher Tuition (TEC)', 'MEG-TEC-V2'], 'tec-v2': ['Teacher Tuition (TEC V2)', 'MEG-TEC-V2'] };
-    const rowsF = Object.entries(d.claims_pending_by_form || {});
-    $('#ap-body', el).innerHTML = `
-      <section class="card"><div class="card-head"><h3>${icon('file-check')}Claims submitted, waiting for a decision</h3><span class="tag">${num(d.claims_pending)} · ${money(d.claims_pending_amount)}</span></div>
-        ${rowsF.length ? `<ul class="tasks">${rowsF.map(([k, n]) => { const [label, src] = forms[k] || [k.toUpperCase(), 'MEG-FORMS']; return `<li><a href="${esc(window.CMS_SOURCES[src] || window.CMS_SOURCES['MEG-FORMS'])}" target="_blank" rel="noopener"><span class="t-ic orange">${icon('file-check')}</span><span><b>${esc(label)}</b><small>${num(n)} submitted</small></span><span class="tag src">Open ${esc(src)}</span></a></li>`; }).join('')}</ul>`
-          : `<div class="empty small">${icon('check-circle')}<p>No claims waiting</p></div>`}</section>
-      <section class="card"><div class="card-head"><h3>${icon('search-user')}Recruitment and onboarding</h3></div>
+    el.innerHTML = `${pageHead(item)}<div id="ap-claims">${loading()}</div><div id="ap-other"></div>`;
+    const reload = async () => {
+      try {
+        const rows = await API.rpc('cms_claims');
+        claimsView($('#ap-claims', el), rows, { showForm: true, onOpen: (f, i) => openClaim(f, i, reload) });
+      } catch (e) { $('#ap-claims', el).innerHTML = errorCard(e.message); wireRetry(el); }
+    };
+    await reload();
+    try {
+      const d = state.dash = await API.rpc('cms_dashboard'); drawBell();
+      $('#ap-other', el).innerHTML = `<section class="card"><div class="card-head"><h3>${icon('search-user')}Recruitment and onboarding</h3></div>
         <ul class="tasks">
           <li><a href="${esc(window.CMS_SOURCES['MEG-EAF V2'])}" target="_blank" rel="noopener"><span class="t-ic blue">${icon('search-user')}</span><span><b>${num(d.applications_pending)} applications pending</b><small>Office Use and decision</small></span><span class="tag src">Open MEG-EAF V2</span></a></li>
           <li><a href="${esc(window.CMS_SOURCES['MEG-EAF V2'])}" target="_blank" rel="noopener"><span class="t-ic violet">${icon('shield')}</span><span><b>${num(d.handbook_outstanding)} handbook acknowledgements outstanding</b><small>Assigned or viewed, not yet acknowledged</small></span><span class="tag src">Open MEG-EAF V2</span></a></li>
-        </ul></section>
-      <p class="muted small">Approving still happens in each app for now. From Phase 1 the claims move into the CMS and are approved here, in one queue.</p>`;
+        </ul></section>`;
+    } catch (e) { /* claims above still work */ }
   }
 
   // ================================================================ USERS, ROLES & ACCESS
@@ -753,6 +893,7 @@
   const LIVE = {
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
+    overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
   async function render() {

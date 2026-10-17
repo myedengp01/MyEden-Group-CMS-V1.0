@@ -41,11 +41,11 @@ window.CMS_MENU = [
       { route: 'leave/import', label: 'Import Leave', phase: 2, source: 'MyPayroll V2.0', myp: 'leave/import', desc: 'Bring past leave records in from the workbook.' },
     ] },
     { group: 'Forms & Claims', icon: 'file-check', items: [
-      { route: 'overtime', label: 'Overtime Claims (OTCF)', phase: 1, source: 'MEG-OTCF', desc: 'Overtime claims with approval, priced into payroll.' },
-      { route: 'forms/scf', label: 'Staff Claims (SCF)', phase: 1, source: 'MEG-SCF', desc: 'Miscellaneous staff claims, approved and reimbursed with the salary.' },
-      { route: 'forms/mtcf', label: 'Mileage Claims (MTCF)', phase: 1, source: 'MEG-MTCF', desc: 'Mileage tracking and claims.' },
-      { route: 'forms/tec', label: 'Teacher Tuition Claims (TEC)', phase: 1, source: 'MEG-TEC-V2', desc: "Teachers' monthly tuition and enrichment class payment claims." },
-      { route: 'forms/prfaf', label: 'Purchase & Funding (PRFAF)', phase: 1, source: 'MEG-PRFAF', desc: 'Purchase requests and funding applications with company and event ledgers.' },
+      { route: 'overtime', label: 'Overtime Claims (OTCF)', phase: 1, live: true, source: 'MEG-OTCF', desc: 'Overtime claims with approval, priced into payroll.' },
+      { route: 'forms/scf', label: 'Staff Claims (SCF)', phase: 1, live: true, source: 'MEG-SCF', desc: 'Miscellaneous staff claims, approved and reimbursed with the salary.' },
+      { route: 'forms/mtcf', label: 'Mileage Claims (MTCF)', phase: 1, live: true, source: 'MEG-MTCF', desc: 'Mileage tracking and claims.' },
+      { route: 'forms/tec', label: 'Teacher Tuition Claims (TEC)', phase: 1, live: true, source: 'MEG-TEC-V2', desc: "Teachers' monthly tuition and enrichment class payment claims." },
+      { route: 'forms/prfaf', label: 'Purchase & Funding (PRFAF)', phase: 1, live: true, source: 'MEG-PRFAF', desc: 'Purchase requests and funding applications with company and event ledgers.' },
     ] },
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
       { route: 'payroll', label: 'Monthly Payroll', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll', desc: 'Pay runs, EPF / SOCSO / EIS, PCB, finalise and reopen.' },
@@ -62,7 +62,7 @@ window.CMS_MENU = [
     { route: 'assets', label: 'Assets & Equipment', icon: 'box', phase: 5, desc: 'Laptops, keys, uniforms and devices issued to staff, returned at offboarding.' },
     { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, source: 'MEG-EAF V2', desc: 'Appointment, confirmation, service and other letters on company letterheads.' },
     { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators.' },
-    { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Everything waiting for a decision across MEG-FORMS, MEG-EAF V2 and the handbook.' },
+    { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Every claim waiting for approval, processing or payment, across all MEG-FORMS forms.' },
     { route: 'reports', label: 'Reports & Analytics', icon: 'chart', phase: 5, desc: 'Headcount, turnover, cost and claims across companies and centres.' },
   ] },
   { section: 'Administration', items: [
