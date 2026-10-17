@@ -583,3 +583,8 @@ textarea.ta { width: 100%; padding: 10px 12px; border-radius: 11px; border: 1px 
   .modal { place-items: end center; padding: 0; } .modal-box, .modal-box.wide { width: 100%; border-radius: 18px 18px 0 0; max-height: 92vh; }
   table.data { font-size: 13px; }
 }
+/* v19:00 · bulk disapprove, own claims, CEO / Director */
+.bulk .btn[hidden] { display: none; }
+.tag.mine { background: rgba(92,106,130,.12); color: #4b5870; border-color: transparent; font-size: 11px; padding: 1px 7px; }
+:root[data-theme="dark"] .tag.mine { color: #c4cee0; }
+.r-director { --rc: #0b6e8a; } :root[data-theme="dark"] .r-director { --rc: #7fd6ef; }

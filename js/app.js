@@ -59,7 +59,7 @@
   const phaseTag = (n) => `<span class="tag phase p${n}">${esc(window.CMS_PHASES[n] || '')}</span>`;
   const coShort = (code) => (state.org?.companies || []).find((c) => c.code === code)?.short_name
     || window.CMS_COMPANIES.find((c) => c.code === code)?.short || code || '—';
-  const roleName = (code) => ({ super_admin: 'Super Admin', admin: 'Admin', hr: 'HR', payroll: 'Payroll', finance: 'Finance', approver: 'Approver', payroll_viewer: 'Account / Payroll Viewer', staff: 'Staff' }[code] || code);
+  const roleName = (code) => ({ super_admin: 'Super Admin', admin: 'Admin', hr: 'HR', payroll: 'Payroll', finance: 'Finance', approver: 'Approver', director: 'CEO / Director', payroll_viewer: 'Account / Payroll Viewer', staff: 'Staff' }[code] || code);
   const scopeTxt = (cos) => (cos && cos.length ? cos.join(', ') : 'all companies');
   const loading = (t = 'Loading…') => `<div class="loading"><span class="spinner"></span>${esc(t)}</div>`;
   const errorCard = (msg) => `<section class="card err-card">${icon('x')}<div><b>Could not load this page</b><p>${esc(msg)}</p><button type="button" class="btn" data-retry>Try again</button></div></section>`;
@@ -476,7 +476,7 @@
           ${cos.length > 1 ? `<select data-cco aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>` : ''}
           <div class="seg">${chips.map(([k, l]) => `<button type="button" data-cs="${k}" class="${f.stage === k ? 'on' : ''}">${esc(l)} <span>${count(k)}</span></button>`).join('')}</div>
         </div>
-        <div class="bulk" hidden><span data-bn></span><button type="button" class="btn sm ghost" data-bclear>Clear</button><button type="button" class="btn sm primary" data-bgo>Approve selected</button></div>
+        <div class="bulk" hidden><span data-bn></span><button type="button" class="btn sm ghost" data-bclear>Clear</button><button type="button" class="btn sm danger" data-bno>Disapprove selected</button><button type="button" class="btn sm primary" data-bgo>Approve selected</button></div>
         <div class="table-wrap"><table class="data claims"><thead><tr><th class="sel"><span class="sr">Select</span></th><th>Serial no.</th>${showForm ? '<th>Form</th>' : ''}<th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" data-ccount></p></section>`;
     const draw = () => {
@@ -490,7 +490,7 @@
           <td><code>${esc(r.serial_no)}</code></td>${showForm ? `<td>${esc(r.form_name)}</td>` : ''}
           <td><b>${esc(r.claimant_name)}</b>${r.employee_id ? `<br><small class="muted">${esc(r.employee_id)}</small>` : ''}</td>
           <td>${esc(r.company_code ? coShort(r.company_code) : '—')}</td><td class="num nowrap">${fmtAmt(r)}</td>
-          <td class="nowrap">${dShort(r.submitted_at)}</td><td>${stageTag(r)}</td></tr>`).join('')
+          <td class="nowrap">${dShort(r.submitted_at)}</td><td>${stageTag(r)}${r.stage === 'approval' && r.is_mine ? ' <span class="tag mine">Yours</span>' : ''}</td></tr>`).join('')
         : `<tr><td colspan="${showForm ? 8 : 7}"><div class="empty small">${icon('check-circle')}<p>Nothing here</p><span>${f.stage === 'waiting' ? 'No claims are waiting.' : 'Try another filter or clear the search.'}</span></div></td></tr>`;
       $('[data-ccount]', el).textContent = `${list.length} of ${rows.length} claims · drafts and deleted claims are not shown`;
       drawBulk();
@@ -501,25 +501,43 @@
       const tec = [...picked].every((k) => k.startsWith('tec'));
       $('[data-bn]', el).textContent = `${picked.size} selected`;
       $('[data-bgo]', el).textContent = tec ? 'Mark selected as done' : 'Approve selected';
+      const noTec = [...picked].every((k) => !k.startsWith('tec'));
+      $('[data-bno]', el).hidden = !noTec;
     };
     $('[data-bclear]', el).addEventListener('click', () => { picked.clear(); draw(); });
-    $('[data-bgo]', el).addEventListener('click', async () => {
-      const items = [...picked].map((k) => { const [f, i] = k.split('|'); return rows.find((r) => r.form_code === f && r.id === i); }).filter(Boolean);
+    const pickedItems = () => [...picked].map((k) => { const [f, i] = k.split('|'); return rows.find((r) => r.form_code === f && r.id === i); }).filter(Boolean);
+    const planList = (items) => `<ul class="plan">${items.map((r) => `<li>${esc(r.serial_no)} · ${esc(r.claimant_name)} · ${fmtAmt(r)}</li>`).join('')}</ul>`;
+    $('[data-bno]', el).addEventListener('click', async () => {
+      const items = pickedItems().filter((r) => !r.form_code.startsWith('tec'));
       if (!items.length) return;
-      const ok = await confirmBox(`Approve ${items.length} claim${items.length > 1 ? 's' : ''}?`, `Each one is approved (teacher tuition claims marked as done), gets its signed PDF and its claimant is notified.<ul class="plan">${items.map((r) => `<li>${esc(r.serial_no)} · ${esc(r.claimant_name)} · ${fmtAmt(r)}</li>`).join('')}</ul>`, 'Approve all', false);
+      let reason = null;
+      const ok = await modal({ title: `Disapprove ${items.length} claim${items.length > 1 ? 's' : ''}`, ok: 'Disapprove all', danger: true, wide: true,
+        body: `<p class="small">Every claim below gets the same reason, and each claimant is notified.</p>${planList(items)}
+          <label class="fld"><span>Reason (the claimants see this)</span><textarea name="reason" rows="3" maxlength="1000" required class="ta"></textarea></label>`,
+        onOk: (f) => { reason = f.reason.value.trim(); if (!reason) throw new Error('Give a reason for disapproving.'); } });
       if (!ok) return;
-      await modal({ title: 'Approving', ok: null, cancel: 'Close', wide: true, body: '<div class="decide-log big"></div>', onOpen: async (wrap) => {
+      await runBulk(items, 'Disapproving', () => 'disapprove', reason);
+    });
+    $('[data-bgo]', el).addEventListener('click', async () => {
+      const items = pickedItems();
+      if (!items.length) return;
+      const ok = await confirmBox(`Approve ${items.length} claim${items.length > 1 ? 's' : ''}?`, `Each one is approved (teacher tuition claims marked as done), gets its signed PDF and its claimant is notified.${planList(items)}`, 'Approve all', false);
+      if (!ok) return;
+      await runBulk(items, 'Approving', (r) => r.form_code.startsWith('tec') ? 'done' : 'approve', null);
+    });
+    async function runBulk(items, title, decOf, reason) {
+      await modal({ title, ok: null, cancel: 'Close', wide: true, body: '<div class="decide-log big"></div>', onOpen: async (wrap) => {
         const logEl = $('.decide-log', wrap); const closeBtn = $('.modal-foot [data-x]', wrap); closeBtn.disabled = true;
         for (const r of items) {
           logEl.insertAdjacentHTML('beforeend', `<h4>${esc(r.serial_no)} · ${esc(r.claimant_name)}</h4>`);
           const log = (m, tone) => logEl.insertAdjacentHTML('beforeend', `<div class="lg ${tone || ''}">${icon(tone === 'ok' ? 'check-circle' : tone === 'err' ? 'x' : 'clock')}<span>${esc(m)}</span></div>`);
-          try { await decideClaim(r.form_code, r.id, r.form_code.startsWith('tec') ? 'done' : 'approve', null, log); } catch (x) { log(x.message, 'err'); }
+          try { await decideClaim(r.form_code, r.id, decOf(r), reason, log); } catch (x) { log(x.message, 'err'); }
           picked.delete(`${r.form_code}|${r.id}`);
         }
         logEl.insertAdjacentHTML('beforeend', '<p class="muted small">Finished.</p>'); closeBtn.disabled = false;
       } });
       if (onChanged) onChanged();
-    });
+    }
     draw();
     $('[data-cq]', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
     $('[data-cco]', el)?.addEventListener('change', (e) => { f.co = e.target.value; draw(); });
@@ -556,7 +574,20 @@
   }
 
   const DECIDABLE = ['otcf', 'mtcf', 'tec', 'tec-v2'];
-  const canDecide = (r) => r.stage === 'approval' && DECIDABLE.includes(r.form_code) && can3(r.module, 'A', r.company_code);
+  const isDirector = () => (state.access?.roles || []).some((r) => r.code === 'director');
+  const canDecide = (r) => r.stage === 'approval' && DECIDABLE.includes(r.form_code) && can3(r.module, 'A', r.company_code)
+    && !r.is_mine && (!r.needs_director || isDirector());
+  // claims plus, for those still waiting, whether each is the viewer's own and whether it needs the CEO / a Director
+  async function loadClaims(form) {
+    const [rows, flags] = await Promise.all([API.rpc('cms_claims', form ? { p_form: form } : {}), API.rpc('cms_claim_flags').catch(() => [])]);
+    const fl = new Map((flags || []).map((x) => [`${x.form_code}|${x.id}`, x]));
+    return rows.map((r) => {
+      const x = fl.get(`${r.form_code}|${r.id}`) || {};
+      const o = { ...r, is_mine: !!x.is_mine, needs_director: !!x.needs_director };
+      if (o.stage === 'approval' && o.needs_director) o.display_status = 'Waiting for CEO / Director';
+      return o;
+    });
+  }
   // approve / disapprove / mark as done, then the signed PDF and the claimant notification, exactly as the form apps do
   async function decideClaim(form, id, dec, reason, log) {
     const r = await API.rpc('cms_claim_decide', { p_form: form, p_id: id, p_decision: dec, p_reason: reason || null });
@@ -589,7 +620,7 @@
         const load = async () => {
           let d;
           try { d = await API.rpc('cms_claim', { p_form: form, p_id: id }); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
-          const row = (await API.rpc('cms_claims', { p_form: form })).find((r) => r.id === id) || {};
+          const row = (await loadClaims(form)).find((r) => r.id === id) || {};
           const c = d.claim; const p = d.processing || {}; const fin = d.finance || {};
           head.textContent = `${row.form_name || form.toUpperCase()} · ${row.serial_no || c.serial_no || ''}`;
           const app = FORM_APP[form];
@@ -597,7 +628,9 @@
           box.innerHTML = `
             <div class="claim-top">${stageTag(row)}<span class="claim-amt">${fmtAmt(row)}</span>
               <span class="muted">${esc(row.claimant_name || '')}${d.person ? ` · <a href="#/people?q=${encodeURIComponent(d.person.employee_id || row.claimant_name)}" data-x>${esc(d.person.employee_id || 'Employee Master')}</a>` : ' · not matched to the Employee Master'} · ${esc(d.company_code ? coShort(d.company_code) : '—')}</span></div>
-            ${row.stage === 'approval' ? (d.can_approve && DECIDABLE.includes(form) ? `<div class="claim-note decide">${icon('check-circle')}<div><b>Waiting for ${form.startsWith('tec') ? 'you to mark it as done' : 'your decision'}</b><p>${form.startsWith('tec') ? 'Recorded with your name and the time, as in MEG-TEC.' : `Approving records your name, the time and an approval code, creates the signed PDF (the same one ${esc(app)} makes) and emails the claimant.`}</p></div>
+            ${row.stage === 'approval' ? (d.is_mine ? `<div class="claim-note">${icon('shield')}<div><b>Your own claim</b><p>Someone else must decide this claim${d.needs_director ? ': the CEO / a Director' : ''}.</p></div></div>`
+              : d.needs_director && !d.is_director ? `<div class="claim-note">${icon('shield')}<div><b>Waiting for CEO / Director</b><p>This claim was submitted by a Super Admin or Admin, so only the CEO / a Director can approve or disapprove it.</p></div></div>`
+              : d.can_approve && DECIDABLE.includes(form) ? `<div class="claim-note decide">${icon('check-circle')}<div><b>Waiting for ${form.startsWith('tec') ? 'you to mark it as done' : 'your decision'}</b><p>${form.startsWith('tec') ? 'Recorded with your name and the time, as in MEG-TEC.' : `Approving records your name, the time and an approval code, creates the signed PDF (the same one ${esc(app)} makes) and emails the claimant.`}</p></div>
                 <div class="decide-btns">${form.startsWith('tec') ? '<button type="button" class="btn primary sm" data-act="done">Mark as done</button>' : '<button type="button" class="btn ghost sm" data-act="disapprove">Disapprove</button><button type="button" class="btn primary sm" data-act="approve">Approve</button>'}</div></div>
                 <div class="decide-log" hidden></div>`
               : `<div class="claim-note">${icon('check-circle')}<div><b>Waiting for approval</b><p>${form === 'prfaf' ? `Approve PRFAF requests in ${esc(app)}: approving there also sets up the fund release.` : `Your CMS role does not include approving this form.`}</p></div>${d.app_link ? `<a class="btn primary sm" href="${esc(d.app_link)}" target="_blank" rel="noopener">Review in ${esc(app)}</a>` : ''}</div>`) : ''}
@@ -672,7 +705,7 @@
       <p class="muted small">Staff keep submitting in ${esc(item.source || 'the form app')}. Approving, processing, payment and notes can all be done here${mod === 'prfaf' ? ', except approving PRFAF requests, which stays in MEG-PRFAF because it also sets up the fund release' : ''}.</p>`;
     const body = $('#cl-body', el);
     const reload = async () => {
-      try { const rows = await API.rpc('cms_claims', { p_form: mod }); claimsView(body, rows, { showForm: mod === 'tec', onOpen: (f, i) => openClaim(f, i, reload), onChanged: reload }); }
+      try { const rows = await loadClaims(mod); claimsView(body, rows, { showForm: mod === 'tec', onOpen: (f, i) => openClaim(f, i, reload), onChanged: reload }); }
       catch (e) { body.innerHTML = errorCard(e.message); wireRetry(el); }
     };
     await reload();
@@ -682,7 +715,7 @@
     el.innerHTML = `${pageHead(item)}<div id="ap-claims">${loading()}</div><div id="ap-other"></div>`;
     const reload = async () => {
       try {
-        const rows = await API.rpc('cms_claims');
+        const rows = await loadClaims();
         claimsView($('#ap-claims', el), rows, { showForm: true, onOpen: (f, i) => openClaim(f, i, reload), onChanged: reload });
       } catch (e) { $('#ap-claims', el).innerHTML = errorCard(e.message); wireRetry(el); }
     };
@@ -857,7 +890,7 @@
   });
   document.addEventListener('change', (e) => {
     if (e.target.name === 'role' && $('#role-desc')) {
-      const d = { super_admin: 'Everything, including roles and export. Companies do not apply.', admin: 'Sees, edits and approves everything.', hr: 'People, recruitment, onboarding, handbook, leave and letters.', payroll: 'Payroll and claim processing.', finance: 'Marks claims and funding paid.', approver: 'Approves claims, overtime and leave.', payroll_viewer: 'Sees claims, people, payroll and reports. Cannot change, approve, pay or export.', staff: 'Own payslips, leave and claims.' };
+      const d = { super_admin: 'Everything, including roles and export. Companies do not apply.', director: 'Sees everything. Decides claims for all companies, including claims by Super Admins and Admins.', admin: 'Sees, edits and approves everything.', hr: 'People, recruitment, onboarding, handbook, leave and letters.', payroll: 'Payroll and claim processing.', finance: 'Marks claims and funding paid.', approver: 'Approves claims, overtime and leave.', payroll_viewer: 'Sees claims, people, payroll and reports. Cannot change, approve, pay or export.', staff: 'Own payslips, leave and claims.' };
       $('#role-desc').textContent = d[e.target.value] || '';
     }
     if (e.target.name === 'co' && e.target.checked) { const s = $('input[name=scope][value=some]'); if (s) s.checked = true; }

@@ -30,6 +30,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 6. `20261017_cms_phase1_dashboard.sql` — dashboard claim figures by stage
 7. `20261017_cms_phase1_decisions.sql` — approve / disapprove (OTCF, MTCF) and mark as done (TEC) in the CMS, signed PDF link
 8. `20261017_cms_payroll_viewer_role.sql` — Account / Payroll Viewer role (view only)
+9. `20261017_cms_director_approval.sql` — CEO / Director role; claims by Super Admins, Admins and Directors need a Director
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
 and writes an audit entry. A snapshot of the database structure before Phase 0 is stored in `cms_schema_snapshots`
@@ -70,6 +71,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
 ## Change log
+- **v2026.10.17-19:00** — **Disapprove selected** on the Approvals and form pages (OTCF and MTCF): one required reason for
+  every ticked claim, each claimant notified, OTCF disapproval PDF as in the app. Your own claims can't be ticked and are
+  marked "Yours". New role **CEO / Director** (given to the two Director logins): claims submitted by a Super Admin, Admin
+  or Director show "Waiting for CEO / Director" and only a Director (never the claimant) can decide them in the CMS. The
+  form apps are unchanged. Database: `20261017_cms_director_approval.sql`.
 - **v2026.10.17-18:20** — Approve and disapprove OTCF and MTCF claims, and mark TEC claims as done, in the CMS (one at a
   time or several at once). The signed PDF is made by the form app's own PDF code, saved where the app saves it, and the
   claimant gets the same email the app sends. Needs a CMS role with Approve and the matching MEG-FORMS approver permission;
