@@ -5,7 +5,7 @@ into that release and this entry is updated with the version and how it was impl
 
 | No. | Recorded | Idea | Status |
 |---|---|---|---|
-| PRI-001 | 2026-10-19 | **Salary increment reminder.** Show each employee's last increment (amount and date) and remind HR when the next review is due. Review interval settings of 6, 9 or 12 months; the intervals can be edited, changed and added to. | Recorded · plan agreed? no (elaborated 2026-10-19, waiting for go) |
+| PRI-001 | 2026-10-19 | **Salary increment reminder.** Show each employee's last increment (amount and date) and remind HR when the next review is due. Review interval settings of 6, 9 or 12 months; the intervals can be edited, changed and added to. | Recorded · plan elaborated, waiting for go |
 
 ## PRI-001 · Salary increment reminder (draft plan)
 - **Source of increments:** payroll salary history (`eppd_salary_history`): every salary change after the starting salary
