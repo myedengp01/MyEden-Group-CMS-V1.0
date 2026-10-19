@@ -5,17 +5,36 @@ into that release and this entry is updated with the version and how it was impl
 
 | No. | Recorded | Idea | Status |
 |---|---|---|---|
-| PRI-001 | 2026-10-19 | **Salary increment reminder.** Show each employee's last increment (amount and date) and remind HR when the next review is due. Review interval settings of 6, 9 or 12 months; the intervals can be edited, changed and added to. | Recorded · plan elaborated, waiting for go |
+| PRI-001 | 2026-10-19 | Salary increment reminder: last increment amount and date, next review by interval (6, 9, 12 months; editable, changeable, addable) | **Built in v2026.10.19-16:10** |
+| PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Recorded · plan elaborated, waiting for go |
 
-## PRI-001 · Salary increment reminder (draft plan)
-- **Source of increments:** payroll salary history (`eppd_salary_history`): every salary change after the starting salary
-  is an increment; amount = new salary − previous salary, date = effective date. The workbook import gave 185 starting
-  salaries and 111 later changes.
-- **Review intervals:** a settings list (Payroll Settings) starting with 6, 9 and 12 months; Admin can add, rename or
-  change an interval. Each person gets one interval (default by confirmation status, e.g. 6 months on probation,
-  12 months when confirmed), changeable per person.
-- **Next review due** = last increment date (or join / confirmation date if none) + the person's interval.
-- **Where it shows:** a "Last increment" and "Next review" column on View People (salary amounts only for roles that may
-  see salary), a Payroll › Increments page listing who is due this month, overdue and coming up, and a dashboard /
-  bell reminder for Admin and HR.
-- **Recording a new increment** adds a salary-history row from a month (logged), so payroll picks it up automatically.
+## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
+- **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
+  interval and next review date, with views Needs attention / Overdue / Due this month / Next 3 months / All.
+- **Last increment** = the last salary change in payroll's salary history on the person's main company (a transfer's
+  copied history is counted once).
+- **Next review** = the later of last increment, confirmation date and join date + the person's interval, or a date HR
+  set by hand (cleared when the next increment is recorded).
+- **Intervals** (6, 9, 12 months to start) are a list Admin can edit and add to; each interval can be the default for
+  confirmation statuses (6 months: under probation; 12 months: confirmed, contract, part time, internship). HR can set
+  a different interval or a review date per person.
+- **Record increment** (HR/Admin): new salary from a payroll month, on the main company; finalised months are refused;
+  logged in the Audit Log.
+- **Reminders:** the bell / My tasks show "N salary reviews due" for Admin and HR; View People has a Next review column.
+- Permissions (`payroll.increments`): Admin all; HR view, record, change review; Payroll, Finance, Account / Payroll
+  Viewer, CEO / Director view.
+
+## PRI-002 · Rehire and leaving reasons (draft plan)
+- **Leaving reason** (mandatory when a leaver is recorded): pick from a list Admin can edit — Resigned: further studies;
+  Resigned: better offer / career change; Resigned: relocation; Resigned: personal / family; Health; Contract ended;
+  Not confirmed after probation; Terminated: performance; Terminated: misconduct; Dismissed; Retirement; Mutual
+  agreement; Absconded / did not return; Passed away; Other (details required). Plus a short note.
+- **Past employees:** the 150 former staff get the reason added by HR/Admin only, with a "reason missing" filter and
+  count until every one is filled in.
+- **Rehire eligibility** set at exit: Eligible / Eligible with conditions / Not eligible, with a note (who decided, why).
+- **Rehire** (HR/Admin, on a former person): starts a new employment on the same person record with a new join date;
+  the window first shows the reminder — previous stints, positions and centres, last salary, leaving reason, eligibility,
+  notice served or short, settlement / loans / assets outstanding. Not eligible needs an Admin and a reason to override.
+- **More ideas:** flag returning applicants in MEG-EAF V2 when the email / phone / IC matches former staff; exit
+  checklist (assets returned, clearance, final settlement, exit interview notes); turnover report by leaving reason and
+  centre; option to carry service years for leave when rehired within a set period.

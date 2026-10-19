@@ -35,6 +35,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 
 11. `20261019_cms_main_by_period_notice_names.sql` — main paying company by period, notice period until, names in upper case, People columns (needs `db/payroll/011_main_company_by_period.sql` run by hand first)
 
+12. `20261019_cms_increments.sql` — Increments & Reviews (PRI-001): review intervals, per-person review, record increment
+
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
@@ -83,6 +85,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.19-16:10** — **Increments & Reviews** (PRI-001, Payroll menu): last increment and next salary review per
+  person, review intervals 6 / 9 / 12 months (Admin can edit and add; each can be the default for confirmation statuses),
+  per-person interval or review date, Record increment from a payroll month, bell reminder of reviews due, and a Next
+  review column on View People. Database: `20261019_cms_increments.sql`. Ideas register: PRI-002 (rehire) recorded.
 - **v2026.10.19-15:50** — Frozen headers: long lists (View People, Former Staff, Paying Companies, every claims list and
   Approvals, Users, Roles & Access, Audit Log) fill the screen and scroll inside their own box; the search, filters, tabs and
   column headings stay in view, the page title scrolls away first. Employee ID and Name (claims: select box and serial no.;

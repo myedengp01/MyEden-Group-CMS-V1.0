@@ -151,6 +151,8 @@
     if (d.handbook_outstanding && can('handbook')) t.push({ ic: 'shield', tone: 'violet', title: `${num(d.handbook_outstanding)} handbook acknowledgements outstanding`, sub: 'Assigned or viewed, not yet acknowledged', href: window.CMS_SOURCES['MEG-EAF V2'], ext: true, src: 'MEG-EAF V2' });
     if (can('admin.roles') && d.logins - d.logins_with_role > 0) t.push({ ic: 'lock', tone: 'teal', title: `${num(d.logins - d.logins_with_role)} logins have no CMS role yet`, sub: 'Review the suggested roles and accept or skip', href: '#/admin/roles' });
     if (can('admin.roles', 'E') && d.logins_unlinked > 0) t.push({ ic: 'users', tone: 'rose', title: `${num(d.logins_unlinked)} logins are not linked to a person`, sub: 'Link each login to its Employee Master record', href: '#/admin/roles?tab=logins' });
+    const inc = state.incrSum;
+    if (inc && (inc.overdue || inc.due) && can('payroll.increments')) t.push({ ic: 'trend', tone: 'orange', title: `${num(inc.overdue + inc.due)} salary reviews due`, sub: [inc.overdue && `${inc.overdue} overdue`, inc.due && `${inc.due} this month`].filter(Boolean).join(' · '), href: '#/payroll/increments' });
     return t;
   }
 
@@ -567,12 +569,153 @@
     $('#ytable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') open(tr.dataset.id); });
   }
 
+  // ================================================================ INCREMENTS & REVIEWS (PRI-001)
+  const INC_STATE = { overdue: ['Overdue', 'bad'], due: ['Due this month', 'warn'], soon: ['Next 3 months', 'info'], later: ['Later', ''], unknown: ['No date', ''] };
+  const incTag = (r) => { const [l, c] = INC_STATE[r.state] || ['', '']; return `<span class="tag inc ${c} xs">${esc(l)}</span>`; };
+  const salaryTxt = (amt, basis) => (amt == null ? '—' : `${money(amt)}${basis === 'hourly' ? ' /h' : ''}`);
+  const changeTxt = (r) => (!r.last_change_date ? '<span class="muted">none since joining</span>'
+    : `<b class="${r.last_change < 0 ? 'neg' : 'pos'}">${r.last_change < 0 ? '−' : '+'}${money(Math.abs(r.last_change)).replace('RM ', 'RM ')}</b><small class="sub">${monthTxt(r.last_change_date)}</small>`);
+  async function loadIncrSummary() {
+    if (!can('payroll.increments')) return;
+    try {
+      const rows = await API.rpc('cms_increments');
+      state.incr = rows; state.incrSum = { overdue: rows.filter((r) => r.state === 'overdue').length, due: rows.filter((r) => r.state === 'due').length };
+      drawBell();
+    } catch (e) { /* reminders are a convenience */ }
+  }
+
+  async function incrementWindow(r0, onChange) {
+    const canC = can('payroll.increments', 'C'); const canE = can('payroll.increments', 'E');
+    let r = r0; let changed = false;
+    let intervals = []; try { intervals = await API.rpc('cms_review_intervals'); } catch (e) { /* shown below */ }
+    await modal({
+      title: r.name, wide: true, ok: '', cancel: 'Close',
+      body: `<div data-inc>${loading()}</div>`,
+      onOpen: (wrap) => {
+        const box = $('[data-inc]', wrap);
+        const load = async () => {
+          box.innerHTML = loading();
+          let hist;
+          try { [hist, [r]] = await Promise.all([API.rpc('cms_salary_changes', { p_employment: r.employment_id }), API.rpc('cms_increments', { p_person: r.person_id })]); }
+          catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+          box.innerHTML = `
+            <p class="muted small"><code>${esc(r.employee_id || '—')}</code> · ${esc(CONF[r.confirmation] || r.confirmation || '—')} · joined ${dShort(r.join_date)}${r.confirmed_date ? ` · confirmed ${dShort(r.confirmed_date)}` : ''} · paid by <b>${esc(coShort(r.paid_by))}</b></p>
+            <div class="inc-sum">
+              <div><span>Current salary</span><b>${salaryTxt(r.current_salary, r.pay_basis)}</b></div>
+              <div><span>Last increment</span><b>${r.last_change_date ? `${r.last_change < 0 ? '−' : '+'}${money(Math.abs(r.last_change))}` : '—'}</b><small>${r.last_change_date ? monthTxt(r.last_change_date) : 'none since joining'}</small></div>
+              <div><span>Review every</span><b>${esc(r.interval_label || '—')}</b><small>${r.interval_is_default ? 'default for this status' : 'set for this person'}</small></div>
+              <div class="st-${esc(r.state)}"><span>Next review</span><b>${dShort(r.next_review)}</b><small>${r.next_review_set ? 'date set by hand' : `from ${dShort(r.base_date)}`} ${incTag(r)}</small></div>
+            </div>
+            ${r.review_note ? `<p class="muted small">Note: ${esc(r.review_note)}</p>` : ''}
+            <div class="btn-row">${canC ? `<button type="button" class="btn primary sm" data-a="inc">${icon('plus')}Record increment</button>` : ''}${canE ? '<button type="button" class="btn sm" data-a="rev">Change review</button>' : ''}</div>
+            <h4 class="inc-h">Salary history</h4>
+            <div class="table-wrap fill-modal"><table class="data"><thead><tr><th>From</th><th>Salary</th><th>Change</th><th>Company</th><th>Reason</th></tr></thead><tbody>
+              ${hist.map((h) => `<tr><td class="nowrap">${monthTxt(h.effective_from)}</td><td class="nowrap">${salaryTxt(h.amount, h.pay_basis)}</td>
+                <td class="nowrap">${h.change == null ? '<span class="muted">start</span>' : h.change === 0 ? '<span class="muted">no change</span>' : `<b class="${h.change < 0 ? 'neg' : 'pos'}">${h.change < 0 ? '−' : '+'}${money(Math.abs(h.change))}</b>`}</td>
+                <td>${esc(coShort(h.company))}</td><td class="small">${esc(h.reason || '')}${h.note ? `<br><span class="muted">${esc(h.note)}</span>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No salary recorded.</td></tr>'}
+            </tbody></table></div>`;
+          $('[data-a=inc]', box)?.addEventListener('click', recordInc);
+          $('[data-a=rev]', box)?.addEventListener('click', changeReview);
+        };
+        const recordInc = async () => {
+          const ok = await modal({ title: `Record increment · ${r.name}`, ok: 'Save increment',
+            body: `<p class="muted small">Current salary ${salaryTxt(r.current_salary, r.pay_basis)} with ${esc(coShort(r.paid_by))}. The new salary applies from the month you choose; payroll picks it up from then. Months already finalised cannot be changed.</p>
+              <div class="grid-2 tight"><label class="fld"><span>New salary (RM)</span><input type="number" name="amt" min="0" step="0.01" required value="${r.current_salary ?? ''}"></label>
+              <label class="fld"><span>From payroll month</span><input type="month" name="m" required value="${monthNow()}"></label></div>
+              <p class="muted small" data-diff></p>
+              <label class="fld"><span>Reason</span><select name="reason"><option>Annual increment</option><option>Confirmation increment</option><option>Promotion</option><option>Merit increment</option><option>Adjustment</option></select></label>
+              <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
+            onOpen: (w) => { const f = $('form', w); const upd = () => { const d = Number(f.amt.value) - Number(r.current_salary || 0); $('[data-diff]', w).textContent = f.amt.value ? `Change: ${d < 0 ? '−' : '+'}${money(Math.abs(d))}${r.current_salary ? ` (${(d / r.current_salary * 100).toFixed(1)}%)` : ''}` : ''; }; f.amt.addEventListener('input', upd); upd(); setTimeout(() => f.amt.select(), 30); },
+            onOk: async (f) => { if (!f.amt.value || !f.m.value) throw new Error('Enter the new salary and the month.');
+              await API.rpc('cms_record_increment', { p_employment: r.employment_id, p_from: `${f.m.value}-01`, p_salary: Number(f.amt.value), p_reason: f.reason.value, p_note: f.note.value || null }); } });
+          if (ok) { changed = true; toast(`Increment saved for ${r.name}`); load(); }
+        };
+        const changeReview = async () => {
+          const ok = await modal({ title: `Review · ${r.name}`, ok: 'Save',
+            body: `<label class="fld"><span>Review every</span><select name="iv"><option value="">Default for ${esc(CONF[r.confirmation] || 'this status')}</option>${intervals.filter((i) => i.is_active).map((i) => `<option value="${esc(i.code)}" ${!r.interval_is_default && r.interval_code === i.code ? 'selected' : ''}>${esc(i.label)}</option>`).join('')}</select></label>
+              <label class="fld"><span>Next review date (optional, overrides the interval)</span><input type="date" name="next" value="${r.next_review_set ? esc(r.next_review) : ''}"></label>
+              <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" value="${esc(r.review_note || '')}" placeholder="e.g. review together with confirmation"></label>
+              <p class="muted small">A date set by hand is cleared when the next increment is recorded.</p>`,
+            onOk: async (f) => { await API.rpc('cms_set_review', { p_employment: r.employment_id, p_interval: f.iv.value || null, p_next: f.next.value || null, p_note: f.note.value || null }); } });
+          if (ok) { changed = true; toast('Review saved'); load(); }
+        };
+        load();
+      },
+    });
+    if (changed) { loadIncrSummary(); onChange?.(); }
+    return changed;
+  }
+
+  async function incrementsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="inc-body">${loading()}</div>`;
+    let rows, intervals;
+    try { [rows, intervals] = await Promise.all([API.rpc('cms_increments'), API.rpc('cms_review_intervals'), loadOrg()]); }
+    catch (e) { $('#inc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    rows.forEach((r) => upKeys(r, 'name')); state.incr = rows;
+    const f = { q: '', v: rows.some((r) => r.state === 'overdue' || r.state === 'due') ? 'attention' : 'all' };
+    const V = [['attention', 'Needs attention', (r) => r.state === 'overdue' || r.state === 'due'], ['overdue', 'Overdue', (r) => r.state === 'overdue'],
+      ['due', 'Due this month', (r) => r.state === 'due'], ['soon', 'Next 3 months', (r) => r.state === 'soon'], ['all', 'All active staff', () => true]];
+    const admin = can('payroll.increments', 'A');
+    const draw = () => {
+      const cnt = Object.fromEntries(V.map(([k, , fn]) => [k, rows.filter(fn).length]));
+      $('#inc-body', el).innerHTML = `
+        <section class="card">
+          <div class="toolbar">
+            <label class="search-in">${icon('search')}<input id="iq" type="search" placeholder="Name or Employee ID" aria-label="Search" value="${esc(f.q)}"></label>
+            <div class="seg">${V.map(([k, l]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${cnt[k]}</span></button>`).join('')}</div>
+          </div>
+          <div class="table-wrap fill"><table class="data freeze2" id="itable"><thead><tr><th>Employee ID</th><th>Name</th><th>Paid by</th><th>Confirmation</th><th>Current salary</th><th>Last increment</th><th>Review every</th><th>Next review</th></tr></thead><tbody></tbody></table></div>
+          <p class="muted small" id="icount"></p>
+          <p class="muted small">Last increment is the last salary change in payroll. Next review = the later of the last increment, confirmation and join date, plus the review interval (or a date set by hand). Click a person to see the salary history, record an increment or change the review.</p>
+        </section>
+        <section class="card"><div class="card-head"><h3>${icon('calendar')}Review intervals</h3>${admin ? `<button type="button" class="btn sm" data-add-iv>${icon('plus')}Add interval</button>` : ''}</div>
+          <div class="table-wrap"><table class="data"><thead><tr><th>Interval</th><th>Months</th><th>Default for</th><th>People</th><th>Status</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
+          ${intervals.map((i) => `<tr><td><b>${esc(i.label)}</b> <code>${esc(i.code)}</code></td><td>${i.months}</td><td>${(i.default_for || []).map((c) => esc(CONF[c] || c)).join(', ') || '<span class="muted">—</span>'}</td>
+            <td>${rows.filter((r) => r.interval_code === i.code).length}</td><td>${i.is_active ? '<span class="tag ok xs">active</span>' : '<span class="tag xs">inactive</span>'}</td>
+            ${admin ? `<td><button type="button" class="btn sm ghost" data-iv="${esc(i.code)}">Edit</button></td>` : ''}</tr>`).join('')}
+          </tbody></table></div>
+          <p class="muted small">A confirmation status can be the default of one interval. ${admin ? 'Changes apply to everyone on the default straight away.' : 'Only an Admin can change the intervals.'}</p></section>`;
+      const body = () => {
+        const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
+        const list = rows.filter((r) => fn(r) && (!t || `${r.name} ${r.employee_id || ''}`.toLowerCase().includes(t)));
+        $('#itable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-e="${r.employment_id}" class="click" tabindex="0">
+          <td class="nowrap"><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td><td>${esc(coShort(r.paid_by))}</td>
+          <td class="nowrap">${confCell(r)}</td><td class="nowrap">${salaryTxt(r.current_salary, r.pay_basis)}</td><td class="nowrap">${changeTxt(r)}</td>
+          <td class="nowrap">${esc(r.interval_label || '—')}${r.interval_is_default ? '' : ' <span class="tag xs" title="Set for this person">set</span>'}</td>
+          <td class="nowrap"><b>${dShort(r.next_review)}</b> ${incTag(r)}${r.next_review_set ? '<small class="sub">set by hand</small>' : ''}</td></tr>`).join('')
+          : '<tr><td colspan="8"><div class="empty small"><p>No one here</p><span>Try another view.</span></div></td></tr>';
+        $('#icount', el).textContent = `${list.length} ${list.length === 1 ? 'person' : 'people'}`;
+      };
+      body();
+      $('#iq', el).addEventListener('input', (e) => { f.q = e.target.value; body(); });
+      $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); body(); }));
+      const open = (id) => { const r = rows.find((x) => String(x.employment_id) === String(id)); if (r) incrementWindow(r, reload); };
+      $('#itable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-e]'); if (tr) open(tr.dataset.e); });
+      $('#itable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-e]'); if (tr && e.key === 'Enter') open(tr.dataset.e); });
+      $$('[data-iv]', el).forEach((b) => b.addEventListener('click', () => editInterval(intervals.find((i) => i.code === b.dataset.iv))));
+      $('[data-add-iv]', el)?.addEventListener('click', () => editInterval(null));
+    };
+    const reload = async () => { [rows, intervals] = await Promise.all([API.rpc('cms_increments'), API.rpc('cms_review_intervals')]); rows.forEach((r) => upKeys(r, 'name')); state.incr = rows; draw(); };
+    const editInterval = async (iv) => {
+      const ok = await modal({ title: iv ? `Edit ${iv.label}` : 'Add review interval', ok: 'Save',
+        body: `<div class="grid-2 tight"><label class="fld"><span>Name</span><input name="label" maxlength="40" value="${esc(iv?.label || '')}" placeholder="e.g. 3 months"></label>
+          <label class="fld"><span>Months</span><input type="number" name="months" min="1" max="60" required value="${iv?.months || ''}"></label></div>
+          <fieldset class="fld"><legend>Default for these confirmation statuses</legend><div class="checks col stat">${['UP', 'C', 'CT', 'PT', 'INT'].map((c) => `<label><input type="checkbox" name="d_${c}" ${(iv?.default_for || []).includes(c) ? 'checked' : ''}> ${esc(CONF[c])}</label>`).join('')}</div></fieldset>
+          <label class="fld"><span>Status</span><select name="act"><option value="1" ${iv?.is_active !== false ? 'selected' : ''}>Active</option><option value="0" ${iv?.is_active === false ? 'selected' : ''}>Inactive (not offered for new choices)</option></select></label>`,
+        onOk: async (fm) => { if (!fm.months.value) throw new Error('Enter the number of months.');
+          await API.rpc('cms_review_interval_save', { p_code: iv?.code || null, p_label: fm.label.value || null, p_months: Number(fm.months.value),
+            p_default_for: ['UP', 'C', 'CT', 'PT', 'INT'].filter((c) => fm[`d_${c}`].checked), p_active: fm.act.value === '1', p_sort: iv?.sort_order ?? null }); } });
+      if (ok) { toast('Review interval saved'); reload(); }
+    };
+    draw();
+  }
+
   async function peoplePage(item, el) {
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all' };
     el.innerHTML = `${pageHead(item)}<div id="people-body">${loading()}</div>`;
     let rows;
-    try { [rows] = await Promise.all([loadPeople(), loadOrg()]); state.people = rows; }
+    try { [rows] = await Promise.all([loadPeople(), loadOrg(), can('payroll.increments') ? loadIncrSummary() : null]); state.people = rows; }
     catch (e) { $('#people-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const editable = can('people', 'E'); const payView = can('payroll.paying');
     const clickable = editable || payView;
@@ -585,10 +728,12 @@
           <select id="pco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th><th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th>${can('payroll.increments') ? '<th>Next review</th>' : ''}<th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
         <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice and last working day come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
       </section>`;
+    const incCol = can('payroll.increments'); const incBy = new Map((state.incr || []).map((x) => [x.person_id, x]));
+    const reviewCell = (x) => !x ? '<span class="muted">—</span>' : `${dShort(x.next_review)} ${incTag(x)}<small class="sub">${x.last_change_date ? `last ${x.last_change < 0 ? '−' : '+'}${money(Math.abs(x.last_change))} · ${monthTxt(x.last_change_date)}` : 'no increment yet'}</small>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
       const list = rows.filter((r) => inStatus(r, f.status) && (f.co === 'all' || r.company_code === f.co)
@@ -601,9 +746,9 @@
         <td>${esc(r.job_title || '—')}${r.level ? ` <span class="muted">${esc(r.level)}</span>` : ''}</td>
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="nowrap">${dShort(r.start_date)}</td>
-        <td class="nowrap">${confCell(r)}</td><td class="nowrap">${noticeCell(r)}</td>
+        <td class="nowrap">${confCell(r)}</td>${incCol ? `<td class="nowrap">${reviewCell(incBy.get(r.id))}</td>` : ''}<td class="nowrap">${noticeCell(r)}</td>
         <td class="nowrap">${r.last_day ? dShort(r.last_day) : '<span class="muted">—</span>'}</td></tr>`).join('')
-        : `<tr><td colspan="11"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
+        : `<tr><td colspan="${incCol ? 12 : 11}"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
       $('#pcount', el).textContent = `${list.length} of ${rows.length} people`;
     };
     draw();
@@ -1225,7 +1370,7 @@
 
   const LIVE = {
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
-    'payroll/companies': payingPage,
+    'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
@@ -1387,7 +1532,7 @@
     catch (e) { loginScreen(e.message); return; }
     if (justSignedIn) { justSignedIn = false; API.rpc('cms_note_sign_in').catch(() => {}); }
     if (!state.access || !state.access.roles.length) { noRoleScreen(); return; }
-    buildShell(); render();
+    buildShell(); render(); loadIncrSummary();
     if ((location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

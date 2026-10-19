@@ -626,3 +626,18 @@ table.perm-grid tr.grp td:first-child { background: var(--soft); }
   table.freeze2 :is(th, td):nth-child(2) { position: static; box-shadow: none; }
   table.freeze2 :is(th, td):first-child { box-shadow: inset -1px 0 0 var(--line); }
 }
+
+/* v2026.10.19 · increments & reviews (PRI-001) */
+.tag.inc.bad { background: rgba(229,72,110,.13); color: #c22f55; border-color: transparent; }
+.tag.inc.info { background: rgba(44,134,240,.12); color: #1f6fd6; border-color: transparent; }
+:root[data-theme="dark"] .tag.inc.bad { color: #ff8fab; } :root[data-theme="dark"] .tag.inc.info { color: #8ec5ff; }
+b.pos { color: #1d8a45; } b.neg { color: #c22f55; }
+:root[data-theme="dark"] b.pos { color: #6fe39b; } :root[data-theme="dark"] b.neg { color: #ff8fab; }
+.inc-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.inc-sum > div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); display: flex; flex-direction: column; gap: 3px; }
+.inc-sum span { font-size: 11.5px; font-weight: 700; color: var(--mute); }
+.inc-sum b { font-size: 16px; }
+.inc-sum small { font-size: 11.5px; color: var(--mute); }
+.inc-sum .st-overdue { border-color: rgba(229,72,110,.45); } .inc-sum .st-due { border-color: rgba(239,122,26,.5); }
+.inc-h { margin: 16px 0 8px; font-size: 13.5px; }
+@media (max-width: 640px) { .inc-sum { grid-template-columns: 1fr 1fr; } }
