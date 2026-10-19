@@ -83,7 +83,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
-- **vRELEASE** — The main paying company now changes **from a month**: after a transfer, the old company keeps its record and its
+- **v2026.10.19-15:25** — The main paying company now changes **from a month**: after a transfer, the old company keeps its record and its
   "Main" mark for the months it paid; Set main asks for the first month; ending the main company of a joint payment makes the
   other company main from the next month. View People adds **Confirmation** (with confirmed date), **Notice until** (with the
   letter date and weeks), **Last working day**, and a **Serving notice** tab. Notice until is stored in payroll: the 22 dates

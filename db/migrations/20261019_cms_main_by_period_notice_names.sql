@@ -299,7 +299,8 @@ begin
     return a.id;
   end if;
   -- split: old record ends, new one starts
-  update public.eppd_assignments set end_date = v_from - 1   -- keeps its main mark for its own months (011) where id = a.id;
+  -- the old record keeps its main mark for its own months (011)
+  update public.eppd_assignments set end_date = v_from - 1 where id = a.id;
   insert into public.eppd_assignments (employment_id, company_id, is_primary, start_date, end_date, epf_ee, epf_er, socso_ee, socso_er, eis_ee, eis_er, socso_nei_opt_out)
   values (a.employment_id, p_company, a.is_primary, v_from, a.end_date, a.epf_ee, a.epf_er, a.socso_ee, a.socso_er, a.eis_ee, a.eis_er, a.socso_nei_opt_out)
   returning id into v_new;
