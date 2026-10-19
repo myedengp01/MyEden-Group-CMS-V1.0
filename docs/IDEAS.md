@@ -8,6 +8,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-001 | 2026-10-19 | Salary increment reminder: last increment amount and date, next review by interval (6, 9, 12 months; editable, changeable, addable) | **Built in v2026.10.19-16:10** |
 | PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Recorded · plan elaborated, waiting for go |
 | PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Recorded · plan elaborated |
+| PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Recorded · plan elaborated, questions open |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -54,3 +55,16 @@ into that release and this entry is updated with the version and how it was impl
   EPF only; reimbursements: not wages, not taxed). The ticks stay editable, and a changed preset asks for a note.
   System items (basic salary, overtime, unpaid leave, claims) can be renamed but not deleted; an item type already
   used in a finalised month can be switched off but not deleted.
+
+## PRI-004 · KPI-based annual leave carry forward (draft plan)
+- **Already in MyPayroll:** KPI grade per person per year (table `eppd_kpi_ratings`, empty so far) and Time & leave ›
+  Year-end close, which uses Settings › HR policies › carry forward: E 6, S 3, A 1, I 0, U 0 days, confirmed staff only;
+  the excess above the cap is bought back (E, S, A at 50 / 25 / 10 %) or forfeited. The close is run by hand.
+- **New:** a KPI record page (CMS People › KPI & Appraisal, phase 5 slot) holding the grade per person per year, with
+  who graded and when; a **KPI cut-off month** setting (default October, editable) — the grade in force at the cut-off
+  decides the carry-forward eligibility for that year.
+- **Leave balances** gets columns KPI grade (at cut-off), Eligible carry forward (from the grade) and an Override
+  (editable, reason required).
+- **Automatic year-end:** on 1 January the 31 Dec AL balance carries forward automatically: none → 0; less than the
+  eligible days → the whole balance; more → the eligible days (excess bought back or forfeited as today);
+  **negative balance → unpaid leave** in the payroll (month to be decided).
