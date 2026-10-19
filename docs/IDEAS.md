@@ -7,6 +7,7 @@ into that release and this entry is updated with the version and how it was impl
 |---|---|---|---|
 | PRI-001 | 2026-10-19 | Salary increment reminder: last increment amount and date, next review by interval (6, 9, 12 months; editable, changeable, addable) | **Built in v2026.10.19-16:10** |
 | PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Recorded · plan elaborated, waiting for go |
+| PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Recorded · plan elaborated |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -39,3 +40,17 @@ into that release and this entry is updated with the version and how it was impl
 - **More ideas:** flag returning applicants in MEG-EAF V2 when the email / phone / IC matches former staff; exit
   checklist (assets returned, clearance, final settlement, exit interview notes); turnover report by leaving reason and
   centre; option to carry service years for leave when rehired within a set period.
+
+## PRI-003 · Fixed-period items and item types from the payroll line (draft plan)
+- **Already in MyPayroll:** recurring allowances per person with From / Until dates (employee page › Pay), and
+  Settings › Payment types with EPF / SOCSO / EIS / PCB ticks and notes per item type.
+- **In the payroll line window:** "Add item" gets a choice: *this month only* (as now) or *recurring*, with a
+  **"Ends on" checkbox** and date (e.g. 1 Jan–30 Jun 2026); a recurring item is saved as the person's allowance, so
+  it appears every month until it expires and stops by itself. The line lists the person's recurring items with
+  **Edit** (amount, dates, from a month) and **Delete / End from a month**; finalised months are never changed.
+- **Item types:** "New item type" and "Edit item type" open from the same window (Admin): name, earning or
+  deduction, category, and ticks for EPF / SOCSO / EIS / PCB. Choosing a category pre-ticks the usual treatment
+  with a remark (e.g. overtime: no EPF; travel allowance: no EPF/SOCSO/EIS, still taxable; gift: not wages; bonus:
+  EPF only; reimbursements: not wages, not taxed). The ticks stay editable, and a changed preset asks for a note.
+  System items (basic salary, overtime, unpaid leave, claims) can be renamed but not deleted; an item type already
+  used in a finalised month can be switched off but not deleted.
