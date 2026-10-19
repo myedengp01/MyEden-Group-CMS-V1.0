@@ -588,3 +588,20 @@ textarea.ta { width: 100%; padding: 10px 12px; border-radius: 11px; border: 1px 
 .tag.mine { background: rgba(92,106,130,.12); color: #4b5870; border-color: transparent; font-size: 11px; padding: 1px 7px; }
 :root[data-theme="dark"] .tag.mine { color: #c4cee0; }
 .r-director { --rc: #0b6e8a; } :root[data-theme="dark"] .r-director { --rc: #7fd6ef; }
+
+/* v2026.10.19 · previous IDs and paying companies */
+.prev-id { display: block; font-size: 11px; color: var(--mute); margin-top: 2px; }
+.tag.joint { background: rgba(124,92,255,.13); color: #5b3ee0; border-color: transparent; }
+:root[data-theme="dark"] .tag.joint { color: #b7a6ff; }
+.pay-emp { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; }
+.pay-emp.old { opacity: .8; }
+.pay-emp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.pay-emp-head .btn { margin-left: auto; }
+.pay-t td, .pay-t th { font-size: 12.5px; }
+.pay-t tr.ended td { color: var(--mute); }
+.pay-t tr.has-acts td { border-bottom: 0; padding-bottom: 4px; }
+.pay-acts-row td { padding-top: 0; }
+.pay-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.grid-2.tight { gap: 12px; margin-top: 0; }
+.checks.stat { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+@media (max-width: 640px) { .checks.stat { grid-template-columns: 1fr; } .pay-emp-head .btn { margin-left: 0; } }

@@ -242,7 +242,7 @@
   let palSel = 0; let palItems = [];
   async function openPalette() {
     const p = $('#palette'); if (!p) return; p.hidden = false; const q = $('#pal-q'); q.value = ''; drawPalette(''); setTimeout(() => q.focus(), 0);
-    if (!state.people && can('people')) { try { state.people = await API.rpc('cms_people'); drawPalette(q.value); } catch (e) { /* pages still searchable */ } }
+    if (!state.people && can('people')) { try { state.people = await loadPeople(); drawPalette(q.value); } catch (e) { /* pages still searchable */ } }
   }
   function closePalette() { const p = $('#palette'); if (p) p.hidden = true; }
   function drawPalette(q) {
@@ -250,7 +250,7 @@
     const pages = [...PAGES.values()].filter((p) => canRoute(p.route))
       .filter((p) => !t || `${p.label} ${p.group || ''} ${p.source || ''} ${p.desc || ''}`.toLowerCase().includes(t)).slice(0, t ? 8 : 12)
       .map((p) => ({ href: '#/' + p.route, ic: p.icon || p.groupIcon || 'sparkle', title: p.label, sub: `${p.group || p.section}${p.source ? ` · now in ${p.source}` : ''}`, tag: (p.phase === 0 || p.live) ? 'Live' : window.CMS_PHASES[p.phase] }));
-    const people = (t.length >= 2 && state.people) ? state.people.filter((x) => `${x.name} ${x.employee_id || ''} ${x.job_title || ''}`.toLowerCase().includes(t)).slice(0, 8)
+    const people = (t.length >= 2 && state.people) ? state.people.filter((x) => `${x.name} ${x.employee_id || ''} ${x.previous_id || ''} ${x.job_title || ''}`.toLowerCase().includes(t)).slice(0, 8)
       .map((x) => ({ href: `#/people?q=${encodeURIComponent(x.employee_id || x.name)}`, ic: 'users', title: x.name, sub: `${x.employee_id || 'No Employee ID'} · ${coShort(x.company_code)} · ${x.status}`, tag: 'Person' })) : [];
     palItems = [...pages, ...people]; palSel = 0;
     $('#pal-list').innerHTML = palItems.length ? palItems.map((p, i) => `<a href="${esc(p.href)}" class="pal-item ${i === 0 ? 'sel' : ''}" data-i="${i}">
@@ -366,35 +366,221 @@
     return state.org;
   }
 
+  // People list with previous ID and "paid by" from payroll (falls back to the Phase 0 list)
+  async function loadPeople() {
+    try { return await API.rpc('cms_people_list'); }
+    catch (e) { if (!/cms_people_list|function/i.test(e.message || '')) throw e; return API.rpc('cms_people'); }
+  }
+  // "Paid by" cell: payroll's companies this month (main first); "same" when only the employer pays
+  function paidByCell(r) {
+    const codes = r.paid_by && r.paid_by.length ? r.paid_by : (r.paying_company_code ? [r.paying_company_code] : []);
+    if (!codes.length || (codes.length === 1 && codes[0] === r.company_code)) return '<span class="muted">same</span>';
+    return codes.map((c, i) => `<span class="tag ${codes.length > 1 ? 'joint' : 'warn'}" title="${codes.length > 1 ? (i ? 'Joint payment' : 'Main paying company') : 'Paid by another company'}">${esc(coShort(c))}${codes.length > 1 && !i ? ' ★' : ''}</span>`).join(' ');
+  }
+
+  // ================================================================ PAYING COMPANIES
+  const STAT = [['epf_ee', 'EPF · employee'], ['epf_er', 'EPF · employer'], ['socso_ee', 'SOCSO · employee'], ['socso_er', 'SOCSO · employer'],
+    ['eis_ee', 'EIS · employee'], ['eis_er', 'EIS · employer'], ['socso_nei_opt_out', 'SOCSO non-employment injury opt-out']];
+  const monthTxt = (s) => { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? esc(s) : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }); };
+  const monthNow = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const monthNext = (s) => { if (!s) return monthNow(); const d = new Date(s); d.setMonth(d.getMonth() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const maxMonth = (a, b) => (!a ? b : !b ? a : (a > b ? a : b));
+  const payers = () => (state.org?.companies || []).filter((c) => c.is_active && c.is_paying);
+  const statBoxes = (cur = {}) => `<fieldset class="fld"><legend>Statutory contributions with this company</legend><div class="checks col stat">${STAT.map(([k, l]) =>
+    `<label><input type="checkbox" name="st_${k}" ${(cur[k] ?? (k !== 'socso_nei_opt_out')) ? 'checked' : ''}> ${l}</label>`).join('')}</div></fieldset>`;
+  const statOf = (form) => Object.fromEntries(STAT.map(([k]) => [k, !!form[`st_${k}`].checked]));
+  const statTxt = (s) => { if (!s) return ''; const off = STAT.filter(([k]) => k !== 'socso_nei_opt_out' && s[k] === false).map(([, l]) => l); return off.length ? `No ${off.join(', ')}` : 'All statutory on'; };
+  const stateTag = (st) => ({ current: '<span class="tag ok xs">Paying now</span>', upcoming: '<span class="tag src xs">Starts later</span>', ended: '<span class="tag xs">Ended</span>' }[st] || '');
+
+  // The paying-companies window for one person. Resolves true when something changed.
+  async function payingWindow(person, opts = {}) {
+    const canE = can('payroll.paying', 'E'); const canC = can('payroll.paying', 'C'); const canA = can('payroll.paying', 'A');
+    const seeSalary = can('payroll') || canC;
+    let changed = false;
+    await loadOrg();
+    await modal({
+      title: person.name, wide: true, ok: opts.unit ? 'Save centre' : '', cancel: 'Close',
+      body: `<p class="muted small"><code>${esc(person.employee_id || 'No Employee ID')}</code>${person.previous_id && person.previous_id !== person.employee_id ? ` · previous ID <code>${esc(person.previous_id)}</code>` : ''} · employer on the contract: <b>${esc(coShort(person.company_code))}</b></p>
+        <div class="pay-panel" data-pay>${loading()}</div>
+        ${opts.unit ? `<label class="fld"><span>Centre / unit</span><select name="unit"><option value="">Not set</option>${(state.org?.units || []).filter((u) => u.is_active).map((u) => `<option value="${esc(u.code)}" ${person.unit_code === u.code ? 'selected' : ''}>${esc(u.code)} · ${esc(u.name)}</option>`).join('')}</select></label>` : ''}`,
+      onOk: async (form) => {
+        if (!opts.unit) return;
+        const unit = form.unit.value || null;
+        await API.rpc('cms_set_person_payroll', { p_person: person.id, p_paying_company: person.manual_paying_code || null, p_unit: unit, p_note: null });
+        person.unit_code = unit; changed = true; toast(`Saved ${person.name}`);
+      },
+      onOpen: (wrap) => {
+        const box = $('[data-pay]', wrap);
+        const load = async () => {
+          box.innerHTML = loading();
+          let recs; try { recs = await API.rpc('cms_paying_companies', { p_person: person.id }); }
+          catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+          draw(recs);
+        };
+        const draw = (recs) => {
+          if (!recs.length) { box.innerHTML = '<div class="empty small"><p>No payroll record</p><span>This person has not been added to payroll yet.</span></div>'; return; }
+          const emps = []; recs.forEach((r) => { let e = emps.find((x) => x.id === r.employment_id); if (!e) { e = { id: r.employment_id, join: r.join_date, left: r.resigned_date, latest: r.latest, recs: [] }; emps.push(e); } e.recs.push(r); });
+          const lastFin = recs.reduce((m, r) => maxMonth(m, r.finalised_to), null);
+          box.innerHTML = emps.map((e) => {
+            const live = e.recs.filter((r) => r.state !== 'ended');
+            const edit = e.latest && canE;
+            return `<section class="pay-emp ${e.latest ? '' : 'old'}">
+              <div class="pay-emp-head"><b>${e.latest ? 'Current employment' : 'Earlier employment'}</b><span class="muted small">joined ${dShort(e.join)}${e.left ? ` · left ${dShort(e.left)}` : ''}</span>
+                ${e.latest && canC && !e.left ? `<button type="button" class="btn sm" data-add="${e.id}">${icon('plus')}Add second company</button>` : ''}</div>
+              <div class="table-wrap"><table class="data pay-t"><thead><tr><th>Company</th><th>From</th><th>To</th><th>Status</th>${seeSalary ? '<th>Salary</th>' : ''}<th>Paid</th><th>Statutory</th></tr></thead><tbody>
+              ${e.recs.map((r) => { const btns = !edit ? '' : [
+                  r.state !== 'ended' ? `<button type="button" class="btn sm" data-a="transfer" data-id="${r.assignment_id}">Transfer</button>` : '',
+                  r.state !== 'ended' && !r.is_main && live.length > 1 ? `<button type="button" class="btn sm" data-a="main" data-id="${r.assignment_id}">Set main</button>` : '',
+                  r.state !== 'ended' && live.length > 1 ? `<button type="button" class="btn sm" data-a="end" data-id="${r.assignment_id}">End</button>` : '',
+                  !r.finalised_to || canA ? `<button type="button" class="btn sm ghost" data-a="correct" data-id="${r.assignment_id}" title="Fix a wrong record">Correct a mistake</button>` : ''].join('');
+                return `<tr class="${r.state}${btns ? ' has-acts' : ''}">
+                <td class="nowrap"><b>${esc(coShort(r.company_code))}</b>${r.is_main && r.state !== 'ended' ? ' <span class="tag ok xs" title="Main paying company">Main</span>' : ''}</td>
+                <td class="nowrap">${dShort(r.start_date || e.join)}</td><td class="nowrap">${r.end_date ? dShort(r.end_date) : '<span class="muted">open</span>'}</td>
+                <td>${stateTag(r.state)}</td>
+                ${seeSalary ? `<td class="nowrap">${r.salary == null ? '—' : `${money(r.salary)}${r.pay_basis === 'hourly' ? ' /h' : ''}`}</td>` : ''}
+                <td class="nowrap small">${r.months_paid ? `${r.months_paid} mo · ${monthTxt(r.first_paid)}–${monthTxt(r.last_paid)}${r.finalised_to ? `<br><span class="muted">finalised to ${monthTxt(r.finalised_to)}</span>` : ''}` : '<span class="muted">not yet</span>'}</td>
+                <td class="small">${esc(statTxt(r.statutory))}</td></tr>${btns ? `<tr class="pay-acts-row"><td colspan="${seeSalary ? 7 : 6}"><div class="pay-acts">${btns}</div></td></tr>` : ''}`; }).join('')}
+              </tbody></table></div></section>`;
+          }).join('') + `<p class="muted small">${canE ? `Changes take effect from a payroll month and are logged. Months already finalised${lastFin ? ` (to ${monthTxt(lastFin)})` : ''} stay as they were paid${canA ? '' : '; correcting a record used in a finalised month needs an Admin'}.` : 'View only.'}</p>`;
+          $$('[data-a]', box).forEach((b) => b.addEventListener('click', () => act(b.dataset.a, recs.find((r) => String(r.assignment_id) === b.dataset.id), recs)));
+          $$('[data-add]', box).forEach((b) => b.addEventListener('click', () => addCompany(Number(b.dataset.add), recs.filter((r) => r.employment_id === Number(b.dataset.add)))));
+        };
+        const done = async (msg) => { changed = true; toast(msg); await load(); };
+        const firstOpen = (r) => monthNext(maxMonth(r.finalised_to, null)) > monthNow() ? monthNext(r.finalised_to) : monthNow();
+        const coOpts = (skip = [], sel) => payers().filter((c) => !skip.includes(c.code)).map((c) => `<option value="${esc(c.code)}" ${sel === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+        const act = async (a, r, recs) => {
+          if (!r) return;
+          const live = recs.filter((x) => x.employment_id === r.employment_id && x.state !== 'ended');
+          if (a === 'transfer') {
+            const ok = await modal({ title: `Transfer ${person.name}`, ok: 'Transfer',
+              body: `<p class="muted small">Now paid by <b>${esc(coShort(r.company_code))}</b>. From the month you choose, another company pays instead, with the same salary, allowances and statutory switches. Earlier months stay with ${esc(coShort(r.company_code))}.</p>
+                <label class="fld"><span>New paying company</span><select name="co" required>${coOpts([r.company_code, ...live.map((x) => x.company_code)])}</select></label>
+                <label class="fld"><span>First payroll month under the new company</span><input type="month" name="m" required value="${firstOpen(r)}"></label>
+                <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. moved to Edu Hub for the new centre"></label>`,
+              onOk: async (f) => { if (!f.co.value || !f.m.value) throw new Error('Choose the company and month.'); await API.rpc('cms_pay_transfer', { p_assignment: r.assignment_id, p_company: f.co.value, p_from: `${f.m.value}-01`, p_note: f.note.value || null }); } });
+            if (ok) done(`${person.name} transferred`);
+          } else if (a === 'main') {
+            const ok = await confirmBox('Set main company', `Make <b>${esc(coShort(r.company_code))}</b> the main paying company for ${esc(person.name)}? The other company keeps paying its part.`, 'Set main', false,
+              () => API.rpc('cms_pay_set_main', { p_assignment: r.assignment_id, p_note: null }));
+            if (ok) done(`Main company is now ${coShort(r.company_code)}`);
+          } else if (a === 'end') {
+            const ok = await modal({ title: `End ${coShort(r.company_code)} for ${person.name}`, ok: 'End this company', danger: true,
+              body: `<p class="muted small">${esc(coShort(r.company_code))} stops paying after the month you choose. ${esc(person.name)} stays paid by ${esc(live.filter((x) => x.assignment_id !== r.assignment_id).map((x) => coShort(x.company_code)).join(' and '))}.${r.is_main ? ' The main company moves to the other company.' : ''}</p>
+                <label class="fld"><span>Last payroll month paid by ${esc(coShort(r.company_code))}</span><input type="month" name="m" required value="${firstOpen(r)}"></label>
+                <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
+              onOk: async (f) => { if (!f.m.value) throw new Error('Choose the month.'); await API.rpc('cms_pay_end_company', { p_assignment: r.assignment_id, p_last_month: `${f.m.value}-01`, p_note: f.note.value || null }); } });
+            if (ok) done(`${coShort(r.company_code)} ended for ${person.name}`);
+          } else if (a === 'correct') {
+            const ok = await modal({ title: 'Correct a mistake', ok: 'Save correction',
+              body: `<p class="muted small">Use this only when the record was entered wrongly. To change who pays from a month, use Transfer instead.${r.finalised_to ? ` <b>This record was used in finalised months (to ${monthTxt(r.finalised_to)}).</b> Those payslips stay as they were paid; reopen and re-finalise them in payroll if they must change.` : ''}</p>
+                <label class="fld"><span>Paying company</span><select name="co">${coOpts([], r.company_code)}</select></label>
+                <div class="grid-2 tight"><label class="fld"><span>Start date</span><input type="date" name="s" value="${esc(r.start_date || '')}"></label>
+                <label class="fld"><span>End date (blank = still paying)</span><input type="date" name="e" value="${esc(r.end_date || '')}"></label></div>
+                ${statBoxes(r.statutory || {})}
+                <label class="fld"><span>Reason (required, kept in the audit log)</span><textarea name="reason" rows="2" maxlength="500" required class="ta"></textarea></label>`,
+              onOk: async (f) => { if (f.reason.value.trim().length < 5) throw new Error('Give the reason for the correction.');
+                await API.rpc('cms_pay_correct', { p_assignment: r.assignment_id, p_company: f.co.value, p_start: f.s.value || null, p_end: f.e.value || null, p_statutory: statOf(f), p_reason: f.reason.value.trim() }); } });
+            if (ok) done('Correction saved');
+          }
+        };
+        const addCompany = async (empId, recs) => {
+          const live = recs.filter((x) => x.state !== 'ended');
+          const lastFin = recs.reduce((m, r) => maxMonth(m, r.finalised_to), null);
+          const ok = await modal({ title: `Add second company · ${person.name}`, ok: 'Add company',
+            body: `<p class="muted small">Joint payment: ${live.length ? `${esc(live.map((x) => coShort(x.company_code)).join(' and '))} ${live.length > 1 ? 'keep' : 'keeps'} paying, and` : ''} this company also pays its own part from the month you choose, with its own salary and statutory contributions.</p>
+              <label class="fld"><span>Company</span><select name="co" required>${coOpts(live.map((x) => x.company_code))}</select></label>
+              <div class="grid-2 tight"><label class="fld"><span>First payroll month</span><input type="month" name="m" required value="${lastFin && monthNext(lastFin) > monthNow() ? monthNext(lastFin) : monthNow()}"></label>
+              <label class="fld"><span>Pay basis</span><select name="basis"><option value="monthly">Monthly salary</option><option value="hourly">Hourly rate</option></select></label></div>
+              <label class="fld"><span>Salary paid by this company (RM)</span><input type="number" name="amt" min="0" step="0.01" required placeholder="0.00"></label>
+              ${statBoxes({})}
+              <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. teaches 2 days a week at Edu Hub"></label>`,
+            onOk: async (f) => { if (!f.co.value || !f.m.value || f.amt.value === '') throw new Error('Choose the company and month, and enter the salary.');
+              await API.rpc('cms_pay_add_company', { p_employment: empId, p_company: f.co.value, p_from: `${f.m.value}-01`, p_salary: Number(f.amt.value), p_pay_basis: f.basis.value, p_statutory: statOf(f), p_note: f.note.value || null }); } });
+          if (ok) done(`Second company added for ${person.name}`);
+        };
+        load();
+      },
+    });
+    return changed;
+  }
+
+  // Payroll › Paying Companies: who pays each person now, with joint payments and transfers
+  async function payingPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="pay-body">${loading()}</div>`;
+    let rows;
+    try { [rows] = await Promise.all([loadPeople(), loadOrg()]); }
+    catch (e) { $('#pay-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { q: '', co: 'all', view: 'active' };
+    const VIEWS = [['active', 'Active'], ['other', 'Paid by another company'], ['joint', 'Joint payment'], ['former', 'Former'], ['nopay', 'Not in payroll']];
+    const isOther = (r) => (r.paid_by || []).some((c) => c !== r.company_code);
+    const inView = (r, v) => v === 'active' ? r.status === 'active' && r.in_payroll : v === 'other' ? r.status !== 'former' && isOther(r)
+      : v === 'joint' ? r.status !== 'former' && (r.paid_by || []).length > 1 : v === 'former' ? r.status === 'former' && r.in_payroll : !r.in_payroll;
+    const counts = Object.fromEntries(VIEWS.map(([k]) => [k, rows.filter((r) => inView(r, k)).length]));
+    $('#pay-body', el).innerHTML = `
+      <section class="card">
+        <div class="toolbar">
+          <label class="search-in">${icon('search')}<input id="yq" type="search" placeholder="Name or Employee ID (new or previous)" aria-label="Search"></label>
+          <select id="yco" aria-label="Paying company"><option value="all">All paying companies</option>${payers().map((c) => `<option value="${esc(c.code)}">${esc(c.short_name || c.name)}</option>`).join('')}</select>
+          <div class="seg">${VIEWS.map(([k, l]) => `<button type="button" data-v="${k}" class="${f.view === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
+        </div>
+        <div class="table-wrap"><table class="data" id="ytable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by now</th><th>Status</th><th>Start</th></tr></thead><tbody></tbody></table></div>
+        <p class="muted small" id="ycount"></p>
+        <p class="muted small">Employer is the company on the contract. “Paid by now” comes from payroll; ★ marks the main company when two companies share the pay. Click a person to see the full timeline${can('payroll.paying', 'E') ? ', transfer, add a second company, end one, set the main company or correct a mistake' : ''}.</p>
+      </section>`;
+    const draw = () => {
+      const t = f.q.trim().toLowerCase();
+      const list = rows.filter((r) => inView(r, f.view) && (f.co === 'all' || (r.paid_by || []).includes(f.co))
+        && (!t || `${r.name} ${r.employee_id || ''} ${r.previous_id || ''}`.toLowerCase().includes(t)));
+      $('#ytable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${r.in_payroll ? 'click' : ''}" ${r.in_payroll ? 'tabindex="0"' : ''}>
+        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id">was ${esc(r.previous_id)}</small>` : ''}</td>
+        <td><b>${esc(r.name)}</b></td><td>${esc(coShort(r.company_code))}</td>
+        <td>${r.in_payroll ? paidByCell(r) : '<span class="muted">not in payroll</span>'}</td>
+        <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td><td class="nowrap">${dShort(r.start_date)}</td></tr>`).join('')
+        : `<tr><td colspan="6"><div class="empty small"><p>No one here</p><span>Try another view or clear the search.</span></div></td></tr>`;
+      $('#ycount', el).textContent = `${list.length} ${list.length === 1 ? 'person' : 'people'}`;
+    };
+    draw();
+    $('#yq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
+    $('#yco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.view = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    const open = async (id) => {
+      const r = rows.find((x) => x.id === id); if (!r || !r.in_payroll) return;
+      if (await payingWindow(r)) { rows = await loadPeople(); state.people = rows; draw(); }
+    };
+    $('#ytable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) open(tr.dataset.id); });
+    $('#ytable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') open(tr.dataset.id); });
+  }
+
   async function peoplePage(item, el) {
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all' };
     el.innerHTML = `${pageHead(item)}<div id="people-body">${loading()}</div>`;
     let rows;
-    try { [rows] = await Promise.all([API.rpc('cms_people'), loadOrg()]); state.people = rows; }
+    try { [rows] = await Promise.all([loadPeople(), loadOrg()]); state.people = rows; }
     catch (e) { $('#people-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
-    const editable = can('people', 'E');
+    const editable = can('people', 'E'); const payView = can('payroll.paying');
+    const clickable = editable || payView;
     const counts = Object.fromEntries(STATUS.map(([k]) => [k, k === 'all' ? rows.length : rows.filter((r) => r.status === k).length]));
     const cos = [...new Set(rows.map((r) => r.company_code).filter(Boolean))].sort();
     $('#people-body', el).innerHTML = `
       <section class="card">
         <div class="toolbar">
-          <label class="search-in">${icon('search')}<input id="pq" type="search" placeholder="Name, Employee ID, title or department" value="${esc(f.q)}" aria-label="Search people"></label>
+          <label class="search-in">${icon('search')}<input id="pq" type="search" placeholder="Name, Employee ID (new or previous), title or department" value="${esc(f.q)}" aria-label="Search people"></label>
           <select id="pco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
         </div>
         <div class="table-wrap"><table class="data" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Login</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
-        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays.${editable ? ' Click a row to set the paying company and centre.' : ''} IC, bank and salary details are not shown here.</p>
+        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} IC, bank and salary details are not shown here.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
       const list = rows.filter((r) => (f.status === 'all' || r.status === f.status) && (f.co === 'all' || r.company_code === f.co)
-        && (!t || `${r.name} ${r.employee_id || ''} ${r.job_title || ''} ${r.department || ''} ${r.unit_code || ''}`.toLowerCase().includes(t)));
-      $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${editable ? 'click' : ''}" ${editable ? 'tabindex="0"' : ''}>
-        <td><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td>
+        && (!t || `${r.name} ${r.employee_id || ''} ${r.previous_id || ''} ${r.job_title || ''} ${r.department || ''} ${r.unit_code || ''}`.toLowerCase().includes(t)));
+      $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${clickable ? 'click' : ''}" ${clickable ? 'tabindex="0"' : ''}>
+        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b>${esc(r.name)}</b></td>
         <td>${esc(coShort(r.company_code))}</td>
-        <td>${r.paying_company_code && r.paying_company_code !== r.company_code ? `<span class="tag warn">${esc(coShort(r.paying_company_code))}</span>` : '<span class="muted">same</span>'}</td>
+        <td>${paidByCell(r)}</td>
         <td>${esc(r.unit_code || '—')}</td>
         <td>${esc(r.job_title || '—')}${r.level ? ` <span class="muted">${esc(r.level)}</span>` : ''}</td>
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
@@ -407,22 +593,28 @@
     $('#pq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
     $('#pco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
     $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.status = b.dataset.st; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
-    if (!editable) return;
+    if (!clickable) return;
     const edit = async (id) => {
       const r = rows.find((x) => x.id === id); if (!r) return;
+      if (r.in_payroll && payView) {   // payroll knows who pays: open the paying-companies window
+        const changed = await payingWindow(r, editable ? { unit: true } : {});
+        if (changed) { state.people = null; rows = await loadPeople(); state.people = rows; draw(); }
+        return;
+      }
+      if (!editable) return;
       const payers = (state.org?.companies || []).filter((c) => c.is_active && c.is_paying);
       const units = (state.org?.units || []).filter((u) => u.is_active);
       const ok = await modal({
         title: r.name,
         body: `<p class="muted small">${esc(r.employee_id || 'No Employee ID')} · employer on the contract: <b>${esc(coShort(r.company_code))}</b></p>
-          <label class="fld"><span>Paying company</span><select name="pay"><option value="">Same as employer (${esc(coShort(r.company_code))})</option>${payers.map((c) => `<option value="${esc(c.code)}" ${r.paying_company_code === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Paying company</span><select name="pay"><option value="">Same as employer (${esc(coShort(r.company_code))})</option>${payers.map((c) => `<option value="${esc(c.code)}" ${r.manual_paying_code === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
           <label class="fld"><span>Centre / unit</span><select name="unit"><option value="">Not set</option>${units.map((u) => `<option value="${esc(u.code)}" ${r.unit_code === u.code ? 'selected' : ''}>${esc(u.code)} · ${esc(u.name)}</option>`).join('')}</select></label>
           <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. paid by Edu Hub from Jan 2026"></label>
-          <p class="muted small">Saved with an audit entry. Payroll itself still runs in MyPayroll V2.0 until Phase 2.</p>`,
+          <p class="muted small">Saved with an audit entry. ${r.in_payroll ? '' : 'This person has no payroll record yet, so the paying company is noted here until payroll adds them.'}</p>`,
         onOk: async (form) => {
           const pay = form.pay.value || null; const unit = form.unit.value || null;
           await API.rpc('cms_set_person_payroll', { p_person: r.id, p_paying_company: pay, p_unit: unit, p_note: form.note.value || null });
-          r.paying_company_code = pay; r.unit_code = unit;
+          r.paying_company_code = pay; r.manual_paying_code = pay; r.unit_code = unit;
         },
       });
       if (ok) { toast(`Saved ${r.name}`); draw(); }
@@ -1016,6 +1208,7 @@
 
   const LIVE = {
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
+    'payroll/companies': payingPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };

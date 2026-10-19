@@ -31,6 +31,9 @@ Other menu pages show the phase they arrive in and link to the app that does the
 7. `20261017_cms_phase1_decisions.sql` — approve / disapprove (OTCF, MTCF) and mark as done (TEC) in the CMS, signed PDF link
 8. `20261017_cms_payroll_viewer_role.sql` — Account / Payroll Viewer role (view only)
 9. `20261017_cms_director_approval.sql` — CEO / Director role; claims by Super Admins, Admins and Directors need a Director
+10. `20261019_cms_paying_companies.sql` — Paying Companies: transfer, joint payment, end a company, main company, corrections (over MyPayroll's `eppd_assignments`); People list with previous IDs
+
+Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
 and writes an audit entry. A snapshot of the database structure before Phase 0 is stored in `cms_schema_snapshots`
@@ -78,6 +81,13 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.19-13:05** — **Paying Companies** is live (Payroll › Paying Companies, and from each person in View People).
+  Admin and HR can transfer a person to another company from a payroll month, add a second company (joint payment, with its own
+  salary and statutory switches), end one of two companies, set the main company, and correct a mistake (reason required;
+  Admin only when a finalised month used the record). Finalised months are never rewritten. Every change is in the Audit Log.
+  View People shows the previous Employee ID under the new one, searchable by either, and "Paid by" now comes from payroll
+  (★ = main company in a joint payment). New permission module `payroll.paying`: Admin full, HR view/add/edit,
+  Payroll, Finance, Account / Payroll Viewer and CEO / Director view only. Database: `20261019_cms_paying_companies.sql`.
 - **v2026.10.17-19:25** — Bulk buttons name the count ("Disapprove 1 claim", "Approve 3 claims"); a failed claimant email now says why, and that the decision stands. Resend test-mode issue recorded under Known issues.
 - **v2026.10.17-19:00** — **Disapprove selected** on the Approvals and form pages (OTCF and MTCF): one required reason for
   every ticked claim, each claimant notified, OTCF disapproval PDF as in the app. Your own claims can't be ticked and are

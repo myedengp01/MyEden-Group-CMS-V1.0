@@ -50,7 +50,7 @@ window.CMS_MENU = [
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
       { route: 'payroll', label: 'Monthly Payroll', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll', desc: 'Pay runs, EPF / SOCSO / EIS, PCB, finalise and reopen.' },
       { route: 'payroll/reports', label: 'Payslips & Reports', phase: 2, source: 'MyPayroll V2.0', myp: 'reports', desc: 'Payslips, statutory lists, year to date and EA forms.' },
-      { route: 'payroll/companies', label: 'Paying Companies', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll/companies', desc: 'Which company pays each person, and moves from a given month.' },
+      { route: 'payroll/companies', label: 'Paying Companies', phase: 2, live: true, desc: 'Which company pays each person: transfers from a payroll month, joint payment by two companies, ending one, the main company and corrections.' },
       { route: 'payroll/loans', label: 'Company Loans', phase: 2, source: 'MyPayroll V2.0', myp: 'loans', desc: 'Company loans to staff and their monthly deductions.' },
       { route: 'payroll/settlement', label: 'Final Settlement', phase: 2, source: 'MyPayroll V2.0', myp: 'settlements', desc: 'Final pay for leavers: notice, leave and loan balances.' },
       { route: 'payroll/import', label: 'Import Past Months', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll/import', desc: 'Bring past pay runs in from the workbook.' },
@@ -105,7 +105,7 @@ window.CMS_SOURCES = {
 window.CMS_MODULE_OF = {
   'people/add': 'people', 'people/directory': 'people', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment',
   'leave/balances': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
-  'payroll/reports': 'payroll', 'payroll/companies': 'payroll', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
+  'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
   'leave/al-calculator': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', time: 'leave',
   'settings/org': 'payroll.settings', 'settings/lists': 'payroll.settings', 'settings/payment-types': 'payroll.settings',
