@@ -32,7 +32,8 @@ into that release and this entry is updated with the version and how it was impl
 - **Past employees:** the 150 former staff get the reason added by HR/Admin only, with a "reason missing" filter and
   count until every one is filled in.
 - **Rehire eligibility** set at exit: Eligible / Eligible with conditions / Not eligible, with a note (who decided, why).
-- **Rehire** (HR/Admin, on a former person): starts a new employment on the same person record with a new join date;
+- **Rehire** (HR/Admin, on a former person): starts a new employment on the same person record with a new join date and
+  **keeps the existing Employee ID** (decided 2026-10-19);
   the window first shows the reminder — previous stints, positions and centres, last salary, leaving reason, eligibility,
   notice served or short, settlement / loans / assets outstanding. Not eligible needs an Admin and a reason to override.
 - **More ideas:** flag returning applicants in MEG-EAF V2 when the email / phone / IC matches former staff; exit
