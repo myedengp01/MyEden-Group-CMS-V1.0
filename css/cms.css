@@ -605,3 +605,7 @@ textarea.ta { width: 100%; padding: 10px 12px; border-radius: 11px; border: 1px 
 .grid-2.tight { gap: 12px; margin-top: 0; }
 .checks.stat { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
 @media (max-width: 640px) { .checks.stat { grid-template-columns: 1fr; } .pay-emp-head .btn { margin-left: 0; } }
+.sub { display: block; font-size: 11px; color: var(--mute); margin-top: 2px; }
+.conf { font-weight: 600; font-size: 12.5px; }
+.conf.c-UP { color: #b85a0a; } .conf.c-C { color: #1d8a45; } .conf.c-R, .conf.c-TR, .conf.c-DM { color: var(--mute); }
+:root[data-theme="dark"] .conf.c-UP { color: #ffb070; } :root[data-theme="dark"] .conf.c-C { color: #6fe39b; }

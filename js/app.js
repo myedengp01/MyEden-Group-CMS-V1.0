@@ -55,6 +55,10 @@
     if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); if (h < 24) return `${h} h ago`;
     const d = Math.round(h / 24); return d < 60 ? `${d} days ago` : dShort(s);
   };
+  // employee names are shown in upper case everywhere in the CMS
+  const UP = (v) => (v == null || v === '' ? v : String(v).toUpperCase());
+  const upKeys = (o, ...keys) => { if (o) keys.forEach((k) => { if (o[k]) o[k] = UP(o[k]); }); return o; };
+  const upUser = (u) => { if (!u) return u; upKeys(u, 'name'); upKeys(u.person, 'name'); upKeys(u.suggested_person, 'name'); return u; };
   const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
   const phaseTag = (n) => `<span class="tag phase p${n}">${esc(window.CMS_PHASES[n] || '')}</span>`;
   const coShort = (code) => (state.org?.companies || []).find((c) => c.code === code)?.short_name
@@ -359,7 +363,14 @@
   }
 
   // ================================================================ PEOPLE
-  const STATUS = [['active', 'Active'], ['onboarding', 'Onboarding'], ['applicant', 'Applicants'], ['former', 'Former'], ['all', 'All']];
+  const STATUS = [['active', 'Active'], ['notice', 'Serving notice'], ['onboarding', 'Onboarding'], ['applicant', 'Applicants'], ['former', 'Former'], ['all', 'All']];
+  const inStatus = (r, k) => k === 'all' || (k === 'notice' ? !!r.serving_notice && r.status !== 'former' : r.status === k);
+  const CONF = { UP: 'Under probation', C: 'Confirmed', CT: 'Contract', PT: 'Part time', INT: 'Internship', R: 'Resigned', TR: 'Terminated', DM: 'Dismissed' };
+  const confCell = (r) => !r.confirmation ? '<span class="muted">—</span>'
+    : `<span class="conf c-${esc(r.confirmation)}">${esc(CONF[r.confirmation] || r.confirmation)}</span>${r.confirmed_date ? `<small class="sub">confirmed ${dShort(r.confirmed_date)}</small>` : ''}`;
+  const weeksBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 6048e5);
+  const noticeCell = (r) => !r.notice_until ? (r.letter_date ? `<small class="muted">letter ${dShort(r.letter_date)}</small>` : '<span class="muted">—</span>')
+    : `${r.serving_notice && r.status !== 'former' ? '<b>' : ''}${dShort(r.notice_until)}${r.serving_notice && r.status !== 'former' ? '</b>' : ''}${r.letter_date ? `<small class="sub">letter ${dShort(r.letter_date)} · ${weeksBetween(r.letter_date, r.notice_until)} weeks</small>` : ''}`;
   async function loadOrg(force) {
     if (state.org && !force) return state.org;
     try { state.org = await API.rpc('cms_org'); } catch (e) { if (force) throw e; }
@@ -368,8 +379,10 @@
 
   // People list with previous ID and "paid by" from payroll (falls back to the Phase 0 list)
   async function loadPeople() {
-    try { return await API.rpc('cms_people_list'); }
-    catch (e) { if (!/cms_people_list|function/i.test(e.message || '')) throw e; return API.rpc('cms_people'); }
+    let rows;
+    try { rows = await API.rpc('cms_people_list'); }
+    catch (e) { if (!/cms_people_list|function/i.test(e.message || '')) throw e; rows = await API.rpc('cms_people'); }
+    return rows.map((r) => upKeys(r, 'name'));
   }
   // "Paid by" cell: payroll's companies this month (main first); "same" when only the employer pays
   function paidByCell(r) {
@@ -434,7 +447,7 @@
                   r.state !== 'ended' && live.length > 1 ? `<button type="button" class="btn sm" data-a="end" data-id="${r.assignment_id}">End</button>` : '',
                   !r.finalised_to || canA ? `<button type="button" class="btn sm ghost" data-a="correct" data-id="${r.assignment_id}" title="Fix a wrong record">Correct a mistake</button>` : ''].join('');
                 return `<tr class="${r.state}${btns ? ' has-acts' : ''}">
-                <td class="nowrap"><b>${esc(coShort(r.company_code))}</b>${r.is_main && r.state !== 'ended' ? ' <span class="tag ok xs" title="Main paying company">Main</span>' : ''}</td>
+                <td class="nowrap"><b>${esc(coShort(r.company_code))}</b>${r.is_main ? ` <span class="tag ${r.state === 'ended' ? '' : 'ok '}xs" title="Main paying company for the months of this record">Main</span>` : ''}</td>
                 <td class="nowrap">${dShort(r.start_date || e.join)}</td><td class="nowrap">${r.end_date ? dShort(r.end_date) : '<span class="muted">open</span>'}</td>
                 <td>${stateTag(r.state)}</td>
                 ${seeSalary ? `<td class="nowrap">${r.salary == null ? '—' : `${money(r.salary)}${r.pay_basis === 'hourly' ? ' /h' : ''}`}</td>` : ''}
@@ -453,19 +466,22 @@
           const live = recs.filter((x) => x.employment_id === r.employment_id && x.state !== 'ended');
           if (a === 'transfer') {
             const ok = await modal({ title: `Transfer ${person.name}`, ok: 'Transfer',
-              body: `<p class="muted small">Now paid by <b>${esc(coShort(r.company_code))}</b>. From the month you choose, another company pays instead, with the same salary, allowances and statutory switches. Earlier months stay with ${esc(coShort(r.company_code))}.</p>
+              body: `<p class="muted small">Now paid by <b>${esc(coShort(r.company_code))}</b>. From the month you choose, another company pays instead, with the same salary, allowances and statutory switches. Earlier months stay with ${esc(coShort(r.company_code))}, which keeps its record${r.is_main ? ' and its main-company mark' : ''} for those months.</p>
                 <label class="fld"><span>New paying company</span><select name="co" required>${coOpts([r.company_code, ...live.map((x) => x.company_code)])}</select></label>
                 <label class="fld"><span>First payroll month under the new company</span><input type="month" name="m" required value="${firstOpen(r)}"></label>
                 <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. moved to Edu Hub for the new centre"></label>`,
               onOk: async (f) => { if (!f.co.value || !f.m.value) throw new Error('Choose the company and month.'); await API.rpc('cms_pay_transfer', { p_assignment: r.assignment_id, p_company: f.co.value, p_from: `${f.m.value}-01`, p_note: f.note.value || null }); } });
             if (ok) done(`${person.name} transferred`);
           } else if (a === 'main') {
-            const ok = await confirmBox('Set main company', `Make <b>${esc(coShort(r.company_code))}</b> the main paying company for ${esc(person.name)}? The other company keeps paying its part.`, 'Set main', false,
-              () => API.rpc('cms_pay_set_main', { p_assignment: r.assignment_id, p_note: null }));
+            const ok = await modal({ title: 'Set main company', ok: 'Set main',
+              body: `<p class="muted small">From the month you choose, <b>${esc(coShort(r.company_code))}</b> is the main paying company for ${esc(person.name)}. Earlier months keep the current main company, and the other company keeps paying its part.</p>
+                <label class="fld"><span>First payroll month with ${esc(coShort(r.company_code))} as main</span><input type="month" name="m" required value="${firstOpen(r)}"></label>
+                <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
+              onOk: async (f) => { if (!f.m.value) throw new Error('Choose the month.'); await API.rpc('cms_pay_set_main', { p_assignment: r.assignment_id, p_from: `${f.m.value}-01`, p_note: f.note.value || null }); } });
             if (ok) done(`Main company is now ${coShort(r.company_code)}`);
           } else if (a === 'end') {
             const ok = await modal({ title: `End ${coShort(r.company_code)} for ${person.name}`, ok: 'End this company', danger: true,
-              body: `<p class="muted small">${esc(coShort(r.company_code))} stops paying after the month you choose. ${esc(person.name)} stays paid by ${esc(live.filter((x) => x.assignment_id !== r.assignment_id).map((x) => coShort(x.company_code)).join(' and '))}.${r.is_main ? ' The main company moves to the other company.' : ''}</p>
+              body: `<p class="muted small">${esc(coShort(r.company_code))} stops paying after the month you choose. ${esc(person.name)} stays paid by ${esc(live.filter((x) => x.assignment_id !== r.assignment_id).map((x) => coShort(x.company_code)).join(' and '))}.${r.is_main ? ' The other company becomes the main company from the next month; earlier months keep this one as main.' : ''}</p>
                 <label class="fld"><span>Last payroll month paid by ${esc(coShort(r.company_code))}</span><input type="month" name="m" required value="${firstOpen(r)}"></label>
                 <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
               onOk: async (f) => { if (!f.m.value) throw new Error('Choose the month.'); await API.rpc('cms_pay_end_company', { p_assignment: r.assignment_id, p_last_month: `${f.m.value}-01`, p_note: f.note.value || null }); } });
@@ -560,7 +576,7 @@
     catch (e) { $('#people-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const editable = can('people', 'E'); const payView = can('payroll.paying');
     const clickable = editable || payView;
-    const counts = Object.fromEntries(STATUS.map(([k]) => [k, k === 'all' ? rows.length : rows.filter((r) => r.status === k).length]));
+    const counts = Object.fromEntries(STATUS.map(([k]) => [k, rows.filter((r) => inStatus(r, k)).length]));
     const cos = [...new Set(rows.map((r) => r.company_code).filter(Boolean))].sort();
     $('#people-body', el).innerHTML = `
       <section class="card">
@@ -569,24 +585,25 @@
           <select id="pco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap"><table class="data" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Login</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap"><table class="data" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th><th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
-        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} IC, bank and salary details are not shown here.</p>
+        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice and last working day come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
-      const list = rows.filter((r) => (f.status === 'all' || r.status === f.status) && (f.co === 'all' || r.company_code === f.co)
+      const list = rows.filter((r) => inStatus(r, f.status) && (f.co === 'all' || r.company_code === f.co)
         && (!t || `${r.name} ${r.employee_id || ''} ${r.previous_id || ''} ${r.job_title || ''} ${r.department || ''} ${r.unit_code || ''}`.toLowerCase().includes(t)));
       $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${clickable ? 'click' : ''}" ${clickable ? 'tabindex="0"' : ''}>
-        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b>${esc(r.name)}</b></td>
+        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b>${esc(r.name)}</b>${r.login_email ? ` <span class="tag ok xs" title="CMS login: ${esc(r.login_email)}">login</span>` : ''}</td>
         <td>${esc(coShort(r.company_code))}</td>
         <td>${paidByCell(r)}</td>
         <td>${esc(r.unit_code || '—')}</td>
         <td>${esc(r.job_title || '—')}${r.level ? ` <span class="muted">${esc(r.level)}</span>` : ''}</td>
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="nowrap">${dShort(r.start_date)}</td>
-        <td>${r.login_email ? `<span class="tag ok" title="${esc(r.login_email)}">linked</span>` : '<span class="muted">—</span>'}</td></tr>`).join('')
-        : `<tr><td colspan="9"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
+        <td class="nowrap">${confCell(r)}</td><td class="nowrap">${noticeCell(r)}</td>
+        <td class="nowrap">${r.last_day ? dShort(r.last_day) : '<span class="muted">—</span>'}</td></tr>`).join('')
+        : `<tr><td colspan="11"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
       $('#pcount', el).textContent = `${list.length} of ${rows.length} people`;
     };
     draw();
@@ -775,7 +792,7 @@
     const fl = new Map((flags || []).map((x) => [`${x.form_code}|${x.id}`, x]));
     return rows.map((r) => {
       const x = fl.get(`${r.form_code}|${r.id}`) || {};
-      const o = { ...r, is_mine: !!x.is_mine, needs_director: !!x.needs_director };
+      const o = upKeys({ ...r, is_mine: !!x.is_mine, needs_director: !!x.needs_director }, 'claimant_name');
       if (o.stage === 'approval' && o.needs_director) o.display_status = 'Waiting for CEO / Director';
       return o;
     });
@@ -818,7 +835,7 @@
         const box = $('.claim-body', wrap); const head = $('.modal-head h3', wrap);
         const load = async () => {
           let d;
-          try { d = await API.rpc('cms_claim', { p_form: form, p_id: id }); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+          try { d = await API.rpc('cms_claim', { p_form: form, p_id: id }); upKeys(d.claim, 'claimed_by', 'approved_by_name', 'name'); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
           const row = (await loadClaims(form)).find((r) => r.id === id) || {};
           const c = d.claim; const p = d.processing || {}; const fin = d.finance || {};
           head.textContent = `${row.form_name || form.toUpperCase()} · ${row.serial_no || c.serial_no || ''}`;
@@ -937,12 +954,12 @@
       <div class="tabs" role="tablist">${[['logins', 'Logins'], ['grid', 'Roles & permissions'], ['rules', 'Position rules']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="roles-body">${loading()}</div>`;
     let users, matrix;
-    try { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), loadOrg()]); }
+    try { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), loadOrg()]); users.forEach(upUser); }
     catch (e) { $('#roles-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const body = $('#roles-body', el);
     const sup = isSuper(); const canLink = can('admin.roles', 'E');
     const filter = { q: '', show: 'all' };
-    const reload = async () => { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix')]); draw(); };
+    const reload = async () => { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix')]); users.forEach(upUser); draw(); };
 
     function companyPicker() {
       const cos = (state.org?.companies || window.CMS_COMPANIES.map((c) => ({ code: c.code, short_name: c.short, is_active: true }))).filter((c) => c.is_active);
@@ -1055,7 +1072,7 @@
           await API.rpc('cms_link_user', { p_user: u.id, p_person: u.suggested_person.id }); toast(`Linked to ${u.suggested_person.name}`); await reload();
         });
       } else if (act === 'link') {
-        let cands; try { cands = await API.rpc('cms_link_candidates'); } catch (x) { toast(x.message, 'err'); return; }
+        let cands; try { cands = (await API.rpc('cms_link_candidates')).map((c) => upKeys(c, 'name')); } catch (x) { toast(x.message, 'err'); return; }
         await modal({
           title: `Link ${u.email} to a person`, wide: true,
           body: `<label class="search-in">${icon('search')}<input type="search" name="lq" placeholder="Search name or Employee ID" aria-label="Search people"></label>
@@ -1338,7 +1355,7 @@
     if (recovering) { newPasswordScreen(); return; }
     if (!session) { loginScreen(); return; }
     if (!state.access) authShell('Opening the CMS…', '', loading('Checking your access…'));
-    try { state.access = await API.rpc('cms_my_access'); }
+    try { state.access = upUser(await API.rpc('cms_my_access')); }
     catch (e) { loginScreen(e.message); return; }
     if (justSignedIn) { justSignedIn = false; API.rpc('cms_note_sign_in').catch(() => {}); }
     if (!state.access || !state.access.roles.length) { noRoleScreen(); return; }

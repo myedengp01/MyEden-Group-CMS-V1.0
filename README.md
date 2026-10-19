@@ -33,6 +33,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 9. `20261017_cms_director_approval.sql` — CEO / Director role; claims by Super Admins, Admins and Directors need a Director
 10. `20261019_cms_paying_companies.sql` — Paying Companies: transfer, joint payment, end a company, main company, corrections (over MyPayroll's `eppd_assignments`); People list with previous IDs
 
+11. `20261019_cms_main_by_period_notice_names.sql` — main paying company by period, notice period until, names in upper case, People columns (needs `db/payroll/011_main_company_by_period.sql` run by hand first)
+
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
@@ -81,6 +83,14 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **vRELEASE** — The main paying company now changes **from a month**: after a transfer, the old company keeps its record and its
+  "Main" mark for the months it paid; Set main asks for the first month; ending the main company of a joint payment makes the
+  other company main from the next month. View People adds **Confirmation** (with confirmed date), **Notice until** (with the
+  letter date and weeks), **Last working day**, and a **Serving notice** tab. Notice until is stored in payroll: the 22 dates
+  from the EPPD workbook were brought in (one is an agreed 8-week notice), new letters are counted from the notice-period policy,
+  and HR can change the date in MyPayroll's Record resignation. **Employee names are in upper case** everywhere in the CMS and are
+  saved that way (11 Employee Master names were changed). Database: `db/payroll/011_main_company_by_period.sql` (run by hand) and
+  `20261019_cms_main_by_period_notice_names.sql`.
 - **v2026.10.19-13:05** — **Paying Companies** is live (Payroll › Paying Companies, and from each person in View People).
   Admin and HR can transfer a person to another company from a payroll month, add a second company (joint payment, with its own
   salary and statutory switches), end one of two companies, set the main company, and correct a mistake (reason required;
