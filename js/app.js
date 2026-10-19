@@ -440,7 +440,7 @@
             return `<section class="pay-emp ${e.latest ? '' : 'old'}">
               <div class="pay-emp-head"><b>${e.latest ? 'Current employment' : 'Earlier employment'}</b><span class="muted small">joined ${dShort(e.join)}${e.left ? ` · left ${dShort(e.left)}` : ''}</span>
                 ${e.latest && canC && !e.left ? `<button type="button" class="btn sm" data-add="${e.id}">${icon('plus')}Add second company</button>` : ''}</div>
-              <div class="table-wrap"><table class="data pay-t"><thead><tr><th>Company</th><th>From</th><th>To</th><th>Status</th>${seeSalary ? '<th>Salary</th>' : ''}<th>Paid</th><th>Statutory</th></tr></thead><tbody>
+              <div class="table-wrap fill-modal"><table class="data pay-t"><thead><tr><th>Company</th><th>From</th><th>To</th><th>Status</th>${seeSalary ? '<th>Salary</th>' : ''}<th>Paid</th><th>Statutory</th></tr></thead><tbody>
               ${e.recs.map((r) => { const btns = !edit ? '' : [
                   r.state !== 'ended' ? `<button type="button" class="btn sm" data-a="transfer" data-id="${r.assignment_id}">Transfer</button>` : '',
                   r.state !== 'ended' && !r.is_main && live.length > 1 ? `<button type="button" class="btn sm" data-a="main" data-id="${r.assignment_id}">Set main</button>` : '',
@@ -539,7 +539,7 @@
           <select id="yco" aria-label="Paying company"><option value="all">All paying companies</option>${payers().map((c) => `<option value="${esc(c.code)}">${esc(c.short_name || c.name)}</option>`).join('')}</select>
           <div class="seg">${VIEWS.map(([k, l]) => `<button type="button" data-v="${k}" class="${f.view === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap"><table class="data" id="ytable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by now</th><th>Status</th><th>Start</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="ytable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by now</th><th>Status</th><th>Start</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="ycount"></p>
         <p class="muted small">Employer is the company on the contract. “Paid by now” comes from payroll; ★ marks the main company when two companies share the pay. Click a person to see the full timeline${can('payroll.paying', 'E') ? ', transfer, add a second company, end one, set the main company or correct a mistake' : ''}.</p>
       </section>`;
@@ -585,7 +585,7 @@
           <select id="pco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap"><table class="data" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th><th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th><th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
         <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice and last working day come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
       </section>`;
@@ -686,7 +686,7 @@
           <div class="seg">${chips.map(([k, l]) => `<button type="button" data-cs="${k}" class="${f.stage === k ? 'on' : ''}">${esc(l)} <span>${count(k)}</span></button>`).join('')}</div>
         </div>
         <div class="bulk" hidden><span data-bn></span><button type="button" class="btn sm ghost" data-bclear>Clear</button><button type="button" class="btn sm danger" data-bno>Disapprove selected</button><button type="button" class="btn sm primary" data-bgo>Approve selected</button></div>
-        <div class="table-wrap"><table class="data claims"><thead><tr><th class="sel"><span class="sr">Select</span></th><th>Serial no.</th>${showForm ? '<th>Form</th>' : ''}<th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data claims freeze2"><thead><tr><th class="sel"><span class="sr">Select</span></th><th>Serial no.</th>${showForm ? '<th>Form</th>' : ''}<th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" data-ccount></p></section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
@@ -776,7 +776,7 @@
     const arrs = Object.entries(c).filter(([k, v]) => Array.isArray(v) && v.length && typeof v[0] === 'object' && v[0] !== null);
     const table = (k, arr) => {
       const cols = [...new Set(arr.flatMap((r) => Object.keys(r).filter((x) => r[x] !== null && typeof r[x] !== 'object' && !SKIP.test(x))))].slice(0, 9);
-      return `<h4>${esc(nice(k))} <span class="muted">(${arr.length})</span></h4><div class="table-wrap"><table class="data mini"><thead><tr>${cols.map((x) => `<th>${esc(nice(x))}</th>`).join('')}</tr></thead>
+      return `<h4>${esc(nice(k))} <span class="muted">(${arr.length})</span></h4><div class="table-wrap fill-modal"><table class="data mini"><thead><tr>${cols.map((x) => `<th>${esc(nice(x))}</th>`).join('')}</tr></thead>
         <tbody>${arr.map((r) => `<tr>${cols.map((x) => `<td>${r[x] === undefined || r[x] === null ? '' : showVal(r[x], x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     };
     return `<dl class="kv">${scal.map(([k, v]) => `<div><dt>${esc(nice(k))}</dt><dd>${showVal(v, k)}</dd></div>`).join('')}</dl>${arrs.map(([k, v]) => table(k, v)).join('')}`;
@@ -1009,7 +1009,7 @@
       const roles = matrix.roles; const mods = matrix.modules; let grp = '';
       return `<section class="card"><div class="card-head"><h3>${icon('lock')}Who can do what</h3><span class="muted small">V view · C create · E edit · A approve · D delete · X export</span></div>
         <p class="muted small">${sup ? 'Click a cell to change it. Super Admin always has everything. Every change is logged.' : 'Only a Super Admin can change permissions.'}</p>
-        <div class="table-wrap"><table class="grid perm-grid"><thead><tr><th>Module</th>${roles.map((r) => `<th title="${esc(r.description)}">${esc(r.name)}<small>${r.users} ${r.users === 1 ? 'user' : 'users'}</small></th>`).join('')}</tr></thead><tbody>
+        <div class="table-wrap fill"><table class="grid perm-grid freeze1"><thead><tr><th>Module</th>${roles.map((r) => `<th title="${esc(r.description)}">${esc(r.name)}<small>${r.users} ${r.users === 1 ? 'user' : 'users'}</small></th>`).join('')}</tr></thead><tbody>
         ${mods.map((m) => { const head = m.grp !== grp ? `<tr class="grp"><td colspan="${roles.length + 1}">${esc(m.grp)}</td></tr>` : ''; grp = m.grp;
           return `${head}<tr><td>${esc(m.label)} ${m.phase === 0 ? '<span class="tag live xs">Live</span>' : `<span class="tag phase p${m.phase} xs">P${m.phase}</span>`}</td>${roles.map((r) => {
             const a = matrix.permissions[r.code]?.[m.code] || '';
@@ -1124,7 +1124,7 @@
         const got = await API.rpc('cms_audit', { p_limit: 50, p_before: before, p_search: q || null });
         rows = more ? rows.concat(got) : got;
         $('#amore', el).hidden = got.length < 50;
-        $('#audit-list', el).innerHTML = rows.length ? `<div class="table-wrap"><table class="data audit"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>What</th></tr></thead><tbody>
+        $('#audit-list', el).innerHTML = rows.length ? `<div class="table-wrap fill"><table class="data audit"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>What</th></tr></thead><tbody>
           ${rows.map((r) => `<tr><td class="nowrap">${dtShort(r.at)}</td><td>${esc(r.actor_email || 'System')}</td><td><span class="act a-${esc(String(r.action).split('.')[0])}">${esc(r.action)}</span></td>
             <td>${esc(r.summary)}${r.details && Object.keys(r.details).length ? `<details><summary>details</summary><pre>${esc(JSON.stringify(r.details, null, 2))}</pre></details>` : ''}</td></tr>`).join('')}</tbody></table></div>`
           : `<div class="empty small">${icon('list')}<p>No entries${q ? ' match' : ' yet'}</p></div>`;
@@ -1229,6 +1229,34 @@
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
+
+  // ---------------------------------------------------------------- frozen headers on long lists
+  // A list fills the screen below the top bar and scrolls inside its own box, so its search, tabs and column
+  // headings stay in view. Scrolling down first moves the page title away, then scrolls the rows.
+  const pageScroller = () => document.scrollingElement || document.documentElement;
+  const topbarH = () => ($('.topbar')?.offsetHeight || 0);
+  function fitTables() {
+    const tb = topbarH();
+    $$('#page .table-wrap.fill').forEach((w) => {
+      const card = w.closest('.card') || w.parentElement;
+      const inCard = w.getBoundingClientRect().top - card.getBoundingClientRect().top;
+      w.style.maxHeight = `${Math.max(260, window.innerHeight - tb - inCard - 14)}px`;
+      const t = $('table', w); const first = t && $('thead th', t);
+      if (t && first) t.style.setProperty('--c2', `${first.offsetWidth}px`);
+      if (!w.dataset.wheel) {
+        w.dataset.wheel = '1';
+        w.addEventListener('wheel', (e) => {
+          if (e.deltaY <= 0 || e.ctrlKey) return;
+          const sc = pageScroller(); const gap = (w.closest('.card') || w).getBoundingClientRect().top - topbarH() - 8;
+          if (gap > 1 && sc.scrollTop + window.innerHeight < sc.scrollHeight - 1) { e.preventDefault(); sc.scrollBy(0, Math.min(e.deltaY, gap)); }
+        }, { passive: false });
+      }
+    });
+  }
+  let fitQueued = false;
+  const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); }); };
+  window.addEventListener('resize', queueFit);
+  new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true });
 
   async function render() {
     if (!state.access || !$('#page')) return;

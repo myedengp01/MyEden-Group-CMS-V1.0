@@ -83,6 +83,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.19-15:50** — Frozen headers: long lists (View People, Former Staff, Paying Companies, every claims list and
+  Approvals, Users, Roles & Access, Audit Log) fill the screen and scroll inside their own box; the search, filters, tabs and
+  column headings stay in view, the page title scrolls away first. Employee ID and Name (claims: select box and serial no.;
+  permissions: module) stay put when scrolling sideways; on phones only the first column. Tables in windows keep their
+  headings too. Ideas register started in `docs/IDEAS.md` (PRI-001 salary increment reminder).
 - **v2026.10.19-15:25** — The main paying company now changes **from a month**: after a transfer, the old company keeps its record and its
   "Main" mark for the months it paid; Set main asks for the first month; ending the main company of a joint payment makes the
   other company main from the next month. View People adds **Confirmation** (with confirmed date), **Notice until** (with the

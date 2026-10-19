@@ -609,3 +609,20 @@ textarea.ta { width: 100%; padding: 10px 12px; border-radius: 11px; border: 1px 
 .conf { font-weight: 600; font-size: 12.5px; }
 .conf.c-UP { color: #b85a0a; } .conf.c-C { color: #1d8a45; } .conf.c-R, .conf.c-TR, .conf.c-DM { color: var(--mute); }
 :root[data-theme="dark"] .conf.c-UP { color: #ffb070; } :root[data-theme="dark"] .conf.c-C { color: #6fe39b; }
+
+/* v2026.10.19 · frozen headers: long lists scroll inside their own box below the top bar */
+.table-wrap.fill { overflow: auto; overscroll-behavior-x: contain; border-top: 1px solid var(--line); }
+.table-wrap.fill thead th, .table-wrap.fill-modal thead th { position: sticky; top: 0; z-index: 3; background: var(--card); box-shadow: inset 0 -1px 0 var(--line); }
+.table-wrap.fill-modal { overflow: auto; max-height: 52vh; }
+.table-wrap.fill table.grid thead th { position: sticky; top: 0; z-index: 3; background: var(--card); }
+table.freeze1 :is(th, td):first-child, table.freeze2 :is(th, td):is(:first-child, :nth-child(2)) { position: sticky; left: 0; z-index: 1; background: var(--card); }
+table.freeze2 :is(th, td):nth-child(2) { left: var(--c2, 0px); box-shadow: inset -1px 0 0 var(--line); }
+table.freeze1 :is(th, td):first-child { box-shadow: inset -1px 0 0 var(--line); }
+table.freeze1 thead th:first-child, table.freeze2 thead th:is(:first-child, :nth-child(2)) { z-index: 4; }
+table.data tr.click:hover td, table.data tr.click:focus td { background: var(--soft); }
+table.perm-grid tr.grp td:first-child { background: var(--soft); }
+@media (max-width: 640px) {
+  /* on phones only the first column stays put, so the rest has room */
+  table.freeze2 :is(th, td):nth-child(2) { position: static; box-shadow: none; }
+  table.freeze2 :is(th, td):first-child { box-shadow: inset -1px 0 0 var(--line); }
+}
