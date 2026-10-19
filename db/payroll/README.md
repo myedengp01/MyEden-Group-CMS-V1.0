@@ -15,3 +15,13 @@ How it was done
 Checked afterwards: 29 tables identical (counts + row checksums), Jan–Sep 2026 totals identical (lines, gross, EPF,
 SOCSO, EIS, PCB, net paid), 27 eppd functions identical, structure (373 columns, constraints, indexes, 59 policies,
 56 triggers, view, grants) identical, id counters continue after the copied ids.
+
+## Step 2 — new Employee IDs and one person record (19 Oct 2026)
+
+Run by CLC in the CMS SQL editor (script kept out of this public repo: it lists staff record ids).
+- New Employee ID format `<M|E|H|A><MMYY joined><M|F><0001…>`, directors `M0000M1000` / `M0000F1000`;
+  `format_group_employee_id` (MEG-EAF V2) and `eppd_companies.eid_prefix` switched; next group number 0183.
+- `employee_master.previous_employee_id`, `eppd_employees.previous_emp_id` and `eppd_employees.employee_master_id` added.
+- All 184 payroll people linked one-to-one to Employee Master (57 existing records updated, 127 added, one duplicate merged).
+- Two paying-company corrections agreed by CLC (Jun, Aug, Sep 2026 company totals rebuilt; overall totals unchanged).
+- Checked: 183 IDs, all new format, payroll = Employee Master for every person, Jan–Sep net paid unchanged (966,235.06).
