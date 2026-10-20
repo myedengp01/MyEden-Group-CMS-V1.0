@@ -8,7 +8,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-001 | 2026-10-19 | Salary increment reminder: last increment amount and date, next review by interval (6, 9, 12 months; editable, changeable, addable) | **Built in v2026.10.19-16:10** |
 | PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Recorded · plan elaborated, waiting for go |
 | PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Recorded · plan elaborated |
-| PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Recorded · plan elaborated, questions open |
+| PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Recorded · plan agreed 2026-10-20, waiting for go |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -68,3 +68,10 @@ into that release and this entry is updated with the version and how it was impl
 - **Automatic year-end:** on 1 January the 31 Dec AL balance carries forward automatically: none → 0; less than the
   eligible days → the whole balance; more → the eligible days (excess bought back or forfeited as today);
   **negative balance → unpaid leave** in the payroll (month to be decided).
+- **Decided 2026-10-20:**
+  1. Excess above the eligible days: buy-back only with management approval — for eligible employees only, an option
+     per person: buy back or not, and at what rate (50 / 25 / 10 % or another rate); approver and date recorded.
+     Not bought back → forfeited.
+  2. Negative 31 Dec balance → unpaid leave in **December's payroll** (December is finalised in January).
+  3. Caps stay E 6, S 3, A 1, I 0, U 0; "confirmed staff only" stays on as a management setting that can be switched.
+  4. No KPI grade at the cut-off → 0 days carried forward.
