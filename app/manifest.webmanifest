@@ -1,34 +1,34 @@
 {
-  "name": "Install Test 2",
-  "short_name": "Install Test 2",
+  "name": "MyEden Group CMS",
+  "short_name": "MyEden CMS",
   "description": "MyEden Group Central Management System: people, recruitment, payroll, forms and claims in one place.",
-  "id": "/MyEden-Group-CMS-V1.0/pwa-test2/?app=cms",
-  "start_url": "./?source=pwa",
+  "id": "/MyEden-Group-CMS-V1.0/app/",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f2f5fb",
   "theme_color": "#0072bc",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "../assets/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-512.png",
+      "src": "../assets/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icon-maskable-192.png",
+      "src": "../assets/icons/icon-maskable-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "icon-maskable-512.png",
+      "src": "../assets/icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

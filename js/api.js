@@ -45,7 +45,7 @@
     },
     async signOut() { try { await sb().auth.signOut(); } catch (e) { /* already signed out */ } },
     async sendReset(email) {
-      const redirectTo = location.href.split('#')[0];
+      const redirectTo = new URL(window.CMS_ROOT || './', location.href).href.split('#')[0].split('?')[0];   // the CMS root page, which forwards to app/
       const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw new Error(friendly(error));
     },

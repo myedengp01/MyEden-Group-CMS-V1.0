@@ -104,8 +104,11 @@
   const confirmBox = (title, text, ok, danger, onOk) => modal({ title, body: `<p class="confirm-txt">${text}</p>`, ok, danger, onOk });
 
   // ---------------------------------------------------------------- shell
+  // the app page lives in app/ (its own install scope); files stay at the site root, so relative paths get CMS_ROOT
+  const ROOT = window.CMS_ROOT || '';
+  const asset = (p) => (p && !/^([a-z]+:|\/|data:)/i.test(p) ? ROOT + p : p);
   function logo3d(size = 'md') {
-    const layers = Array.from({ length: 9 }, (_, i) => `<img src="assets/logos/myeden-mark.png" alt="" style="--z:${(i - 4) * 1.6}px" class="${i === 8 ? 'front' : i === 0 ? 'back' : 'edge'}">`).join('');
+    const layers = Array.from({ length: 9 }, (_, i) => `<img src="${asset('assets/logos/myeden-mark.png')}" alt="" style="--z:${(i - 4) * 1.6}px" class="${i === 8 ? 'front' : i === 0 ? 'back' : 'edge'}">`).join('');
     return `<button class="logo3d ${size}" type="button" aria-label="MyEden Group" title="MyEden Group"><span class="glow"></span><span class="spin">${layers}</span></button>`;
   }
 
@@ -357,7 +360,7 @@
       </div>
       <div class="grid-2">
         <section class="card"><div class="card-head"><h3>${icon('building')}Group companies</h3>${canRoute('org') ? `<a href="#/org" class="link">Organisation ${icon('arrow')}</a>` : ''}</div>
-          <div class="cos">${window.CMS_COMPANIES.map((c) => `<div class="co"><span class="co-logo"><img src="${c.logo}" alt="${esc(c.short)} logo"></span><div><b>${esc(c.short)}</b><small>${num(byEmp[c.code] || 0)} employed · ${num(byPay[c.code] || 0)} paid</small></div></div>`).join('')}</div></section>
+          <div class="cos">${window.CMS_COMPANIES.map((c) => `<div class="co"><span class="co-logo"><img src="${esc(asset(c.logo))}" alt="${esc(c.short)} logo"></span><div><b>${esc(c.short)}</b><small>${num(byEmp[c.code] || 0)} employed · ${num(byPay[c.code] || 0)} paid</small></div></div>`).join('')}</div></section>
         <section class="card"><div class="card-head"><h3>${icon('plug')}Integrated systems</h3><span class="tag">3 to join</span></div>
           <ul class="sys">${systems.map(([n, dd, ph, ic, src]) => `<li><span class="sys-ic">${icon(ic)}</span><div><b>${n}</b><small>${dd}</small></div><a class="tag src" href="${esc(window.CMS_SOURCES[src])}" target="_blank" rel="noopener">Open</a>${phaseTag(ph)}</li>`).join('')}</ul></section>
       </div>
@@ -904,7 +907,7 @@
     const unitsBy = (code) => o.units.filter((u) => u.company_code === code && u.is_active);
     const isAdminPage = item.route === 'admin/companies';
     $('#org-body', el).innerHTML = `
-      <div class="cos big">${active.map((c) => `<section class="card co"><span class="co-logo lg">${c.logo ? `<img src="${esc(c.logo)}" alt="${esc(c.short_name)} logo">` : icon('building')}</span>
+      <div class="cos big">${active.map((c) => `<section class="card co"><span class="co-logo lg">${c.logo ? `<img src="${esc(asset(c.logo))}" alt="${esc(c.short_name)} logo">` : icon('building')}</span>
         <div><b>${esc(c.name)}</b><small><code>${esc(c.code)}</code>${c.aliases?.length ? ` · also written ${esc(c.aliases.join(', '))}` : ''}</small>
         <div class="co-stats"><span><b>${num(c.employed)}</b>employed</span><span><b>${num(c.paid)}</b>paid</span><span><b>${num(c.jd_positions)}</b>JD positions</span></div>
         <small>${unitsBy(c.code).map((u) => esc(u.code)).join(' · ') || 'No centres'}</small></div></section>`).join('')}</div>
