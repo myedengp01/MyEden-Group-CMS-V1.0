@@ -34,6 +34,9 @@ into that release and this entry is updated with the version and how it was impl
   last salary and a "left before notice ended" flag, keeps the Employee ID, and needs an admin override reason when
   marked not eligible (kept in the period notes and the audit log). CMS: View People shows the reason, rehire
   eligibility and a "rehired" tag under the last working day (`20261020_cms_people_leaving.sql`).
+- **CMS (v2026.10.20-11:50):** Former Staff › click a person: periods, reason for leaving and rehire eligibility (HR /
+  Admin), **Rehire…** (same Employee ID, back to Active; Admin override for not eligible), "Reason missing" filter;
+  the 3 dismissed leavers pre-filled with "Dismissed".
 - Not built yet (ideas above): returning-applicant flag in EAF, exit checklist, turnover report, service carry-over.
 
 ### Original plan

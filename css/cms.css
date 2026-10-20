@@ -644,3 +644,18 @@ b.pos { color: #1d8a45; } b.neg { color: #c22f55; }
 /* leaving reason / rehire (PRI-002) */
 .tag.bad { background: rgba(220,53,69,.12); color: #b4232f; border-color: transparent; }
 .warn-txt { color: #b85a0a; }
+/* former staff: reason filter, leaving window, rehire (PRI-002) */
+.chip-filter { border: 1px solid var(--line); background: var(--card); color: var(--mute); border-radius: 11px; padding: 8px 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; }
+.chip-filter span { font-weight: 600; opacity: .8; margin-left: 2px; }
+.chip-filter.on { border-color: var(--orange); color: #b85a0a; background: rgba(245,130,32,.10); }
+.fld-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+@media (max-width: 640px) { .fld-2 { grid-template-columns: 1fr; } }
+.sec-h { margin: 18px 0 10px; font-size: 14px; font-weight: 800; }
+table.periods { font-size: 13px; }
+table.periods td { vertical-align: top; }
+.rehire-cta { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; margin: 6px 0 10px; border: 1px dashed var(--line); border-radius: 12px; background: var(--soft); }
+.rehire-cta > div { display: flex; flex-direction: column; gap: 2px; }
+.warn-box, .err-box { padding: 10px 12px; border-radius: 11px; font-size: 13.5px; margin: 10px 0 14px; }
+.warn-box { background: rgba(245,130,32,.10); color: #8a4a0c; }
+.err-box { background: rgba(220,53,69,.10); color: #b4232f; }
+:root[data-theme="dark"] .warn-box { color: #f5b06c; } :root[data-theme="dark"] .err-box { color: #ff8a95; }

@@ -37,6 +37,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 
 12. `20261019_cms_increments.sql` — Increments & Reviews (PRI-001): review intervals, per-person review, record increment
 13. `20261020_cms_people_leaving.sql` — View People: leaving reason, rehire eligibility and rehired tag from payroll (PRI-002)
+14. `20261020_cms_leaving_rehire.sql` — Former Staff: record the reason for leaving and rehire from the CMS; fills "Dismissed" as the reason for the 3 dismissed leavers
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -86,6 +87,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.20-11:50** — Former Staff: click a person to see every employment period (dates, position, centre, company,
+  last salary for those allowed to see pay, reason, rehire eligibility, short notice) and, for HR / Admin, record the
+  reason for leaving and rehire eligibility. **Rehire…** starts a new employment period in payroll with the same Employee
+  ID (new join date, paying company, centre, title, status); the person moves back to Active. "Not eligible" needs an
+  Admin and an override reason. New "Reason missing" filter with a count. The 3 dismissed leavers got the reason
+  "Dismissed". Database: `20261020_cms_leaving_rehire.sql`.
 - **v2026.10.20-10:50** — View People: under the last working day, the leaving reason, rehire eligibility and a "rehired"
   tag from MyPayroll (PRI-002). KPI & Appraisal note points to MyPayroll's KPI grades & carry forward (PRI-004).
   MyPayroll v2026.10.20-10:50 adds leaving reasons and rehire, recurring items and item types from the payroll line, and

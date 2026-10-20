@@ -720,15 +720,94 @@
     draw();
   }
 
+  // ---------------------------------------------------------------- former staff: reason for leaving + rehire (PRI-002)
+  const REHIRE_OPTS = [['', 'Not assessed'], ['eligible', 'Eligible for rehire'], ['conditional', 'Eligible, with conditions'], ['not_eligible', 'Not eligible for rehire']];
+  function periodsTable(X) {
+    const showSal = X.periods.some((p) => p.last_salary != null);
+    return `<div class="table-wrap"><table class="data compact periods"><thead><tr><th>Joined</th><th>Last day</th><th>Position</th><th>Centre</th><th>Paid by</th>${showSal ? '<th class="num">Last salary</th>' : ''}<th>Reason for leaving</th><th>Rehire</th></tr></thead><tbody>
+      ${X.periods.map((p) => `<tr><td class="nowrap">${dShort(p.join_date)}</td>
+        <td class="nowrap">${p.resigned_date ? dShort(p.resigned_date) : '<span class="muted">still employed</span>'}${p.short_notice ? '<small class="sub"><span class="tag warn xs">left before notice ended</span></small>' : ''}</td>
+        <td>${esc(p.position || '—')}</td><td>${esc(p.centre || '—')}</td><td>${esc(p.company || '—')}</td>
+        ${showSal ? `<td class="num">${p.last_salary != null ? money(p.last_salary) : '—'}</td>` : ''}
+        <td>${p.resigned_date ? (p.leaving_label ? esc(p.leaving_label) : '<span class="warn-txt">not recorded</span>') : ''}${p.leaving_note ? `<small class="sub">${esc(p.leaving_note)}</small>` : ''}</td>
+        <td>${p.rehire ? `<span class="tag ${REHIRE_TXT[p.rehire][0]} xs">${esc(REHIRE_TXT[p.rehire][1])}</span>` : '<span class="muted">—</span>'}${p.rehire_note ? `<small class="sub">${esc(p.rehire_note)}</small>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>`;
+  }
+  async function exitWindow(r) {
+    let X;
+    try { X = await API.rpc('cms_person_exit', { p_person: r.id }); } catch (e) { toast(e.message, 'err'); return false; }
+    const last = X.periods.find((p) => p.resigned_date) || {};
+    const opt = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('');
+    let rehire = false;
+    const ok = await modal({
+      title: r.name, wide: true, ok: X.can_edit ? 'Save reason' : null, cancel: 'Close',
+      body: `<p class="muted small">${esc(r.employee_id || '')} · ${X.periods.length} employment period${X.periods.length === 1 ? '' : 's'} in payroll${X.periods.length > 1 ? ' · rehired before' : ''}</p>
+        ${periodsTable(X)}
+        ${X.can_edit ? `<h4 class="sec-h">Reason for leaving · last day ${dShort(last.resigned_date)}</h4>
+          <div class="fld-2"><label class="fld"><span>Reason for leaving</span><select name="reason" required><option value="">Choose…</option>${opt(X.reasons.map((x) => [x.code, x.label]), last.leaving_reason)}</select></label>
+            <label class="fld"><span>Rehire</span><select name="rehire">${opt(REHIRE_OPTS, last.rehire)}</select></label></div>
+          <label class="fld"><span>Details <small class="muted" id="needs"></small></span><textarea class="ta" name="note" rows="2" maxlength="500">${esc(last.leaving_note || '')}</textarea></label>
+          <label class="fld"><span>Rehire note <small class="muted">— conditions, or why not eligible</small></span><textarea class="ta" name="rnote" rows="2" maxlength="500">${esc(last.rehire_note || '')}</textarea></label>
+          <div class="rehire-cta"><div><b>Rehire ${esc(r.name)}</b><span class="muted small">Starts a new employment period with the same Employee ID (${esc(r.employee_id || '—')}).</span></div>
+            <button type="button" class="btn" data-rehire>${icon('user-plus')} Rehire…</button></div>`
+        : '<p class="muted small">Only HR and Admin can change the reason for leaving or rehire.</p>'}`,
+      onOpen: (wrap, close) => {
+        const form = $('form', wrap);
+        const needs = () => { const x = X.reasons.find((y) => y.code === form.reason?.value); const n = $('#needs', wrap); if (n) n.textContent = x?.needs_note ? '(required for “Other”)' : ''; };
+        form.reason?.addEventListener('change', needs); needs();
+        $('[data-rehire]', wrap)?.addEventListener('click', () => { rehire = true; close(null); });
+        setTimeout(() => form.reason?.focus(), 30);
+      },
+      onOk: async (form) => {
+        await API.rpc('cms_set_leaving', { p_person: r.id, p_reason: form.reason.value || null, p_note: form.note.value || null, p_rehire: form.rehire.value || null, p_rehire_note: form.rnote.value || null });
+      },
+    });
+    if (ok) { toast(`Saved the reason for ${r.name}`); return 'saved'; }
+    if (rehire) return (await rehireWindow(r, X)) ? 'rehired' : false;
+    return false;
+  }
+  async function rehireWindow(r, X) {
+    const blocked = X.periods.some((p) => p.rehire === 'not_eligible');
+    const last = X.periods[0] || {};
+    const today = new Date(); const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+    const comp0 = X.companies.find((c) => (last.company || '').includes(c.name)) || X.companies[0] || {};
+    return modal({
+      title: `Rehire ${r.name}`, wide: true, ok: blocked && !X.can_override ? null : 'Rehire', cancel: 'Cancel',
+      body: `<p class="muted small">Previous employment — check before rehiring.</p>${periodsTable(X)}
+        ${blocked ? `<p class="${X.can_override ? 'warn-box' : 'err-box'}">Marked <b>not eligible for rehire</b>. ${X.can_override ? 'As Admin you can still rehire: give the override reason below. It is kept in the employment notes and the audit log.' : 'Only an Admin can rehire, with an override reason.'}</p>` : ''}
+        <div class="fld-2">
+          <label class="fld"><span>New date joined</span><input type="date" name="join" required min="${esc(last.resigned_date || '')}" value="${iso(today)}"></label>
+          <label class="fld"><span>Paying company</span><select name="company" required>${opt(X.companies.map((c) => [c.id, c.name]), comp0.id)}</select></label>
+          <label class="fld"><span>Centre / department</span><select name="dept">${opt(X.departments.map((d) => [d.id, d.code === d.name ? d.code : `${d.code} · ${d.name}`]), null, 'Not set')}</select></label>
+          <label class="fld"><span>Job title</span><select name="title">${opt(X.titles.map((t) => [t.id, t.name]), null, 'Not set')}</select></label>
+          <label class="fld"><span>Employment status</span><select name="conf">${opt(X.statuses.map((x) => [x.code, x.label]), 'UP')}</select></label>
+          <label class="fld"><span>Job status</span><select name="job">${opt(X.job_statuses.map((x) => [x.code, x.label]), null, 'Same as before')}</select></label>
+        </div>
+        ${blocked && X.can_override ? '<label class="fld"><span>Override reason (Admin)</span><textarea class="ta" name="override" rows="2" required maxlength="500"></textarea></label>' : ''}
+        <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. returning after studies"></label>
+        <p class="muted small">Keeps Employee ID <b>${esc(r.employee_id || '—')}</b>. The new period starts its own service, leave and notice; working hours and OT settings are copied from the last period. Add the salary in MyPayroll (Employee › Pay) before the first payroll.</p>`,
+      onOk: async (form) => {
+        if (!form.join.value) throw new Error('Enter the new date joined.');
+        if (last.resigned_date && form.join.value <= last.resigned_date) throw new Error(`The new date joined must be after the last working day (${dShort(last.resigned_date)}).`);
+        if (blocked && !(form.override?.value || '').trim()) throw new Error('Give the override reason.');
+        await API.rpc('cms_rehire', { p: { person: r.id, join_date: form.join.value, company_id: Number(form.company.value), department_id: form.dept.value || null,
+          job_title_id: form.title.value || null, confirmation_status: form.conf.value || 'UP', job_status: form.job.value || null, note: form.note.value || null, override_reason: form.override?.value || null } });
+      },
+    });
+  }
+
   async function peoplePage(item, el) {
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
-    const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all' };
+    const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all', noReason: params.get('missing') === 'reason' };
     el.innerHTML = `${pageHead(item)}<div id="people-body">${loading()}</div>`;
     let rows;
     try { [rows] = await Promise.all([loadPeople(), loadOrg(), can('payroll.increments') ? loadIncrSummary() : null]); state.people = rows; }
     catch (e) { $('#people-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const editable = can('people', 'E'); const payView = can('payroll.paying');
     const clickable = editable || payView;
+    const exitRow = (r) => r.status === 'former' && r.in_payroll;           // former staff open the leaving / rehire window
+    const noReason = (r) => r.status === 'former' && !(r.leave && r.leave.leaving_reason);
     const counts = Object.fromEntries(STATUS.map(([k]) => [k, rows.filter((r) => inStatus(r, k)).length]));
     const cos = [...new Set(rows.map((r) => r.company_code).filter(Boolean))].sort();
     $('#people-body', el).innerHTML = `
@@ -737,6 +816,7 @@
           <label class="search-in">${icon('search')}<input id="pq" type="search" placeholder="Name, Employee ID (new or previous), title or department" value="${esc(f.q)}" aria-label="Search people"></label>
           <select id="pco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
+          <button type="button" id="pnoreason" class="chip-filter ${f.noReason ? 'on' : ''}" title="Former staff whose reason for leaving is not recorded">Reason missing <span>${rows.filter(noReason).length}</span></button>
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th>${can('payroll.increments') ? '<th>Next review</th>' : ''}<th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
@@ -746,9 +826,9 @@
     const reviewCell = (x) => !x ? '<span class="muted">—</span>' : `${dShort(x.next_review)} ${incTag(x)}<small class="sub">${x.last_change_date ? `last ${x.last_change < 0 ? '−' : '+'}${money(Math.abs(x.last_change))} · ${monthTxt(x.last_change_date)}` : 'no increment yet'}</small>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
-      const list = rows.filter((r) => inStatus(r, f.status) && (f.co === 'all' || r.company_code === f.co)
+      const list = rows.filter((r) => (f.noReason ? noReason(r) : inStatus(r, f.status)) && (f.co === 'all' || r.company_code === f.co)
         && (!t || `${r.name} ${r.employee_id || ''} ${r.previous_id || ''} ${r.job_title || ''} ${r.department || ''} ${r.unit_code || ''}`.toLowerCase().includes(t)));
-      $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${clickable ? 'click' : ''}" ${clickable ? 'tabindex="0"' : ''}>
+      $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${clickable || exitRow(r) ? 'click' : ''}" ${clickable || exitRow(r) ? 'tabindex="0"' : ''}>
         <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b>${esc(r.name)}</b>${r.login_email ? ` <span class="tag ok xs" title="CMS login: ${esc(r.login_email)}">login</span>` : ''}</td>
         <td>${esc(coShort(r.company_code))}</td>
         <td>${paidByCell(r)}</td>
@@ -764,10 +844,20 @@
     draw();
     $('#pq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
     $('#pco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
-    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.status = b.dataset.st; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
-    if (!clickable) return;
+    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.status = b.dataset.st; f.noReason = false; $('#pnoreason', el).classList.remove('on'); $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    $('#pnoreason', el).addEventListener('click', (e) => {
+      f.noReason = !f.noReason; e.currentTarget.classList.toggle('on', f.noReason);
+      if (f.noReason) { f.status = 'former'; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x.dataset.st === 'former')); }
+      draw();
+    });
     const edit = async (id) => {
       const r = rows.find((x) => x.id === id); if (!r) return;
+      if (exitRow(r)) {
+        const changed = await exitWindow(r);
+        if (changed) { state.people = null; peoplePage(item, el); if (changed === 'rehired') toast(`${r.name} rehired: now in Active`); }
+        return;
+      }
+      if (!clickable) return;
       if (r.in_payroll && payView) {   // payroll knows who pays: open the paying-companies window
         const changed = await payingWindow(r, editable ? { unit: true } : {});
         if (changed) { state.people = null; rows = await loadPeople(); state.people = rows; draw(); }
