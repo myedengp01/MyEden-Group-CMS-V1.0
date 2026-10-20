@@ -87,11 +87,15 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.20-22:00** — App install, second fix: Chrome on Android still said "already installed" although no MyEden
+  CMS app exists on the devices (chrome://webapks lists only MEG-FORMS, MEG-EAF, MEG-EAF V2). The app now has a fresh
+  identity Chrome has never seen: settings file `cms-app.webmanifest` (was `manifest.webmanifest`), id
+  `/MyEden-Group-CMS-V1.0/?app=cms`, start page `./?source=pwa`.
 - **v2026.10.20-21:30** — App install fix: the manifest `id` was `"./"`, which browsers read from the site root
   (`https://myedengp01.github.io/`), not the CMS folder, so phones treated the CMS as an app that was already installed.
   It is now `/MyEden-Group-CMS-V1.0/`, and the start page is `./index.html`.
 - **v2026.10.20-12:15** — Installable app: new MyEden CMS icon (orbit in frosted glass, option K) for the browser tab,
-  phone home screen and desktop; `manifest.webmanifest` and a small service worker (`sw.js`, caches nothing, shows an
+  phone home screen and desktop; `manifest.webmanifest` (now `cms-app.webmanifest`) and a small service worker (`sw.js`, caches nothing, shows an
   "offline" page without a connection). Chrome / Edge / Android show "Install"; the user menu has **Install app** when
   the browser offers it; on iPhone / iPad use Share › Add to Home Screen.
 - **v2026.10.20-11:50** — Former Staff: click a person to see every employment period (dates, position, centre, company,
