@@ -171,6 +171,7 @@
             ${a.person ? `<div class="pop-note">${icon('users')}${esc(a.person.employee_id || 'No Employee ID')} · ${esc(coShort(a.person.company_code))}</div>` : ''}
             ${can('admin.roles') ? `<a class="pop-item" href="#/admin/roles">${icon('shield')}Users, roles &amp; access</a>` : ''}
             ${isSuper() ? `<a class="pop-item" href="#/admin/export">${icon('download')}Export all data</a>` : ''}
+            <button type="button" class="pop-item" data-install hidden>${icon('download')}Install app</button>
             <button type="button" class="pop-item" data-signout>${icon('logout')}Sign out</button></div></div>
       </div>`;
   }
@@ -239,8 +240,18 @@
       const was = pop.classList.contains('show'); closePops(); if (!was) pop.classList.add('show');
     }));
     $('[data-signout]').addEventListener('click', signOut);
+    const inst = $('[data-install]');
+    if (inst) {
+      inst.hidden = !installPrompt;
+      inst.addEventListener('click', async () => { if (!installPrompt) return; closePops(); installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; inst.hidden = true; });
+    }
     drawBell();
   }
+  // install as an app (Chrome / Edge / Android): the browser offers it; the user menu shows "Install app" while it can
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; const b = document.querySelector('[data-install]'); if (b) b.hidden = false; });
+  window.addEventListener('appinstalled', () => { installPrompt = null; const b = document.querySelector('[data-install]'); if (b) b.hidden = true; toast('MyEden Group CMS installed'); });
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   const closePops = () => $$('.popover.show').forEach((p) => p.classList.remove('show'));
   document.addEventListener('click', (e) => { if (!e.target.closest('.popover')) closePops(); else if (e.target.closest('a.pop-item')) closePops(); });
 

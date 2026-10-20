@@ -123,6 +123,7 @@ kbd { font-family: var(--font); font-size: 11px; font-weight: 700; padding: 2px 
 .pop-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px; background: none; text-align: left; font-weight: 600; font-size: 13.5px; }
 .pop-item:hover:not(:disabled) { background: var(--soft); }
 .pop-item:disabled { opacity: .45; cursor: not-allowed; }
+.pop-item[hidden] { display: none; }
 
 /* ---------------------------------------------------------------- search palette */
 .palette { position: fixed; inset: 0; z-index: 60; background: rgba(6,14,30,.45); backdrop-filter: blur(3px); display: grid; place-items: start center; padding: 12vh 16px 16px; }

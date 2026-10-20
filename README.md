@@ -87,6 +87,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.20-12:15** — Installable app: new MyEden CMS icon (orbit in frosted glass, option K) for the browser tab,
+  phone home screen and desktop; `manifest.webmanifest` and a small service worker (`sw.js`, caches nothing, shows an
+  "offline" page without a connection). Chrome / Edge / Android show "Install"; the user menu has **Install app** when
+  the browser offers it; on iPhone / iPad use Share › Add to Home Screen.
 - **v2026.10.20-11:50** — Former Staff: click a person to see every employment period (dates, position, centre, company,
   last salary for those allowed to see pay, reason, rehire eligibility, short notice) and, for HR / Admin, record the
   reason for leaving and rehire eligibility. **Rehire…** starts a new employment period in payroll with the same Employee
