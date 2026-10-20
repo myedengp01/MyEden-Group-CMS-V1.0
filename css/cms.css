@@ -660,3 +660,4 @@ table.periods td { vertical-align: top; }
 .warn-box { background: rgba(245,130,32,.10); color: #8a4a0c; }
 .err-box { background: rgba(220,53,69,.10); color: #b4232f; }
 :root[data-theme="dark"] .warn-box { color: #f5b06c; } :root[data-theme="dark"] .err-box { color: #ff8a95; }
+.auth-install { margin-top: 12px; } .auth-install[hidden] { display: none; }

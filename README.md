@@ -87,6 +87,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.20-22:45** — Sign-in page shows **Install MyEden CMS app** whenever the browser can install the CMS (the
+  CMS keeps the browser's own install pop-up hidden, so this button is the visible offer); the same button stays in the
+  name menu after sign-in.
 - **v2026.10.20-22:35** — App install, final fix: two test pages proved Chrome would install a new app from this site,
   and one with the CMS's exact install settings, so Chrome was holding a stale "installed" record for the CMS's own
   folder. The CMS page now lives in `app/` with its own settings file (`app/manifest.webmanifest`) and service worker
