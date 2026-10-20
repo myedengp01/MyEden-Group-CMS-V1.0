@@ -36,6 +36,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 11. `20261019_cms_main_by_period_notice_names.sql` — main paying company by period, notice period until, names in upper case, People columns (needs `db/payroll/011_main_company_by_period.sql` run by hand first)
 
 12. `20261019_cms_increments.sql` — Increments & Reviews (PRI-001): review intervals, per-person review, record increment
+13. `20261020_cms_people_leaving.sql` — View People: leaving reason, rehire eligibility and rehired tag from payroll (PRI-002)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -85,6 +86,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.20-10:50** — View People: under the last working day, the leaving reason, rehire eligibility and a "rehired"
+  tag from MyPayroll (PRI-002). KPI & Appraisal note points to MyPayroll's KPI grades & carry forward (PRI-004).
+  MyPayroll v2026.10.20-10:50 adds leaving reasons and rehire, recurring items and item types from the payroll line, and
+  KPI carry forward (PRI-002 / 003 / 004). Database: `20261020_cms_people_leaving.sql`.
 - **v2026.10.19-16:10** — **Increments & Reviews** (PRI-001, Payroll menu): last increment and next salary review per
   person, review intervals 6 / 9 / 12 months (Admin can edit and add; each can be the default for confirmation statuses),
   per-person interval or review date, Record increment from a payroll month, bell reminder of reviews due, and a Next

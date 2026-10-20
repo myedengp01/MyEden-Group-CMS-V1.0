@@ -6,9 +6,9 @@ into that release and this entry is updated with the version and how it was impl
 | No. | Recorded | Idea | Status |
 |---|---|---|---|
 | PRI-001 | 2026-10-19 | Salary increment reminder: last increment amount and date, next review by interval (6, 9, 12 months; editable, changeable, addable) | **Built in v2026.10.19-16:10** |
-| PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Recorded · plan elaborated, waiting for go |
-| PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Recorded · plan elaborated |
-| PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Recorded · plan agreed 2026-10-20, waiting for go |
+| PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Built in MyPayroll v2026.10.20-10:50 + CMS v2026.10.20-10:50 |
+| PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Built in MyPayroll v2026.10.20-10:50 |
+| PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Built in MyPayroll v2026.10.20-10:50 |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -26,7 +26,17 @@ into that release and this entry is updated with the version and how it was impl
 - Permissions (`payroll.increments`): Admin all; HR view, record, change review; Payroll, Finance, Account / Payroll
   Viewer, CEO / Director view.
 
-## PRI-002 · Rehire and leaving reasons (draft plan)
+## PRI-002 · Rehire and leaving reasons — built in v2026.10.20-10:50
+- **How it was built:** MyPayroll: reason, details, rehire eligibility and note on every employment period (required
+  whenever a last working day is set — in Record resignation and Edit employment, and enforced by the database);
+  15-reason pick-list (editable in Settings › Pick-lists); Former staff shows Leaving reason and Rehire, with "Add reason"
+  (HR / Admin) and a "no leaving reason" count (151 to fill in); the rehire window lists every earlier period with the
+  last salary and a "left before notice ended" flag, keeps the Employee ID, and needs an admin override reason when
+  marked not eligible (kept in the period notes and the audit log). CMS: View People shows the reason, rehire
+  eligibility and a "rehired" tag under the last working day (`20261020_cms_people_leaving.sql`).
+- Not built yet (ideas above): returning-applicant flag in EAF, exit checklist, turnover report, service carry-over.
+
+### Original plan
 - **Leaving reason** (mandatory when a leaver is recorded): pick from a list Admin can edit — Resigned: further studies;
   Resigned: better offer / career change; Resigned: relocation; Resigned: personal / family; Health; Contract ended;
   Not confirmed after probation; Terminated: performance; Terminated: misconduct; Dismissed; Retirement; Mutual
@@ -42,7 +52,16 @@ into that release and this entry is updated with the version and how it was impl
   checklist (assets returned, clearance, final settlement, exit interview notes); turnover report by leaving reason and
   centre; option to carry service years for leave when rehired within a set period.
 
-## PRI-003 · Fixed-period items and item types from the payroll line (draft plan)
+## PRI-003 · Fixed-period items and item types from the payroll line — built in v2026.10.20-10:50
+- **How it was built:** the line window's "Add item" has This month only / Recurring (every month) with an "Ends on"
+  date; recurring items are saved on the person's paying company from that month and the line recalculates at once;
+  a "Recurring items on this company" list gives Edit, End from… (last month paid) and Delete. Admins get "New item
+  type" there and in Settings › Payment types: a Statutory treatment preset sets the four ticks and shows the remark;
+  a tick that differs needs a reason (kept in the notes); system items show "system" (rename only); a type used in a
+  finalised payslip or a recurring item is offered "Switch off" instead of delete. Existing item types were given the
+  preset matching their current ticks; nothing was changed.
+
+### Original plan
 - **Already in MyPayroll:** recurring allowances per person with From / Until dates (employee page › Pay), and
   Settings › Payment types with EPF / SOCSO / EIS / PCB ticks and notes per item type.
 - **In the payroll line window:** "Add item" gets a choice: *this month only* (as now) or *recurring*, with a
@@ -56,7 +75,17 @@ into that release and this entry is updated with the version and how it was impl
   System items (basic salary, overtime, unpaid leave, claims) can be renamed but not deleted; an item type already
   used in a finalised month can be switched off but not deleted.
 
-## PRI-004 · KPI-based annual leave carry forward (draft plan)
+## PRI-004 · KPI-based annual leave carry forward — built in v2026.10.20-10:50
+- **How it was built (MyPayroll, Time & leave):** new **KPI grades & carry forward** page (grade per person per year,
+  note, who / when, override days + reason, filters for no grade / overrides); HR policies gets the KPI cut-off month
+  (October), the confirmed-only switch and the buy-back approval switch; Leave balances adds KPI, Eligible and Will
+  carry columns; until last year is closed its carry forward is shown as provisional (*), only for people with leave
+  history last year and no carried / opening days already posted (so imported opening balances are never doubled);
+  Year-end close applies the rules, asks for approver and date for each buy-back, forfeits the rest, and turns a negative
+  balance into unpaid leave dated 31 Dec (1 Jan if December is already finalised) with an AL correction back to 0;
+  December's payroll warns until the leave year is closed. The CMS KPI & Appraisal slot points to MyPayroll for now.
+
+### Original plan
 - **Already in MyPayroll:** KPI grade per person per year (table `eppd_kpi_ratings`, empty so far) and Time & leave ›
   Year-end close, which uses Settings › HR policies › carry forward: E 6, S 3, A 1, I 0, U 0 days, confirmed staff only;
   the excess above the cap is bought back (E, S, A at 50 / 25 / 10 %) or forfeited. The close is run by hand.

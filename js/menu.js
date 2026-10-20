@@ -57,7 +57,7 @@ window.CMS_MENU = [
       { route: 'payroll/import', label: 'Import Past Months', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll/import', desc: 'Bring past pay runs in from the workbook.' },
     ] },
     { group: 'Performance & Growth', icon: 'trend', items: [
-      { route: 'performance', label: 'KPI & Appraisal', phase: 5, desc: 'KPI grades, appraisals and probation confirmation.' },
+      { route: 'performance', label: 'KPI & Appraisal', phase: 5, desc: 'Appraisals and probation confirmation. KPI grades for annual leave carry forward are already live in MyPayroll (Time & leave › KPI grades & carry forward).' },
       { route: 'training', label: 'Training & Certificates', phase: 5, desc: 'First aid, SKM, ECCE and other certificates, with expiry reminders.' },
     ] },
     { route: 'assets', label: 'Assets & Equipment', icon: 'box', phase: 5, desc: 'Laptops, keys, uniforms and devices issued to staff, returned at offboarding.' },

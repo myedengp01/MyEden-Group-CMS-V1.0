@@ -641,3 +641,6 @@ b.pos { color: #1d8a45; } b.neg { color: #c22f55; }
 .inc-sum .st-overdue { border-color: rgba(229,72,110,.45); } .inc-sum .st-due { border-color: rgba(239,122,26,.5); }
 .inc-h { margin: 16px 0 8px; font-size: 13.5px; }
 @media (max-width: 640px) { .inc-sum { grid-template-columns: 1fr 1fr; } }
+/* leaving reason / rehire (PRI-002) */
+.tag.bad { background: rgba(220,53,69,.12); color: #b4232f; border-color: transparent; }
+.warn-txt { color: #b85a0a; }

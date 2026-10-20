@@ -384,8 +384,18 @@
     let rows;
     try { rows = await API.rpc('cms_people_list'); }
     catch (e) { if (!/cms_people_list|function/i.test(e.message || '')) throw e; rows = await API.rpc('cms_people'); }
+    // leaving reason / rehire from payroll (PRI-002): merged in when the function is there
+    try { const lv = new Map((await API.rpc('cms_people_leaving')).map((x) => [x.id, x])); rows.forEach((r) => Object.assign(r, { leave: lv.get(r.id) || null })); } catch (e) { /* older database: no reason column */ }
     return rows.map((r) => upKeys(r, 'name'));
   }
+  const REHIRE_TXT = { eligible: ['ok', 'Rehire: eligible'], conditional: ['warn', 'Rehire: with conditions'], not_eligible: ['bad', 'Not eligible for rehire'] };
+  const lastDayCell = (r) => {
+    const lv = r.leave; const left = !!r.last_day;
+    const reason = left ? (lv && lv.leaving_label ? `<small class="sub" title="${esc(lv.leaving_note || '')}">${esc(lv.leaving_label)}</small>` : (lv ? '<small class="sub warn-txt">reason not recorded</small>' : '')) : '';
+    const rh = left && lv && lv.rehire && REHIRE_TXT[lv.rehire] ? `<small class="sub"><span class="tag ${REHIRE_TXT[lv.rehire][0]} xs" title="${esc(lv.rehire_note || '')}">${REHIRE_TXT[lv.rehire][1]}</span></small>` : '';
+    const again = lv && lv.periods > 1 ? ` <span class="tag xs" title="${lv.periods} employment periods">rehired</span>` : '';
+    return `${left ? dShort(r.last_day) : '<span class="muted">—</span>'}${again}${reason}${rh}`;
+  };
   // "Paid by" cell: payroll's companies this month (main first); "same" when only the employer pays
   function paidByCell(r) {
     const codes = r.paid_by && r.paid_by.length ? r.paid_by : (r.paying_company_code ? [r.paying_company_code] : []);
@@ -730,7 +740,7 @@
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th>${can('payroll.increments') ? '<th>Next review</th>' : ''}<th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
-        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice and last working day come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
+        <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice, last working day, leaving reason and rehire eligibility come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
       </section>`;
     const incCol = can('payroll.increments'); const incBy = new Map((state.incr || []).map((x) => [x.person_id, x]));
     const reviewCell = (x) => !x ? '<span class="muted">—</span>' : `${dShort(x.next_review)} ${incTag(x)}<small class="sub">${x.last_change_date ? `last ${x.last_change < 0 ? '−' : '+'}${money(Math.abs(x.last_change))} · ${monthTxt(x.last_change_date)}` : 'no increment yet'}</small>`;
@@ -747,7 +757,7 @@
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="nowrap">${dShort(r.start_date)}</td>
         <td class="nowrap">${confCell(r)}</td>${incCol ? `<td class="nowrap">${reviewCell(incBy.get(r.id))}</td>` : ''}<td class="nowrap">${noticeCell(r)}</td>
-        <td class="nowrap">${r.last_day ? dShort(r.last_day) : '<span class="muted">—</span>'}</td></tr>`).join('')
+        <td class="nowrap">${lastDayCell(r)}</td></tr>`).join('')
         : `<tr><td colspan="${incCol ? 12 : 11}"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
       $('#pcount', el).textContent = `${list.length} of ${rows.length} people`;
     };
