@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-10:50 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
+**Current version:** v2026.10.21-11:15 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -92,6 +92,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-11:15** — Always the latest release: the app asks the server for the current version on every open and loads its files
+  tagged with that version, so a browser or installed app can no longer keep running an older copy. If a new release is
+  published while the CMS is open, a "Reload now" bar appears (checked when the app comes back to the front and every 15 minutes).
 - **v2026.10.21-10:50** — Automatic Employee ID: a group number is reserved the moment someone reaches onboarding, whichever app created the record,
   and the full ID is built once gender and start date are entered (rebuilt with the same number if those change before the first payslip).
   Offers & Onboarding shows an "Employee ID incomplete" list and a "Did not join…" button (number kept, never reused); the bell

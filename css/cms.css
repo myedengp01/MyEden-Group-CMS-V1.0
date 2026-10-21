@@ -682,3 +682,8 @@ ol.jd-list { margin: 0 0 8px; padding-left: 20px; } ol.jd-list li { margin: 0 0 
 p.pre { white-space: pre-line; margin: 0 0 8px; font-size: 14px; }
 table.data.compact td, table.data.compact th { padding: 6px 10px; font-size: 13px; }
 .fld .hours { display: flex; align-items: center; gap: 8px; } .fld .hours input { flex: 1; min-width: 0; }
+
+/* new release available */
+#update-bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);
+  padding:10px 12px 10px 16px;border-radius:14px;background:var(--card,#fff);color:var(--ink,#0f1d36);border:1px solid var(--line,#e2e8f2);box-shadow:0 12px 30px rgba(15,29,54,.18);font-size:14px}
+#update-bar svg{width:18px;height:18px;color:#3cb54a;flex:none}

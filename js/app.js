@@ -265,7 +265,27 @@
   }
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; showInstall(); });
   window.addEventListener('appinstalled', () => { installPrompt = null; showInstall(); toast('MyEden Group CMS installed'); });
-  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  if ('serviceWorker' in navigator) {
+    const reg = () => navigator.serviceWorker.register('sw.js').catch(() => {});
+    if (document.readyState === 'complete') reg(); else window.addEventListener('load', reg);
+  }
+  // new release published while the app is open: offer a one-click reload (checked when the app comes back to the front, and every 15 minutes)
+  let lastVerCheck = 0;
+  async function checkVersion() {
+    if (Date.now() - lastVerCheck < 60000 || $('#update-bar')) return; lastVerCheck = Date.now();
+    try {
+      const t = await (await fetch(ROOT + 'js/version.js?t=' + Date.now(), { cache: 'no-store' })).text();
+      const v = (t.match(/CMS_VERSION\s*=\s*'([^']+)'/) || [])[1];
+      if (!v || v === window.CMS_VERSION) return;
+      const bar = document.createElement('div'); bar.id = 'update-bar'; bar.setAttribute('role', 'status');
+      bar.innerHTML = `${icon('check-circle')}<span>A new version of the CMS is ready (<b>${esc(v)}</b>).</span><button type="button" class="btn sm primary">Reload now</button>`;
+      $('button', bar).addEventListener('click', () => location.reload());
+      document.body.appendChild(bar);
+    } catch (e) { /* offline: try later */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+  window.addEventListener('focus', checkVersion);
+  setInterval(checkVersion, 15 * 60000);
   const closePops = () => $$('.popover.show').forEach((p) => p.classList.remove('show'));
   document.addEventListener('click', (e) => { if (!e.target.closest('.popover')) closePops(); else if (e.target.closest('a.pop-item')) closePops(); });
 
@@ -2000,7 +2020,7 @@
     if ((location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  const boot = () => {
     if (/type=recovery/.test(location.hash)) recovering = true;
     try {
       API.onAuth((event) => {
@@ -2009,6 +2029,8 @@
       });
     } catch (e) { /* start() reports it */ }
     start();
-  });
+  };
+  // the app files are loaded after the page itself (latest-version loader), so the page may already be ready
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.addEventListener('hashchange', () => { if (/access_token|type=recovery/.test(location.hash)) return; render(); });
 })();

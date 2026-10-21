@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../css/cms.css">
+  <link rel="stylesheet" id="cms-css" href="../css/cms.css">
   <script>
     window.CMS_ROOT = '../';   // files live one folder up; this page is the installable app
     // set the theme before first paint (no flash)
@@ -25,12 +25,20 @@
 <body>
   <noscript>MyEden Group CMS needs JavaScript switched on.</noscript>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-  <script src="../js/version.js"></script>
-  <script src="../js/config.js"></script>
-  <script src="../js/api.js"></script>
-  <script src="../js/icons.js"></script>
-  <script src="../js/menu.js"></script>
-  <script src="../js/claim-pdf.js"></script>
-  <script src="../js/app.js"></script>
+  <script>
+    // Always run the latest release: ask the server for the current version (never from cache),
+    // then load the app files tagged with that version so the browser cannot reuse an older copy.
+    (function () {
+      var files = ['version', 'config', 'api', 'icons', 'menu', 'claim-pdf', 'app'];
+      function load(v) {
+        var css = document.getElementById('cms-css'); if (css) css.href = '../css/cms.css?v=' + v;
+        files.forEach(function (f) { var s = document.createElement('script'); s.src = '../js/' + f + '.js?v=' + v; s.async = false; document.body.appendChild(s); });
+      }
+      fetch('../js/version.js?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.text(); })
+        .then(function (t) { var m = t.match(/CMS_VERSION\s*=\s*'([^']+)'/); load(encodeURIComponent(m ? m[1] : Date.now())); })
+        .catch(function () { load(Date.now()); });
+    })();
+  </script>
 </body>
 </html>
