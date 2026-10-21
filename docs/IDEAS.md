@@ -9,6 +9,8 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Built in MyPayroll v2026.10.20-10:50 + CMS v2026.10.20-10:50 |
 | PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Built in MyPayroll v2026.10.20-10:50 |
 | PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Built in MyPayroll v2026.10.20-10:50 |
+| PRI-005 | 2026-10-21 | Money shown with thousands separator and 2 decimals everywhere in the CMS (0,000.00) | Recorded |
+| PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | Recorded · design proposed |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -107,3 +109,34 @@ into that release and this entry is updated with the version and how it was impl
   2. Negative 31 Dec balance → unpaid leave in **December's payroll** (December is finalised in January).
   3. Caps stay E 6, S 3, A 1, I 0, U 0; "confirmed staff only" stays on as a management setting that can be switched.
   4. No KPI grade at the cut-off → 0 days carried forward.
+
+## PRI-005 · Money format 0,000.00 — recorded 2026-10-21
+- Every salary and amount in the CMS shows a thousands separator and exactly 2 decimals (e.g. 2,300.00), in tables,
+  windows and exports; inputs accept 2300 / 2300.5 and are shown back as 2,300.50 when the field is left.
+- Plan: one `money2()` helper used everywhere (no "RM" duplication where the column header already says RM);
+  amount inputs get the same formatting on blur. Exports keep plain numbers so Excel can calculate.
+
+## PRI-006 · Employee items register (hand-on / hand-over) — recorded 2026-10-21, design proposed
+**Items covered:** company email / system accounts, keys and access cards, thumb drives and laptops / phones, uniforms,
+handbook and printed manuals, name tags, anything else HR/Admin adds (item types are a list Admin can extend).
+
+**Proposed design**
+1. *Item catalogue* (Admin): item type, asset tag / serial (optional), whether it must be returned, replacement cost,
+   who is the custodian (HR, Admin, IT, centre head).
+2. *Issue* (HR/Admin in the CMS, Assets & Equipment): choose person + item(s), quantity, condition, issue photo, note.
+   The employee gets a notification in the employee app (Phase 4 Self-service) → "Confirm received": tick, optional photo
+   from the phone camera / gallery (same logic as the claim forms), and the confirmation is locked with a time stamp.
+   Not confirmed in N days → reminder, then flagged to HR.
+3. *During employment* every change is an event on the same item, never an overwrite: returned, replaced (old returned +
+   new issued), renewed, lost / damaged (with note, optional deduction reference), transferred to another person.
+   Each event is confirmed by both sides the same way.
+4. *Accounts and passwords:* the CMS records that a credential exists, who holds it, and when it was last changed or
+   reset (and by whom). **The password itself is never stored in the CMS**: it is kept in a password manager / the
+   email admin console, and on handover IT resets it. This keeps the register safe even if a report is printed or shared.
+5. *Offboarding:* when the notice period is confirmed (leaving date set), a hand-over list is created automatically from
+   all items still held, with a deadline (default = last working day, editable), a responsible receiver per item, notes,
+   and photos at return. The receiver confirms each return; HR/Admin approves the completed list (approver + time stamp).
+   Open items appear on the bell and block the "cleared" status of the final payroll (with an override + reason).
+6. *Records:* full history per person and per item, printable acknowledgement (issue and hand-over) as PDF, audit log.
+- Depends on Phase 4 (employee app) for the employee's own confirmation; until then HR can record a signed paper
+  acknowledgement with a photo.
