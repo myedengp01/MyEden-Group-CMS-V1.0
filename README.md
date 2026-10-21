@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-08:45 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
+**Current version:** v2026.10.21-10:50 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -42,6 +42,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 15. `20261021_cms_recruitment.sql` — Phase 3: recruitment read functions (applications, JD, positions, offers & onboarding, handbook), one group-wide next Employee ID number for EAF / CMS / MyPayroll, and `cms_hire` (accepted applicant → person + payroll record)
 
 16. `20261021_cms_hire_from_approved.sql` — Offers & Onboarding lists applications with decision Approved (MEG-EAF V2 has no screen for the offer-accepted stage); Hire works straight from the application
+17. `20261021_cms_auto_employee_id.sql` — Employee ID number reserved automatically when a person reaches onboarding (first come, first served), ID completed once gender and start date are known, rebuilt with the same number until the first payslip, never reused; "Did not join"; Employee ID incomplete list. One-off: `db/payroll/012_remove_test_employee.sql` (run in the SQL editor) removes the TEST EMPLOYEE record
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -91,6 +92,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-10:50** — Automatic Employee ID: a group number is reserved the moment someone reaches onboarding, whichever app created the record,
+  and the full ID is built once gender and start date are entered (rebuilt with the same number if those change before the first payslip).
+  Offers & Onboarding shows an "Employee ID incomplete" list and a "Did not join…" button (number kept, never reused); the bell
+  reminds about incomplete IDs. Short-term co-partners can be excluded. Database: `20261021_cms_auto_employee_id.sql`.
 - **v2026.10.21-10:20** — Offers & Onboarding fix: MEG-EAF V2 records only the decision (Approved) and the Office Use details;
   it has no screen for the "offer accepted" stage or the onboarding handoff, so approved applicants never reached this page.
   It now lists every application with decision Approved and no employee record: **Hire…** when the Office Use start date

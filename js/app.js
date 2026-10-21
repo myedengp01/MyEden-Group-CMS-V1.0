@@ -157,6 +157,7 @@
     const ob = state.onbSum;
     if (ob && ob.accepted && can('onboarding')) t.push({ ic: 'user-plus', tone: 'green', title: `${num(ob.accepted)} approved applicants to hire`, sub: 'Create the person and payroll record', href: '#/onboarding' });
     if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
+    if (ob && ob.idPending && can('people')) t.push({ ic: 'users', tone: 'rose', title: `${num(ob.idPending)} Employee IDs incomplete`, sub: 'Number reserved; gender or start date missing', href: '#/onboarding' });
     if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
     const inc = state.incrSum;
     if (inc && (inc.overdue || inc.due) && can('payroll.increments')) t.push({ ic: 'trend', tone: 'orange', title: `${num(inc.overdue + inc.due)} salary reviews due`, sub: [inc.overdue && `${inc.overdue} overdue`, inc.due && `${inc.due} this month`].filter(Boolean).join(' · '), href: '#/payroll/increments' });
@@ -1502,7 +1503,9 @@
       const o = await API.rpc('cms_onboarding');
       state.onb = o;
       const stampSoon = o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length;
-      state.onbSum = { accepted: o.accepted.length, toPayroll: o.to_payroll.length, stampSoon };
+      let idp = []; try { if (can('people')) idp = await API.rpc('cms_id_pending'); } catch (e) { /* optional */ }
+      state.idPending = idp;
+      state.onbSum = { accepted: o.accepted.length, toPayroll: o.to_payroll.length, stampSoon, idPending: idp.length };
       drawBell();
     } catch (e) { /* reminders are a convenience */ }
   }
@@ -1675,10 +1678,14 @@
             <td class="nowrap">${x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : eafBtn('hr', 'Open MEG-EAF V2', 'sm')}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an offer is accepted in MEG-EAF V2 it appears here.</span></div>'}
       </section>
+      ${(state.idPending || []).length ? `<section class="card"><div class="card-head"><h3>Employee ID incomplete</h3><span class="muted small">A group number is reserved for each person (first come, first served); the ID is completed automatically once gender and start date are entered.</span></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>Reserved number</th><th>Name</th><th>Company</th><th>Missing</th></tr></thead><tbody>
+        ${state.idPending.map((x) => `<tr><td><code>${esc(String(x.serial).padStart(4, '0'))}</code></td><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td class="warn-txt">${esc((x.missing || []).join(', ') || '—')}</td></tr>`).join('')}
+        </tbody></table></div><p class="muted small">Enter the missing details with <b>Add to payroll…</b> below, or in the Office Use section in MEG-EAF V2.</p></section>` : ''}
       <section class="card"><div class="card-head"><h3>Not yet in payroll</h3><span class="muted small">People who are active or onboarding in the CMS but have no payroll record.</span></div>
         ${o.to_payroll.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Employee ID</th><th>Name</th><th>Company</th><th>Job title</th><th>Start</th><th>Status</th><th></th></tr></thead><tbody>
           ${o.to_payroll.map((x) => `<tr><td><code>${esc(x.employee_id || '—')}</code></td><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}</td>
-            <td class="nowrap">${dShort(x.start)}</td><td><span class="st st-${esc(x.status)}">${esc(x.status)}</span></td><td>${hireBtn(`data-hire-p="${esc(x.person_id)}"`).replace('Hire…', 'Add to payroll…')}</td></tr>`).join('')}
+            <td class="nowrap">${dShort(x.start)}</td><td><span class="st st-${esc(x.status)}">${esc(x.status)}</span></td><td class="nowrap">${hireBtn(`data-hire-p="${esc(x.person_id)}"`).replace('Hire…', 'Add to payroll…')}${o.can_hire && x.status === 'onboarding' ? ` <button type="button" class="btn sm ghost" data-nojoin="${esc(x.person_id)}" data-name="${esc(x.name)}">Did not join…</button>` : ''}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>Everyone is in payroll</p><span>Nothing to add.</span></div>'}
       </section>
       <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Issued, signed and stamped in MEG-EAF V2.</span></div>
@@ -1692,6 +1699,13 @@
     const reload = () => { state.onb = null; loadRecruitSummary(); onboardingPage(item, el); };
     $$('[data-hire-h]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ handoff: b.dataset.hireH })) reload(); }));
     $$('[data-hire-p]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ person: b.dataset.hireP })) reload(); }));
+    $$('[data-nojoin]', el).forEach((b) => b.addEventListener('click', async () => {
+      const ok = await modal({ title: `Did not join · ${b.dataset.name}`, ok: 'Mark as did not join', danger: true,
+        body: `<p>The person is moved to Former Staff with the reason <b>Did not join</b> and the handbook assignment is withdrawn. Their Employee ID number is kept and never given to anyone else, so the gap in the sequence is explained.</p>
+          <label class="fld"><span>Note</span><input name="note" required maxlength="300" placeholder="e.g. declined the offer on 25 Oct"></label>`,
+        onOk: async (form) => { if (!form.note.value.trim()) throw new Error('Give a short note.'); await API.rpc('cms_not_joined', { p_person: b.dataset.nojoin, p_note: form.note.value.trim() }); } });
+      if (ok) { toast(`${b.dataset.name}: marked did not join`); reload(); }
+    }));
     $$('[data-hire-a]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ application: b.dataset.hireA })) reload(); }));
   }
 
