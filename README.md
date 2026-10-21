@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-11:15 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
+**Current version:** v2026.10.21-11:50 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -43,6 +43,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 
 16. `20261021_cms_hire_from_approved.sql` — Offers & Onboarding lists applications with decision Approved (MEG-EAF V2 has no screen for the offer-accepted stage); Hire works straight from the application
 17. `20261021_cms_auto_employee_id.sql` — Employee ID number reserved automatically when a person reaches onboarding (first come, first served), ID completed once gender and start date are known, rebuilt with the same number until the first payslip, never reused; "Did not join"; Employee ID incomplete list. One-off: `db/payroll/012_remove_test_employee.sql` (run in the SQL editor) removes the TEST EMPLOYEE record
+18. `20261021_cms_existing_employee_match.sql` — approved applications matched to existing employees (email or name): shown with "Link" instead of "Hire", Hire refuses duplicates, workflow-test applications hidden; one-off link of applications that already had an employee record
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -92,6 +93,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-11:50** — Offers & Onboarding no longer offers Hire for someone who is already an employee: an approved application that
+  matches an existing employee (same email or name) shows "Already an employee?" with a **Link** button, and Hire itself refuses
+  to create a duplicate. Applications named "DO NOT PROCESS" are hidden. Database: `20261021_cms_existing_employee_match.sql`.
 - **v2026.10.21-11:15** — Always the latest release: the app asks the server for the current version on every open and loads its files
   tagged with that version, so a browser or installed app can no longer keep running an older copy. If a new release is
   published while the CMS is open, a "Reload now" bar appears (checked when the app comes back to the front and every 15 minutes).

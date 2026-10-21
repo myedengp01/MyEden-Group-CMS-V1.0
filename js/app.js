@@ -1691,11 +1691,11 @@
         <div class="pipe-step ${state.onbSum?.stampSoon ? 'bad' : ''}"><b>${num(o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length)}</b><span>Stamp duty due ≤ 7 days</span></div>
       </div>
       <section class="card"><div class="card-head"><h3>Approved applicants</h3><span class="muted small">Decision Approved in MEG-EAF V2 and no employee record yet. Hire creates the person record, Employee ID and payroll record together, and assigns the handbook.</span></div>
-        ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Office Use</th><th></th></tr></thead><tbody>
+        ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Office Use / check</th><th></th></tr></thead><tbody>
           ${o.accepted.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}${x.department ? `<small class="sub">${esc(x.department)}</small>` : ''}</td>
             <td class="nowrap">${x.start ? dShort(x.start) : '—'}</td>
-            <td>${x.handoff === 'pending_import' || x.ready ? '<span class="tag ok xs">Ready to hire</span>' : '<span class="tag warn xs">Office Use incomplete</span><small class="sub">add start date and salary in MEG-EAF V2</small>'}${x.decision ? `<small class="sub">decision: ${esc(x.decision)}</small>` : ''}</td>
-            <td class="nowrap">${x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : eafBtn('hr', 'Open MEG-EAF V2', 'sm')}</td></tr>`).join('')}
+            <td>${(x.matches || []).length ? `<span class="tag warn xs">Already an employee?</span>${x.matches.map((m) => `<small class="sub">${esc(m.employee_id || 'no Employee ID')} · ${esc(m.name)} · ${esc(m.status)} (same ${esc(m.by)})</small>`).join('')}` : x.handoff === 'pending_import' || x.ready ? '<span class="tag ok xs">Ready to hire</span>' : '<span class="tag warn xs">Office Use incomplete</span><small class="sub">add start date and salary in MEG-EAF V2</small>'}${x.decision ? `<small class="sub">decision: ${esc(x.decision)}</small>` : ''}</td>
+            <td class="nowrap">${(x.matches || []).length ? (o.can_hire ? x.matches.map((m) => `<button type="button" class="btn sm" data-link-a="${esc(x.application_id)}" data-link-p="${esc(m.person_id)}" data-name="${esc(x.name)}" data-eid="${esc(m.employee_id || '')}">${icon('users')}Link to ${esc(m.employee_id || 'this person')}</button>`).join(' ') : '') : x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : eafBtn('hr', 'Open MEG-EAF V2', 'sm')}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an offer is accepted in MEG-EAF V2 it appears here.</span></div>'}
       </section>
       ${(state.idPending || []).length ? `<section class="card"><div class="card-head"><h3>Employee ID incomplete</h3><span class="muted small">A group number is reserved for each person (first come, first served); the ID is completed automatically once gender and start date are entered.</span></div>
@@ -1727,6 +1727,13 @@
       if (ok) { toast(`${b.dataset.name}: marked did not join`); reload(); }
     }));
     $$('[data-hire-a]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ application: b.dataset.hireA })) reload(); }));
+    $$('[data-link-a]', el).forEach((b) => b.addEventListener('click', async () => {
+      const ok = await modal({ title: `Link application · ${b.dataset.name}`, ok: 'Link',
+        body: `<p>This approved application matches an existing employee${b.dataset.eid ? ` (<b>${esc(b.dataset.eid)}</b>)` : ''}. Linking records the application on that person and marks it completed in MEG-EAF V2. No new person, Employee ID or payroll record is created.</p>
+          <p class="muted small">If this is a different person with the same name, do not link: ask Admin to check the record first.</p>`,
+        onOk: async () => { await API.rpc('cms_link_application', { p_application: b.dataset.linkA, p_person: b.dataset.linkP }); } });
+      if (ok) { toast(`${b.dataset.name}: application linked`); reload(); }
+    }));
   }
 
   async function hireWindow({ handoff = null, person = null, application = null }) {
