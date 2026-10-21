@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.17-17:50 · **Phase 1 · MEG-FORMS** · **Phase 0 · Foundation** (live: sign-in, roles & access, people, organisation, audit log, export)
+**Current version:** v2026.10.21-08:45 · **Phase 3 · Recruitment & onboarding** (Phases 0–2 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -38,6 +38,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 12. `20261019_cms_increments.sql` — Increments & Reviews (PRI-001): review intervals, per-person review, record increment
 13. `20261020_cms_people_leaving.sql` — View People: leaving reason, rehire eligibility and rehired tag from payroll (PRI-002)
 14. `20261020_cms_leaving_rehire.sql` — Former Staff: record the reason for leaving and rehire from the CMS; fills "Dismissed" as the reason for the 3 dismissed leavers
+
+15. `20261021_cms_recruitment.sql` — Phase 3: recruitment read functions (applications, JD, positions, offers & onboarding, handbook), one group-wide next Employee ID number for EAF / CMS / MyPayroll, and `cms_hire` (accepted applicant → person + payroll record)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -87,6 +89,17 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-08:45** — **Phase 3 · Recruitment & onboarding** (MEG-EAF V2 data in the CMS):
+  **Applications** (stage counts, company / stage tabs, summary and stage history per applicant), **Shortlist & Interviews**
+  (the same list, opened on shortlisted and offers), **JD Manual** (119 positions by company and department with purpose,
+  responsibilities, KPIs, competencies; salary bands for HR / Admin), **Positions & Vacancies** (staff and open applications
+  per position, open-for-applications filter), **Offers & Onboarding** (accepted applicants, people not yet in payroll,
+  offer-letter tracker with stamp-duty due dates), **Hire**: one step creates the person record and the payroll record
+  (company, centre, title, hours, starting salary, Employee ID), **one Employee ID numbering** for MEG-EAF V2, the CMS and
+  MyPayroll, **Employee Handbook** progress (assigned / opened / read / acknowledged, % read, past due) plus a Handbook column
+  on View People, **Employment Act & Calculators** opening MEG-EAF V2. Bell reminders: applicants to hire, staff not in payroll,
+  stamp duty due. Editing applications, offer letters, JDs and handbook assignments stays in MEG-EAF V2.
+  Database: `20261021_cms_recruitment.sql`.
 - **v2026.10.20-22:45** — Sign-in page shows **Install MyEden CMS app** whenever the browser can install the CMS (the
   CMS keeps the browser's own install pop-up hidden, so this button is the visible offer); the same button stays in the
   name menu after sign-in.

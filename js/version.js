@@ -1,2 +1,2 @@
-window.CMS_VERSION = 'v2026.10.20-22:45';
-window.CMS_STAGE = 'Phase 2 · Payroll';
+window.CMS_VERSION = 'v2026.10.21-08:45';
+window.CMS_STAGE = 'Phase 3 · Recruitment';

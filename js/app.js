@@ -150,10 +150,14 @@
     const t = [];
     const bs = d.claims_by_stage || {};
     if (d.claims_pending && can('approvals')) t.push({ ic: 'file-check', tone: 'orange', title: `${num(d.claims_pending)} claims waiting`, sub: [bs.approval && `${bs.approval} to approve`, bs.processing && `${bs.processing} to process`, bs.payment && `${bs.payment} to pay`].filter(Boolean).join(' · ') + ` · ${money(d.claims_pending_amount)}`, href: '#/approvals' });
-    if (d.applications_pending && can('recruitment')) t.push({ ic: 'search-user', tone: 'blue', title: `${num(d.applications_pending)} applications not yet processed`, sub: 'Office Use and decision in MEG-EAF V2', href: window.CMS_SOURCES['MEG-EAF V2'], ext: true, src: 'MEG-EAF V2' });
-    if (d.handbook_outstanding && can('handbook')) t.push({ ic: 'shield', tone: 'violet', title: `${num(d.handbook_outstanding)} handbook acknowledgements outstanding`, sub: 'Assigned or viewed, not yet acknowledged', href: window.CMS_SOURCES['MEG-EAF V2'], ext: true, src: 'MEG-EAF V2' });
+    if (d.applications_pending && can('recruitment')) t.push({ ic: 'search-user', tone: 'blue', title: `${num(d.applications_pending)} applications not yet processed`, sub: 'Screening and decision', href: '#/applications' });
+    if (d.handbook_outstanding && can('handbook')) t.push({ ic: 'shield', tone: 'violet', title: `${num(d.handbook_outstanding)} handbook acknowledgements outstanding`, sub: 'Assigned or viewed, not yet acknowledged', href: '#/handbook' });
     if (can('admin.roles') && d.logins - d.logins_with_role > 0) t.push({ ic: 'lock', tone: 'teal', title: `${num(d.logins - d.logins_with_role)} logins have no CMS role yet`, sub: 'Review the suggested roles and accept or skip', href: '#/admin/roles' });
     if (can('admin.roles', 'E') && d.logins_unlinked > 0) t.push({ ic: 'users', tone: 'rose', title: `${num(d.logins_unlinked)} logins are not linked to a person`, sub: 'Link each login to its Employee Master record', href: '#/admin/roles?tab=logins' });
+    const ob = state.onbSum;
+    if (ob && ob.accepted && can('onboarding')) t.push({ ic: 'user-plus', tone: 'green', title: `${num(ob.accepted)} accepted applicants to hire`, sub: 'Create the person and payroll record', href: '#/onboarding' });
+    if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
+    if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
     const inc = state.incrSum;
     if (inc && (inc.overdue || inc.due) && can('payroll.increments')) t.push({ ic: 'trend', tone: 'orange', title: `${num(inc.overdue + inc.due)} salary reviews due`, sub: [inc.overdue && `${inc.overdue} overdue`, inc.due && `${inc.due} this month`].filter(Boolean).join(' · '), href: '#/payroll/increments' });
     return t;
@@ -306,7 +310,7 @@
   function pageHead(item, extra = '') {
     const live = item.phase === 0 || item.live;
     return `<div class="crumbs"><a href="#/dashboard">Dashboard</a>${item.group ? ` / <span>${esc(item.group)}</span>` : ''} / <span>${esc(item.label)}</span></div>
-      <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.source ? `<span class="tag src">${icon('plug')}Now in ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
+      <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.source ? `<span class="tag src">${icon('plug')}${live ? 'Data from' : 'Now in'} ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
   }
   function wireRetry(el) { $$('[data-retry]', el).forEach((b) => b.addEventListener('click', render)); }
 
@@ -822,9 +826,10 @@
     const f = { q: params.get('q') || '', status: item.route === 'people/former' ? 'former' : params.get('q') ? 'all' : 'active', co: 'all', noReason: params.get('missing') === 'reason' };
     el.innerHTML = `${pageHead(item)}<div id="people-body">${loading()}</div>`;
     let rows;
-    try { [rows] = await Promise.all([loadPeople(), loadOrg(), can('payroll.increments') ? loadIncrSummary() : null]); state.people = rows; }
+    try { [rows] = await Promise.all([loadPeople(), loadOrg(), can('payroll.increments') ? loadIncrSummary() : null, can('handbook') ? loadHandbook() : null]); state.people = rows; }
     catch (e) { $('#people-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const editable = can('people', 'E'); const payView = can('payroll.paying');
+    const hbCol = can('handbook') && !!state.hb;
     const clickable = editable || payView;
     const exitRow = (r) => r.status === 'former' && r.in_payroll;           // former staff open the leaving / rehire window
     const noReason = (r) => r.status === 'former' && !(r.leave && r.leave.leaving_reason);
@@ -838,11 +843,12 @@
           <div class="seg">${STATUS.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.status === k ? 'on' : ''}">${l} <span>${counts[k]}</span></button>`).join('')}</div>
           <button type="button" id="pnoreason" class="chip-filter ${f.noReason ? 'on' : ''}" title="Former staff whose reason for leaving is not recorded">Reason missing <span>${rows.filter(noReason).length}</span></button>
         </div>
-        <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th>${can('payroll.increments') ? '<th>Next review</th>' : ''}<th>Notice until</th><th>Last working day</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="ptable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Paid by</th><th>Centre</th><th>Title</th><th>Status</th><th>Start</th><th>Confirmation</th>${can('payroll.increments') ? '<th>Next review</th>' : ''}<th>Notice until</th><th>Last working day</th>${hbCol ? '<th>Handbook</th>' : ''}</tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="pcount"></p>
         <p class="muted small">Employer is the company on the contract (Employee Master). “Paid by” is the paying company for payroll; “same” means the employer pays; two companies means joint payment, main company first. The previous ID is shown under the Employee ID.${clickable ? ` Click a row to see${can('payroll.paying', 'E') ? ' and change' : ''} the paying companies${editable ? ' and centre' : ''}.` : ''} Confirmation, notice, last working day, leaving reason and rehire eligibility come from payroll; notice is counted from the resignation letter by the notice-period policy unless HR set an agreed date. IC, bank and salary details are not shown here.</p>
       </section>`;
     const incCol = can('payroll.increments'); const incBy = new Map((state.incr || []).map((x) => [x.person_id, x]));
+    const hbBy = new Map((state.hb || []).map((x) => [x.person_id, x]));
     const reviewCell = (x) => !x ? '<span class="muted">—</span>' : `${dShort(x.next_review)} ${incTag(x)}<small class="sub">${x.last_change_date ? `last ${x.last_change < 0 ? '−' : '+'}${money(Math.abs(x.last_change))} · ${monthTxt(x.last_change_date)}` : 'no increment yet'}</small>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase();
@@ -857,8 +863,8 @@
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="nowrap">${dShort(r.start_date)}</td>
         <td class="nowrap">${confCell(r)}</td>${incCol ? `<td class="nowrap">${reviewCell(incBy.get(r.id))}</td>` : ''}<td class="nowrap">${noticeCell(r)}</td>
-        <td class="nowrap">${lastDayCell(r)}</td></tr>`).join('')
-        : `<tr><td colspan="${incCol ? 12 : 11}"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
+        <td class="nowrap">${lastDayCell(r)}</td>${hbCol ? `<td class="nowrap">${r.status === 'former' ? '<span class="muted">—</span>' : hbCell(hbBy.get(r.id) || { })}</td>` : ''}</tr>`).join('')
+        : `<tr><td colspan="${(incCol ? 12 : 11) + (hbCol ? 1 : 0)}"><div class="empty small"><p>No one matches</p><span>Try another status or clear the search.</span></div></td></tr>`;
       $('#pcount', el).textContent = `${list.length} of ${rows.length} people`;
     };
     draw();
@@ -1473,6 +1479,330 @@
     }
   }
 
+  // ================================================================ RECRUITMENT & ONBOARDING (Phase 3, MEG-EAF V2 data)
+  const EAF = 'https://myedengp01.github.io/MEG-EAF-V2/';
+  const EAF_LINK = { hr: EAF + 'hr.html', jd: EAF + 'jd-manual.html', handbook: EAF + 'handbook-status.html', law: EAF + 'employment-act.html', letters: EAF + 'hr-letters.html' };
+  const eafBtn = (key, label = 'Open in MEG-EAF V2', cls = '') => `<a class="btn ${cls}" href="${esc(EAF_LINK[key])}" target="_blank" rel="noopener">${icon('plug')}${esc(label)}</a>`;
+  const APP_STAGES = [
+    ['submitted', 'New', 'blue'], ['under_review', 'Under review', 'blue'], ['kiv', 'KIV', 'warn'], ['shortlisted', 'Shortlisted', 'joint'],
+    ['offer_preparation', 'Preparing offer', 'joint'], ['offer_issued', 'Offer issued', 'joint'], ['offer_accepted', 'Offer accepted', 'ok'],
+    ['ready_for_onboarding', 'Ready for onboarding', 'ok'], ['completed', 'Hired / completed', ''], ['offer_declined', 'Offer declined', ''], ['rejected', 'Not selected', ''],
+  ];
+  const appStageOf = (s) => APP_STAGES.find((x) => x[0] === s) || [s, s || '—', ''];
+  const appStageTag = (s) => { const [, l, t] = appStageOf(s); return `<span class="tag ${t} xs">${esc(l)}</span>`; };
+  const LOEC = { draft: 'Draft', issued: 'Issued', signed_uploaded: 'Signed copy uploaded', verified: 'Verified', stamp_pending: 'Stamp pending', stamped: 'Stamped', completed: 'Completed' };
+  const STAMP = { pending: 'Pending', submitted: 'Submitted', stamped: 'Stamped', not_required: 'Not required' };
+  const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+  const daysTo = (s) => (s ? Math.round((new Date(s) - today0()) / 86400000) : null);
+
+  // ---------------------------------------------------------------- reminders (bell): offers, hires, stamp duty
+  async function loadRecruitSummary() {
+    if (!can('onboarding')) return;
+    try {
+      const o = await API.rpc('cms_onboarding');
+      state.onb = o;
+      const stampSoon = o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length;
+      state.onbSum = { accepted: o.accepted.length, toPayroll: o.to_payroll.length, stampSoon };
+      drawBell();
+    } catch (e) { /* reminders are a convenience */ }
+  }
+
+  // ---------------------------------------------------------------- 3.1 applications (and Shortlist & Interviews)
+  async function applicationsPage(item, el) {
+    el.innerHTML = `${pageHead(item, eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost'))}<div id="ap-body">${loading()}</div>`;
+    let rows;
+    try { [rows] = await Promise.all([API.rpc('cms_recruit_applications'), loadOrg()]); }
+    catch (e) { $('#ap-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const interviews = item.route === 'interviews';
+    const V = [
+      ['open', 'In progress', (r) => !['completed', 'rejected', 'offer_declined'].includes(r.stage)],
+      ['new', 'New & under review', (r) => ['submitted', 'under_review', 'kiv'].includes(r.stage)],
+      ['short', 'Shortlisted & offers', (r) => ['shortlisted', 'offer_preparation', 'offer_issued', 'offer_accepted', 'ready_for_onboarding'].includes(r.stage)],
+      ['done', 'Hired / completed', (r) => r.stage === 'completed'],
+      ['closed', 'Declined / not selected', (r) => ['rejected', 'offer_declined'].includes(r.stage)],
+      ['all', 'All', () => true]];
+    const f = { q: '', v: interviews ? 'short' : 'open', co: 'all' };
+    const cos = [...new Set(rows.map((r) => r.company).filter(Boolean))].sort();
+    const byStage = Object.fromEntries(APP_STAGES.map(([k]) => [k, rows.filter((r) => r.stage === k).length]));
+    $('#ap-body', el).innerHTML = `
+      <div class="pipe">${APP_STAGES.filter(([k]) => byStage[k]).map(([k, l, t]) => `<div class="pipe-step ${t}"><b>${num(byStage[k])}</b><span>${esc(l)}</span></div>`).join('') || '<p class="muted">No applications yet.</p>'}</div>
+      <section class="card">
+        <div class="toolbar">
+          <label class="search-in">${icon('search')}<input id="aq" type="search" placeholder="Name, position, email or phone" aria-label="Search applications"></label>
+          <select id="aco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
+          <div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
+        </div>
+        <div class="table-wrap fill"><table class="data freeze2" id="atable"><thead><tr><th>Submitted</th><th>Applicant</th><th>Company</th><th>Position</th><th>Stage</th><th>Offer letter</th><th>Start</th><th>Employee</th></tr></thead><tbody></tbody></table></div>
+        <p class="muted small" id="acount"></p>
+        <p class="muted small">From MEG-EAF V2. Click an application for its summary and stage history. Screening, Office Use, shortlisting, interviews and the offer letter are done in MEG-EAF V2; once an offer is accepted and the onboarding handoff is prepared, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
+      </section>`;
+    const draw = () => {
+      const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
+      const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co)
+        && (!t || `${r.name} ${r.position || ''} ${r.title || ''} ${r.email || ''} ${r.contact || ''}`.toLowerCase().includes(t)));
+      $('#atable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="click" tabindex="0">
+          <td class="nowrap">${dShort(r.submitted_at)}</td><td><b>${esc(r.name)}</b>${r.email ? `<small class="sub">${esc(r.email)}</small>` : ''}</td>
+          <td>${esc(coShort(r.company))}</td><td>${esc(r.title || r.position || '—')}${r.title && r.position && r.title !== r.position ? `<small class="sub">applied: ${esc(r.position)}</small>` : ''}</td>
+          <td>${appStageTag(r.stage)}</td><td>${r.loec ? esc(LOEC[r.loec] || r.loec) : '<span class="muted">—</span>'}</td>
+          <td class="nowrap">${r.start ? dShort(r.start) : '<span class="muted">—</span>'}</td>
+          <td class="nowrap">${r.employee_id ? `<code>${esc(r.employee_id)}</code>${r.in_payroll ? '' : '<small class="sub warn-txt">not in payroll</small>'}` : '<span class="muted">—</span>'}</td></tr>`).join('')
+        : '<tr><td colspan="8"><div class="empty small"><p>No applications here</p><span>Try another tab or clear the search.</span></div></td></tr>';
+      $('#acount', el).textContent = `${list.length} of ${rows.length} applications`;
+      fitTables();
+    };
+    draw();
+    $('#aq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
+    $('#aco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    const open = (id) => applicationWindow(id);
+    $('#atable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) open(tr.dataset.id); });
+    $('#atable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') open(tr.dataset.id); });
+  }
+
+  async function applicationWindow(id) {
+    let a;
+    try { a = await API.rpc('cms_recruit_application', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+    const kv = (k, v) => (v ? `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>` : '');
+    await modal({
+      title: a.name, wide: true, ok: null, cancel: 'Close',
+      body: `<p class="muted small">${esc(coShort(a.company))} · submitted ${dShort(a.submitted_at)} · ${appStageTag(a.stage)}${a.decision ? ` · decision: ${esc(a.decision)}` : ''}</p>
+        <dl class="kv2">
+          ${kv('Applied for', esc(a.position || ''))}${kv('Approved job title', esc([a.title, a.level].filter(Boolean).join(' · ')))}${kv('JD reference', esc(a.jd_ref || ''))}
+          ${kv('Chinese name', esc(a.chinese_name || ''))}${kv('Email', esc(a.email || ''))}${kv('Phone', esc(a.contact || ''))}
+          ${kv('Available from', a.available_from ? dShort(a.available_from) : '')}${kv('Expected salary', a.expected_salary ? esc(a.expected_salary) : '')}
+          ${kv('Interviewed by', esc(a.interviewed_by || ''))}${kv('Department', esc(a.department || ''))}${kv('Work location', esc(a.location || ''))}
+          ${kv('Start date', a.start ? dShort(a.start) : '')}${kv('Working hours', esc(a.hours || ''))}${kv('Final salary', a.final_salary ? money(a.final_salary) : '')}
+          ${kv('Employment type', esc(a.employment_type || ''))}${kv('Pay basis', esc(a.pay_basis || ''))}${kv('Probation', a.probation_months ? `${esc(a.probation_months)} months` : '')}
+          ${kv('Reporting to', esc(a.reporting || ''))}${kv('Office comments', esc(a.office_comments || ''))}
+          ${kv('Offer letter', a.loec ? `${esc(LOEC[a.loec.status] || a.loec.status)} · revision ${esc(a.loec.revision)}${a.loec.stamp_status ? ` · stamp ${esc(STAMP[a.loec.stamp_status] || a.loec.stamp_status)}` : ''}` : '')}
+          ${kv('Employee', a.person ? `<code>${esc(a.person.employee_id || '—')}</code> · ${esc(a.person.status)}${a.person.in_payroll ? ' · in payroll' : ' · <span class="warn-txt">not in payroll yet</span>'}` : '')}
+        </dl>
+        <h4 class="sec-h">Stage history</h4>
+        ${a.events.length ? `<ol class="timeline">${a.events.map((e) => `<li><b>${esc(appStageOf(e.to)[1])}</b>${e.from ? ` <span class="muted small">from ${esc(appStageOf(e.from)[1])}</span>` : ''}<small class="sub">${dShort(e.at)} · ${esc(e.by || '—')}${e.note ? ` · ${esc(e.note)}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted small">No stage changes recorded yet.</p>'}
+        <div class="btn-row">${eafBtn('hr', 'Open in MEG-EAF V2', 'primary')}${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
+        <p class="muted small">MEG-EAF V2 opens on its HR page; search for ${esc(a.name)} there. Photos and IC images stay in MEG-EAF V2.</p>`,
+    });
+  }
+
+  // ---------------------------------------------------------------- 3.2 JD Manual and Positions & Vacancies
+  async function jdPage(item, el) {
+    const positions = item.route === 'positions';
+    el.innerHTML = `${pageHead(item, eafBtn('jd', 'Open the JD Manual in MEG-EAF V2', 'ghost'))}<div id="jd-body">${loading()}</div>`;
+    let J;
+    try { [J] = await Promise.all([API.rpc('cms_jd'), loadOrg()]); } catch (e) { $('#jd-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const ent = Object.fromEntries(J.entities.map((x) => [x.id, x])); const dep = Object.fromEntries(J.departments.map((x) => [x.id, x]));
+    const f = { q: '', co: 'all', dept: 'all', v: positions ? 'all' : 'all' };
+    const V = positions
+      ? [['all', 'All positions', () => true], ['open', 'Open for applications', (p) => p.open], ['staffed', 'With staff', (p) => p.staff > 0], ['apps', 'With applications', (p) => p.applications > 0], ['vacant', 'No staff yet', (p) => !p.staff]]
+      : [['all', 'All', () => true]];
+    $('#jd-body', el).innerHTML = `
+      <section class="card">
+        <div class="toolbar">
+          <label class="search-in">${icon('search')}<input id="jq" type="search" placeholder="Job title, reference or level" aria-label="Search positions"></label>
+          <select id="jco" aria-label="Company"><option value="all">All companies</option>${J.entities.map((e) => `<option value="${esc(e.id)}">${esc(coShort(e.code) || e.name)}</option>`).join('')}</select>
+          <select id="jdept" aria-label="Department"><option value="all">All departments</option></select>
+          ${V.length > 1 ? `<div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${J.positions.filter(fn).length}</span></button>`).join('')}</div>` : ''}
+        </div>
+        <div class="table-wrap fill"><table class="data freeze2" id="jtable"><thead><tr><th>Reference</th><th>Job title</th><th>Company</th><th>Department</th><th>Level</th>${positions ? '<th>Staff</th><th>Applications</th><th>Open</th>' : '<th>Type</th><th>Reports to</th><th>Version</th>'}</tr></thead><tbody></tbody></table></div>
+        <p class="muted small" id="jcount"></p>
+        <p class="muted small">${positions ? 'Staff counts active and onboarding people whose approved job title and employer match the position. “Open for applications” is set in the JD Manual (MEG-EAF V2) and controls what applicants can choose.' : 'The controlled JD master from MEG-EAF V2. Click a position for its purpose, responsibilities, KPIs and competencies'}${J.can_see_pay ? ' and salary bands (HR and Admin only).' : '.'} Changes are made in the JD Manual in MEG-EAF V2.</p>
+      </section>`;
+    const fillDept = () => { $('#jdept', el).innerHTML = `<option value="all">All departments</option>${J.departments.filter((d) => f.co === 'all' || String(d.entity_id) === f.co).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}`; f.dept = 'all'; };
+    fillDept();
+    const draw = () => {
+      const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
+      const list = J.positions.filter((p) => fn(p) && (f.co === 'all' || String(p.entity_id) === f.co) && (f.dept === 'all' || String(p.department_id) === f.dept)
+        && (!t || `${p.reference} ${p.title} ${p.level || ''}`.toLowerCase().includes(t)));
+      $('#jtable tbody', el).innerHTML = list.length ? list.map((p) => `<tr data-id="${esc(p.id)}" class="click" tabindex="0">
+          <td class="nowrap"><code>${esc(p.reference || '—')}</code></td><td><b>${esc(p.title)}</b></td>
+          <td>${esc(coShort(ent[p.entity_id]?.code) || '—')}</td><td>${esc(dep[p.department_id]?.name || '—')}</td><td>${esc(p.level || '—')}</td>
+          ${positions ? `<td class="num">${p.staff ? num(p.staff) : '<span class="muted">0</span>'}</td><td class="num">${p.applications ? num(p.applications) : '<span class="muted">0</span>'}</td><td>${p.open ? '<span class="tag ok xs">Open</span>' : '<span class="muted small">Closed</span>'}</td>`
+            : `<td>${esc(p.employment_type || '—')}</td><td>${esc(p.reports_to || '—')}</td><td class="nowrap">${esc(p.version || '—')}${p.effective_date ? `<small class="sub">from ${dShort(p.effective_date)}</small>` : ''}</td>`}</tr>`).join('')
+        : '<tr><td colspan="8"><div class="empty small"><p>No positions match</p><span>Clear the search or filters.</span></div></td></tr>';
+      $('#jcount', el).textContent = `${list.length} of ${J.positions.length} positions`;
+      fitTables();
+    };
+    draw();
+    $('#jq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
+    $('#jco', el).addEventListener('change', (e) => { f.co = e.target.value; fillDept(); draw(); });
+    $('#jdept', el).addEventListener('change', (e) => { f.dept = e.target.value; draw(); });
+    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    const open = async (id) => {
+      let p; try { p = await API.rpc('cms_jd_position', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+      const para = (k, v) => (v ? `<h4 class="sec-h">${esc(k)}</h4><p class="pre">${esc(v)}</p>` : '');
+      await modal({
+        title: p.job_title, wide: true, ok: null, cancel: 'Close',
+        body: `<p class="muted small"><code>${esc(p.reference || '')}</code> · ${esc(coShort(p.entity) || '')} · ${esc(p.department || '')}${p.level ? ` · ${esc(p.level)}` : ''}${p.version ? ` · version ${esc(p.version)}` : ''} · ${p.is_open_for_recruitment ? '<span class="tag ok xs">Open for applications</span>' : 'closed for applications'}</p>
+          <dl class="kv2">${[['Reports to', p.reports_to], ['Direct reports', p.direct_reports], ['Location', p.location], ['Employment type', p.employment_type], ['Works closely with', p.works_closely_with]]
+            .filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+          ${para('Purpose', p.purpose)}
+          ${p.responsibilities.length ? `<h4 class="sec-h">Responsibilities</h4><ol class="jd-list">${p.responsibilities.map((r) => `<li><b>${esc(r.title || '')}</b>${r.description ? `<span>${esc(r.description)}</span>` : ''}</li>`).join('')}</ol>` : ''}
+          ${p.kpis.length ? `<h4 class="sec-h">KPIs</h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Area</th><th>Measure</th><th>Review</th></tr></thead><tbody>${p.kpis.map((k) => `<tr><td>${esc(k.area || '')}</td><td>${esc(k.measure || '')}</td><td>${esc(k.frequency || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          ${p.competencies.length ? `<h4 class="sec-h">Competencies</h4><p>${p.competencies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ')}</p>` : ''}
+          ${para('Minimum qualifications', p.minimum_qualifications)}${para('Experience', p.required_experience)}${para('Skills & knowledge', p.skills_knowledge)}
+          ${para('Safety & child protection', p.safety_child_protection)}${para('Career path', p.career_path)}
+          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Range</th><th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.range ? esc(b.range) : `${money(b.min)} – ${money(b.max)}`}</td><td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
+          <div class="btn-row">${eafBtn('jd', 'Edit in the JD Manual (MEG-EAF V2)')}</div>`,
+      });
+    };
+    $('#jtable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) open(tr.dataset.id); });
+    $('#jtable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') open(tr.dataset.id); });
+  }
+
+  // ---------------------------------------------------------------- 3.3 + 3.4 offers & onboarding, hire
+  async function onboardingPage(item, el) {
+    el.innerHTML = `${pageHead(item, eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost'))}<div id="on-body">${loading()}</div>`;
+    let o;
+    try { [o] = await Promise.all([API.rpc('cms_onboarding'), loadOrg()]); state.onb = o; } catch (e) { $('#on-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const hireBtn = (attrs) => (o.can_hire ? `<button type="button" class="btn sm primary" ${attrs}>${icon('user-plus')}Hire…</button>` : '');
+    const stampCell = (x) => {
+      if (!x.stamp_status) return '<span class="muted">—</span>';
+      const d = daysTo(x.stamp_due); const late = x.stamp_status === 'pending' && d !== null && d < 0; const soon = x.stamp_status === 'pending' && d !== null && d >= 0 && d <= 7;
+      return `${esc(STAMP[x.stamp_status] || x.stamp_status)}${x.stamp_due ? `<small class="sub ${late ? 'bad-txt' : soon ? 'warn-txt' : ''}">due ${dShort(x.stamp_due)}${late ? ` · ${-d} days late` : soon ? ` · in ${d} days` : ''}</small>` : ''}`;
+    };
+    $('#on-body', el).innerHTML = `
+      <div class="pipe">
+        <div class="pipe-step ok"><b>${num(o.accepted.length)}</b><span>Accepted, to hire</span></div>
+        <div class="pipe-step warn"><b>${num(o.to_payroll.length)}</b><span>Not yet in payroll</span></div>
+        <div class="pipe-step joint"><b>${num(o.offers.filter((x) => !['completed'].includes(x.status)).length)}</b><span>Offer letters open</span></div>
+        <div class="pipe-step ${state.onbSum?.stampSoon ? 'bad' : ''}"><b>${num(o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length)}</b><span>Stamp duty due ≤ 7 days</span></div>
+      </div>
+      <section class="card"><div class="card-head"><h3>Accepted applicants</h3><span class="muted small">Offer accepted in MEG-EAF V2. Hire creates the person record and the payroll record together.</span></div>
+        ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Handoff</th><th></th></tr></thead><tbody>
+          ${o.accepted.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}${x.department ? `<small class="sub">${esc(x.department)}</small>` : ''}</td>
+            <td class="nowrap">${x.start ? dShort(x.start) : '—'}</td>
+            <td>${x.handoff === 'pending_import' ? '<span class="tag ok xs">Ready</span>' : x.handoff === 'cancelled' ? '<span class="tag xs">Cancelled</span>' : '<span class="tag warn xs">Not prepared</span>'}${x.error ? `<small class="sub bad-txt">${esc(x.error)}</small>` : ''}</td>
+            <td class="nowrap">${x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : `<button type="button" class="btn sm" data-prep="${esc(x.application_id)}">Prepare handoff</button>`}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an offer is accepted in MEG-EAF V2 it appears here.</span></div>'}
+      </section>
+      <section class="card"><div class="card-head"><h3>Not yet in payroll</h3><span class="muted small">People who are active or onboarding in the CMS but have no payroll record.</span></div>
+        ${o.to_payroll.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Employee ID</th><th>Name</th><th>Company</th><th>Job title</th><th>Start</th><th>Status</th><th></th></tr></thead><tbody>
+          ${o.to_payroll.map((x) => `<tr><td><code>${esc(x.employee_id || '—')}</code></td><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}</td>
+            <td class="nowrap">${dShort(x.start)}</td><td><span class="st st-${esc(x.status)}">${esc(x.status)}</span></td><td>${hireBtn(`data-hire-p="${esc(x.person_id)}"`).replace('Hire…', 'Add to payroll…')}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty small"><p>Everyone is in payroll</p><span>Nothing to add.</span></div>'}
+      </section>
+      <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Issued, signed and stamped in MEG-EAF V2.</span></div>
+        ${o.offers.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Document</th><th>Status</th><th>Issued</th><th>Signed</th><th>Stamp duty</th><th>Original</th></tr></thead><tbody>
+          ${o.offers.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td class="nowrap"><code>${esc(x.document_id || '—')}</code><small class="sub">rev ${esc(x.revision)}${x.jd_reference ? ` · ${esc(x.jd_reference)}` : ''}</small></td>
+            <td>${esc(LOEC[x.status] || x.status)}</td><td class="nowrap">${dShort(x.issued_at)}</td>
+            <td class="nowrap">${x.employee_signed ? `${dShort(x.employee_signed)}<small class="sub">employer ${dShort(x.employer_signed)}</small>` : '<span class="muted">—</span>'}</td>
+            <td class="nowrap">${stampCell(x)}</td><td>${x.original_received ? '<span class="tag ok xs">Received</span>' : '<span class="muted">—</span>'}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty small"><p>No offer letters yet</p><span>Offer letters issued in MEG-EAF V2 are tracked here, with stamp-duty due dates.</span></div>'}
+      </section>`;
+    const reload = () => { state.onb = null; loadRecruitSummary(); onboardingPage(item, el); };
+    $$('[data-hire-h]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ handoff: b.dataset.hireH })) reload(); }));
+    $$('[data-hire-p]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ person: b.dataset.hireP })) reload(); }));
+    $$('[data-prep]', el).forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await API.rpc('prepare_eaf_onboarding_handoff', { p_application_id: b.dataset.prep, p_note: 'Prepared from the CMS' }); toast('Handoff prepared: ready to hire'); reload(); }
+      catch (e) { b.disabled = false; toast(`${e.message}. Complete the Office Use section in MEG-EAF V2.`, 'err'); }
+    }));
+  }
+
+  async function hireWindow({ handoff = null, person = null }) {
+    let P;
+    try { P = await API.rpc('cms_hire_prefill', { p_handoff: handoff, p_person: person }); } catch (e) { toast(e.message, 'err'); return false; }
+    const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+    const t5 = (s) => (s ? String(s).slice(0, 5) : '');
+    const comp0 = P.companies.find((c) => c.code === P.employer) || P.companies[0] || {};
+    const dept0 = P.departments.find((d) => d.code === P.department || d.name === P.department);
+    const title0 = P.titles.find((t) => (t.name || '').toLowerCase() === (P.title || '').toLowerCase());
+    const idNote = P.employee_id ? `Keeps Employee ID <b>${esc(P.employee_id)}</b>.` : `Gets the next group number, <b>${esc(String(P.next_serial).padStart(4, '0'))}</b>; the Employee ID is built from the employer, start month and gender (e.g. ${esc((P.employer || 'MEG')[0])}${esc((P.join_date || '').slice(5, 7) + (P.join_date || '').slice(2, 4))}${esc(P.gender || 'F')}${esc(String(P.next_serial).padStart(4, '0'))}).`;
+    return modal({
+      title: `${P.person_id ? 'Add to payroll' : 'Hire'} · ${P.name}`, wide: true, ok: P.person_id ? 'Add to payroll' : 'Hire', cancel: 'Cancel',
+      body: `<p class="muted small">Filled in from the accepted offer in MEG-EAF V2. Check every field: the person record and the payroll record are created together. ${idNote}</p>
+        <div class="fld-2">
+          <label class="fld"><span>Name</span><input name="name" required value="${esc(P.name || '')}"></label>
+          <label class="fld"><span>Gender <small class="muted">— used in the Employee ID</small></span><select name="gender" required>${opt([['F', 'Female'], ['M', 'Male']], P.gender, 'Confirm…')}</select></label>
+          <label class="fld"><span>Employer on the contract</span><select name="employer" required>${opt([['MEG', 'MyEden Group'], ['MEH', 'MyEden Edu Hub'], ['HD', 'Happy Dino'], ['ABP', 'Aborne Project']], P.employer)}</select></label>
+          <label class="fld"><span>Paying company</span><select name="company" required>${opt(P.companies.map((c) => [c.id, c.name]), comp0.id)}</select></label>
+          <label class="fld"><span>Start date</span><input type="date" name="join" required value="${esc(P.join_date || '')}"></label>
+          <label class="fld"><span>Centre / department${P.department ? ` <small class="muted">— offer: ${esc(P.department)}</small>` : ''}</span><select name="dept">${opt(P.departments.map((d) => [d.id, d.code === d.name ? d.code : `${d.code} · ${d.name}`]), dept0?.id, 'Choose…')}</select></label>
+          <label class="fld"><span>Job title${P.title && !title0 ? ` <small class="muted">— “${esc(P.title)}” is new to payroll</small>` : ''}</span><select name="title">${opt(P.titles.map((t) => [t.id, t.name]), title0?.id, P.title && !title0 ? `Add “${P.title}” to payroll titles` : 'Not set')}</select></label>
+          <label class="fld"><span>Employment status</span><select name="conf">${opt(P.statuses.map((x) => [x.code, x.label]), 'UP')}</select></label>
+          <label class="fld"><span>Job status${P.employment_type ? ` <small class="muted">— offer: ${esc(P.employment_type)}</small>` : ''}</span><select name="job">${opt(P.job_statuses.map((x) => [x.code, x.label]), /part/i.test(P.employment_type || '') ? 'PT' : 'FT', 'Not set')}</select></label>
+          <label class="fld"><span>Working hours</span><span class="hours"><input type="time" name="from" value="${esc(t5(P.work_from))}"> – <input type="time" name="to" value="${esc(t5(P.work_to))}"></span></label>
+          <label class="fld"><span>Starting salary (RM)</span><input type="number" name="salary" step="0.01" min="0" required value="${esc(P.salary ?? '')}"></label>
+          <label class="fld"><span>Pay basis</span><select name="basis">${opt([['monthly', 'Monthly'], ['hourly', 'Hourly'], ['daily', 'Daily']], /hour/i.test(P.pay_basis || '') ? 'hourly' : /dai/i.test(P.pay_basis || '') ? 'daily' : 'monthly')}</select></label>
+          <label class="fld"><span>Email</span><input name="email" type="email" value="${esc(P.email || '')}"></label>
+          <label class="fld"><span>Phone</span><input name="phone" value="${esc(P.phone || '')}"></label>
+          <label class="fld"><span>Date of birth</span><input type="date" name="dob" value="${esc(P.dob || '')}"></label>
+          <label class="fld"><span>NRIC <small class="muted">— payroll only</small></span><input name="nric" value="${esc(P.nric || '')}" autocomplete="off"></label>
+        </div>
+        <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>
+        <p class="muted small">After this: bank, EPF / SOCSO / tax numbers and allowances are added in MyPayroll (Employee › Identity &amp; bank, Pay). The handbook is assigned automatically.</p>`,
+      onOk: async (form) => {
+        if (!form.gender.value) throw new Error('Confirm the gender: the Employee ID is built from it.');
+        if (!form.join.value) throw new Error('Enter the start date.');
+        if (!(Number(form.salary.value) >= 0) || form.salary.value === '') throw new Error('Enter the starting salary.');
+        const r = await API.rpc('cms_hire', { p: {
+          handoff_id: P.handoff_id, person_id: P.person_id, name: form.name.value, gender: form.gender.value, employer: form.employer.value,
+          company_id: Number(form.company.value), join_date: form.join.value, department_id: form.dept.value || null,
+          job_title_id: form.title.value || null, job_title_name: form.title.value ? null : (P.title || null),
+          confirmation_status: form.conf.value, job_status: form.job.value || null, work_from: form.from.value || null, work_to: form.to.value || null,
+          salary: Number(form.salary.value), pay_basis: form.basis.value, email: form.email.value || null, phone: form.phone.value || null,
+          dob: form.dob.value || null, nric: form.nric.value || null, note: form.note.value || null } });
+        toast(`${form.name.value.toUpperCase()} hired · Employee ID ${r.employee_id}`);
+        state.people = null;
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------- 3.6 handbook progress
+  const HB = { assigned: ['Assigned', 'warn'], viewed: ['Opened', 'blue'], read: ['Read', 'joint'], acknowledged: ['Acknowledged', 'ok'] };
+  const hbState = (r) => (r.acknowledged_at ? 'acknowledged' : r.read_at ? 'read' : r.viewed_at ? 'viewed' : r.status ? 'assigned' : null);
+  async function loadHandbook() { if (!can('handbook')) return null; try { state.hb = await API.rpc('cms_handbook_progress'); } catch (e) { state.hb = null; } return state.hb; }
+  const hbCell = (r) => {
+    if (!r) return '<span class="muted">—</span>';
+    const s = hbState(r); if (!s) return '<span class="muted small">not assigned</span>';
+    const late = s !== 'acknowledged' && r.due_at && daysTo(r.due_at) < 0;
+    return `<span class="tag ${HB[s][1]} xs">${HB[s][0]}</span>${s === 'acknowledged' ? `<small class="sub">${dShort(r.acknowledged_at)}</small>` : r.progress != null ? `<small class="sub ${late ? 'bad-txt' : ''}">${r.progress}% read${r.due_at ? ` · due ${dShort(r.due_at)}` : ''}</small>` : ''}`;
+  };
+  async function handbookPage(item, el) {
+    el.innerHTML = `${pageHead(item, eafBtn('handbook', 'Open handbook status in MEG-EAF V2', 'ghost'))}<div id="hb-body">${loading()}</div>`;
+    let rows;
+    try { [rows] = await Promise.all([loadHandbook(), loadOrg()]); if (!rows) throw new Error('Could not load handbook progress.'); } catch (e) { $('#hb-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    rows.forEach((r) => upKeys(r, 'name'));
+    const V = [['open', 'Not yet acknowledged', (r) => hbState(r) && hbState(r) !== 'acknowledged'], ['late', 'Past due', (r) => hbState(r) && hbState(r) !== 'acknowledged' && r.due_at && daysTo(r.due_at) < 0],
+      ['none', 'Not assigned', (r) => !hbState(r)], ['done', 'Acknowledged', (r) => hbState(r) === 'acknowledged'], ['all', 'All active staff', () => true]];
+    const f = { q: '', v: 'open', co: 'all' };
+    const cos = [...new Set(rows.map((r) => r.company).filter(Boolean))].sort();
+    $('#hb-body', el).innerHTML = `
+      <section class="card">
+        <div class="toolbar">
+          <label class="search-in">${icon('search')}<input id="hq" type="search" placeholder="Name, Employee ID or centre" aria-label="Search"></label>
+          <select id="hco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
+          <div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
+        </div>
+        <div class="table-wrap fill"><table class="data freeze2" id="htable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Centre</th><th>Handbook</th><th>Assigned</th><th>Progress</th></tr></thead><tbody></tbody></table></div>
+        <p class="muted small" id="hcount"></p>
+        <p class="muted small">Active and onboarding staff with their latest handbook assignment from MEG-EAF V2. Staff read and acknowledge the handbook in MEG-EAF V2; assignments, deadlines and reminders are managed there.</p>
+      </section>`;
+    const draw = () => {
+      const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
+      const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co) && (!t || `${r.name} ${r.employee_id || ''} ${r.unit || ''}`.toLowerCase().includes(t)));
+      $('#htable tbody', el).innerHTML = list.length ? list.map((r) => `<tr><td class="nowrap"><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td>
+          <td>${esc(coShort(r.company))}</td><td>${esc(r.unit || '—')}</td><td>${esc(r.version || '—')}</td><td class="nowrap">${dShort(r.assigned_at)}</td><td class="nowrap">${hbCell(r)}</td></tr>`).join('')
+        : '<tr><td colspan="7"><div class="empty small"><p>No one here</p><span>Try another tab.</span></div></td></tr>';
+      $('#hcount', el).textContent = `${list.length} of ${rows.length} people`;
+      fitTables();
+    };
+    draw();
+    $('#hq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
+    $('#hco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+    $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+  }
+
+  // ---------------------------------------------------------------- 3.7 Employment Act & calculators
+  function hrlawPage(item, el) {
+    el.innerHTML = `${pageHead(item)}
+      <section class="card coming"><div class="coming-art">${icon('scale')}</div>
+        <div><h3>Employment Act 1955 &amp; calculators</h3>
+        <p>The statutory reference and the overtime, leave, notice, maternity and final-pay calculators are in MEG-EAF V2. They open in a new tab with your same sign-in.</p>
+        <div class="btn-row">${eafBtn('law', 'Open Employment Act & calculators', 'primary')}${can('letters') ? eafBtn('letters', 'Open HR Letters') : ''}</div></div></section>`;
+  }
+
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -1491,6 +1821,7 @@
   const LIVE = {
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
+    applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
@@ -1654,7 +1985,7 @@
     catch (e) { loginScreen(e.message); return; }
     if (justSignedIn) { justSignedIn = false; API.rpc('cms_note_sign_in').catch(() => {}); }
     if (!state.access || !state.access.roles.length) { noRoleScreen(); return; }
-    buildShell(); render(); loadIncrSummary();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary();
     if ((location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

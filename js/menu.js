@@ -25,12 +25,12 @@ window.CMS_MENU = [
       { route: 'documents', label: 'Employee Documents', phase: 5, desc: 'Contracts, IC copies, certificates and letters, filed per employee.' },
     ] },
     { group: 'Recruitment', icon: 'search-user', items: [
-      { route: 'jd', label: 'Job Description Manual', phase: 3, source: 'MEG-EAF V2', desc: 'The controlled multi-entity JD master. Positions here also become CMS roles.' },
-      { route: 'positions', label: 'Positions & Vacancies', phase: 3, desc: 'Open a role from a JD, get it approved, and track headcount.' },
-      { route: 'applications', label: 'Applications', phase: 3, source: 'MEG-EAF V2', desc: 'Invitation-only applications, screening and Office Use.' },
-      { route: 'interviews', label: 'Shortlist & Interviews', phase: 3, source: 'MEG-EAF V2', desc: 'Shortlists, interview schedules and scores.' },
-      { route: 'onboarding', label: 'Offers & Onboarding', phase: 3, source: 'MEG-EAF V2', desc: 'LOEC, acceptance, then the applicant becomes an employee without retyping.', plan: ['LOEC workflow', 'Accepted applicant → employee record + Employee ID', 'Onboarding checklist and handbook acknowledgement'] },
-      { route: 'handbook', label: 'Employee Handbook', phase: 3, source: 'MEG-EAF V2', desc: 'Handbook issued per legal employer, with digital acknowledgement tracked per version.' },
+      { route: 'jd', label: 'Job Description Manual', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'The JD master from MEG-EAF V2: every position by company and department, with purpose, responsibilities, KPIs, competencies and (HR / Admin) salary bands.' },
+      { route: 'positions', label: 'Positions & Vacancies', phase: 3, live: true, desc: 'Every JD position with its current staff, open applications and whether it is open for applications.' },
+      { route: 'applications', label: 'Applications', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'All applications from MEG-EAF V2 by stage, company and position, with each applicant’s summary and stage history.' },
+      { route: 'interviews', label: 'Shortlist & Interviews', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Shortlisted applicants and offers in progress. Interviews and the offer letter are done in MEG-EAF V2.' },
+      { route: 'onboarding', label: 'Offers & Onboarding', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Accepted applicants become employees in one step (person record + payroll record + Employee ID); offer letters and stamp duty tracked.' },
+      { route: 'handbook', label: 'Employee Handbook', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Who has been assigned, opened, read and acknowledged the Employee Handbook, per person and centre.' },
     ] },
     { group: 'Time & Leave', icon: 'calendar', items: [
       { route: 'leave', label: 'Leave Records', phase: 2, source: 'MyPayroll V2.0', myp: 'leave', desc: 'Leave taken and approved, by person and type.' },
@@ -62,7 +62,7 @@ window.CMS_MENU = [
     ] },
     { route: 'assets', label: 'Assets & Equipment', icon: 'box', phase: 5, desc: 'Laptops, keys, uniforms and devices issued to staff, returned at offboarding.' },
     { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, source: 'MEG-EAF V2', desc: 'Appointment, confirmation, service and other letters on company letterheads.' },
-    { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators.' },
+    { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators (in MEG-EAF V2).' },
     { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Every claim waiting for approval, processing or payment, across all MEG-FORMS forms.' },
     { route: 'reports', label: 'Reports & Analytics', icon: 'chart', phase: 5, desc: 'Headcount, turnover, cost and claims across companies and centres.' },
   ] },
@@ -104,7 +104,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'people', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment',
+  'people/add': 'people', 'people/directory': 'people', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
   'leave/balances': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
