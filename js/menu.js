@@ -22,6 +22,7 @@ window.CMS_MENU = [
     { route: 'me/handbook', label: 'My Handbook', icon: 'shield', phase: 4, live: true, self: 'handbook', desc: 'Your Employee Handbook: read it, and see what you have acknowledged.' },
     { route: 'me/leave', label: 'My Leave', icon: 'calendar', phase: 4, live: true, self: 'leave', desc: 'Apply for leave and see your requests. Approved by the person you report to (or anyone above them).' },
     { route: 'me/appraisal', label: 'My Appraisal', icon: 'trend', phase: 5, live: true, self: 'appraisal', desc: 'Your self-assessment and appraisal results, and appraisals of people who report to you.' },
+    { route: 'me/certs', label: 'My Certificates', icon: 'shield', phase: 5, live: true, self: 'certs', desc: 'Your certificates and training: expiry dates, and send a new certificate to HR.' },
     { route: 'me/items', label: 'My Items', icon: 'box', phase: 4, live: true, self: 'items', desc: 'Company items issued to you: confirm what you received, and hand them over when you leave.' },
   ] },
   { section: 'Workspace', items: [
@@ -73,7 +74,7 @@ window.CMS_MENU = [
     { group: 'Performance & Growth', icon: 'trend', items: [
       { route: 'careers', label: 'Career Paths', phase: 5, live: true, desc: 'Every employee on their JD level: time in level, salary against the cap, and the next level with its cap. MyEden salary caps are set here beside the JD (market) ranges; each person\'s timeline from application to today.' },
       { route: 'performance', label: 'KPI & Appraisal', phase: 5, live: true, desc: 'Probation reviews and annual appraisals: scored on the JD KPIs by the person they report to, approved by HR / Admin or a director. Approving confirms probation, sets the KPI grade in payroll (annual-leave carry forward) and can promote to the next JD level.' },
-      { route: 'training', label: 'Training & Certificates', phase: 5, desc: 'First aid, SKM, ECCE and other certificates, with expiry reminders.' },
+      { route: 'training', label: 'Training & Certificates', phase: 5, live: true, desc: 'First aid, PERMATA / KAAK, ECCE, SKM, food handler, typhoid and other certificates per person, with expiry reminders, required certificates, training sessions and certificates sent by staff for HR to verify.' },
     ] },
     { route: 'assets', label: 'Items & Hand-over', icon: 'box', phase: 4, live: true, desc: 'Every company item issued to staff — email and system accounts, keys, cards, thumb drives, devices, uniforms, handbook — confirmed by the person, changed or returned during employment, and handed over at offboarding with a deadline and approval.' },
     { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, source: 'MEG-EAF V2', desc: 'Appointment, confirmation, service and other letters on company letterheads.' },

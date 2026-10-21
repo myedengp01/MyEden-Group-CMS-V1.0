@@ -159,7 +159,7 @@
   }
 
   function tasksFromDash(d) {
-    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks()];
+    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks()];
     if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -1877,6 +1877,7 @@
     ['claims', 'Claims', 'My Claims: their SCF / OTCF / MTCF claims and status'],
     ['leave', 'Leave', 'My Leave: apply for leave (not in use yet: leave runs in the other system)'],
     ['handbook', 'Handbook', 'My Handbook: open the handbook and see what they acknowledged'],
+    ['certs', 'Certificates', 'My Certificates: their certificates and expiry; send a new certificate to HR'],
   ];
   const PART_READY = (p) => !(PARTS.find((x) => x[0] === p) || [])[3];
   const PROFILE_FIELDS = [['contact', 'Phone'], ['email', 'Email'], ['home_address', 'Home address'], ['emergency_name', 'Emergency contact'],
@@ -1909,6 +1910,7 @@
       ['me/handbook', 'shield', 'My Handbook', 'Read and acknowledge', selfOn('handbook')],
       ['me/leave', 'calendar', 'My Leave', 'Apply and follow your requests', selfOn('leave')],
       ['me/appraisal', 'trend', 'My Appraisal', 'Self-assessment and results', selfOn('appraisal')],
+      ['me/certs', 'shield', 'My Certificates', 'Certificates and expiry dates', selfOn('certs')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -2969,6 +2971,178 @@
     return t;
   }
 
+  // ================================================================ 5c · TRAINING & CERTIFICATES
+  const CERT_ST = { valid: ['Valid', 'ok'], expiring: ['Expiring soon', 'warn'], expired: ['Expired', 'bad'], pending: ['Waiting for HR', 'blue'], rejected: ['Not accepted', 'bad'] };
+  const certTag = (c) => `<span class="tag ${(CERT_ST[c.state] || ['', ''])[1]} xs">${esc((CERT_ST[c.state] || [c.state])[0])}</span>`;
+  const certName = (c) => `<b>${esc(c.type_label)}</b>${c.title && c.title !== c.type_label ? `<small class="sub">${esc(c.title)}</small>` : ''}${c.cert_no ? `<small class="sub">No. ${esc(c.cert_no)}</small>` : ''}`;
+  const fileField = (label = 'Copy of the certificate (photo or PDF)') => `<label class="fld fld-2"><span>${esc(label)}</span><input name="file" type="file" accept="image/*,application/pdf"></label>`;
+  async function readDoc(file) {
+    if (!file) return null;
+    if (file.type === 'application/pdf') {
+      if (file.size > 2 * 1024 * 1024) throw new Error('The PDF is too large (2 MB at most).');
+      return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read the file.')); r.readAsDataURL(file); });
+    }
+    return shrinkImage(file);
+  }
+  const wireDoc = (w, holder) => { $('input[name=file]', w)?.addEventListener('change', async (e) => { try { holder.v = await readDoc(e.target.files[0]); } catch (x) { holder.v = null; toast(x.message, 'err'); } }); };
+  async function showCertFile(id) {
+    try { const src = await API.rpc('cms_cert_file', { p_id: id }); if (!src) throw new Error('No copy attached.');
+      if (src.startsWith('data:application/pdf')) { const w = window.open(); if (w) w.document.write(`<iframe src="${src}" style="border:0;width:100%;height:100vh"></iframe>`); return; }
+      await modal({ title: 'Certificate', ok: null, cancel: 'Close', wide: true, body: `<img class="att-img" src="${esc(src)}" alt="Certificate">` }); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function trainingPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="tc-body">${loading()}</div>`;
+    let D; const load = async () => { D = await API.rpc('cms_training'); D.people.forEach((r) => upKeys(r, 'name')); D.certificates.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#tc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { tab: 'expiring', q: '', type: 'all' };
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); loadCertsPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const typeOf = (c) => D.types.find((t) => t.code === c) || {};
+    const draw = () => {
+      const exp = D.certificates.filter((c) => ['expiring', 'expired'].includes(c.state));
+      const pend = D.certificates.filter((c) => c.status === 'pending');
+      const req = D.types.filter((t) => t.required_all && t.is_active);
+      const missing = []; D.people.forEach((p) => req.forEach((t) => { if (!D.certificates.some((c) => c.person_id === p.person_id && c.type === t.code && c.status === 'verified' && c.state !== 'expired')) missing.push({ p, t }); }));
+      const T = [['expiring', `Expiring & expired <span>${exp.length}</span>`], ['missing', `Missing required <span>${missing.length}</span>`], ['verify', `To verify <span>${pend.length}</span>`],
+        ['all', 'All certificates'], ['trainings', 'Training sessions'], ['types', 'Certificate types']];
+      $('#tc-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${['all', 'expiring', 'missing'].includes(f.tab) ? `<div class="toolbar"><label class="search-in">${icon('search')}<input id="tq" type="search" placeholder="Name or Employee ID" value="${esc(f.q)}" aria-label="Search"></label>
+          <select id="tty" aria-label="Type"><option value="all">All types</option>${D.types.map((t) => `<option value="${esc(t.code)}" ${f.type === t.code ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
+          ${D.can_edit ? '<button type="button" class="btn sm primary" data-add>+ Add certificate…</button>' : ''}</div>` : ''}<div id="tc-tab"></div></section>`;
+      const box = $('#tc-tab', el); const t = f.q.trim().toLowerCase();
+      const okp = (r) => (!t || `${r.name} ${r.employee_id || ''}`.toLowerCase().includes(t)) && (f.type === 'all' || (r.type || r.t?.code) === f.type);
+      const certRows = (list, actions) => (list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Certificate</th><th>Issued</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
+        ${list.map((c) => `<tr><td><b>${esc(c.name)}</b><small class="sub">${esc(c.employee_id || '')}</small></td><td>${certName(c)}</td><td class="nowrap">${c.issued_on ? dShort(c.issued_on) : '—'}</td>
+          <td class="nowrap">${c.expires_on ? dShort(c.expires_on) : '<span class="muted">no expiry</span>'}</td><td>${certTag(c)}${c.source === 'self' ? ' <small class="muted">sent by staff</small>' : ''}</td>
+          <td class="nowrap">${c.has_file ? `<button type="button" class="btn sm ghost" data-file="${esc(c.id)}">${icon('eye')}Copy</button>` : ''}${actions(c)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>Nothing here</p></div>');
+      if (f.tab === 'expiring') box.innerHTML = certRows(exp.filter(okp), (c) => (D.can_edit ? ` <button type="button" class="btn sm" data-renew="${esc(c.id)}">Renewed…</button>` : ''));
+      else if (f.tab === 'all') box.innerHTML = certRows(D.certificates.filter((c) => c.status !== 'pending' && okp(c)), (c) => (D.can_edit ? ` <button type="button" class="btn sm ghost" data-edit="${esc(c.id)}">Edit</button>` : ''));
+      else if (f.tab === 'verify') box.innerHTML = certRows(pend, (c) => (D.can_edit ? ` <button type="button" class="btn sm primary" data-ver="${esc(c.id)}">Verify</button> <button type="button" class="btn sm" data-rej="${esc(c.id)}">Not accept…</button>` : ''));
+      else if (f.tab === 'missing') {
+        const list = missing.filter((m) => okp({ ...m.p, t: m.t }));
+        box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Required certificate</th><th></th></tr></thead><tbody>
+          ${list.map((m) => `<tr><td><b>${esc(m.p.name)}</b><small class="sub">${esc([m.p.employee_id, m.p.title].filter(Boolean).join(' · '))}</small></td><td>${esc(m.t.label)}</td>
+            <td>${D.can_edit ? `<button type="button" class="btn sm" data-addfor="${esc(m.p.person_id)}" data-type="${esc(m.t.code)}">Add…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Certificate types marked "required for all staff" (Certificate types tab) that the person does not hold, or that have expired.</p>`
+          : '<div class="empty small"><p>Everyone holds the required certificates</p></div>';
+      } else if (f.tab === 'trainings') {
+        box.innerHTML = `${D.can_edit ? '<div class="btn-row"><button type="button" class="btn primary" data-tr="">+ New training session…</button></div>' : ''}
+          ${D.trainings.length ? `<div class="table-wrap"><table class="data click"><thead><tr><th>Training</th><th>Date</th><th>Gives certificate</th><th class="num">Attended</th></tr></thead><tbody>
+          ${D.trainings.map((x) => `<tr data-tr="${esc(x.id)}"><td><b>${esc(x.title)}</b><small class="sub">${esc([x.provider, x.location].filter(Boolean).join(' · '))}</small></td>
+            <td class="nowrap">${dShort(x.from)}${x.to && x.to !== x.from ? ` – ${dShort(x.to)}` : ''}</td><td>${esc(typeOf(x.cert_type).label || '—')}</td>
+            <td class="num">${x.attendees.filter((a) => a.status === 'attended').length} / ${x.attendees.length}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>No training sessions yet</p></div>'}`;
+      } else {
+        box.innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Certificate type</th><th>Valid for</th><th>Required for all staff</th><th>Remind before</th><th></th></tr></thead><tbody>
+          ${D.types.map((x) => `<tr class="${x.is_active ? '' : 'muted'}"><td><b>${esc(x.label)}</b>${x.is_active ? '' : ' <span class="tag xs">not used</span>'}</td><td>${x.validity_months ? `${x.validity_months} months` : 'no expiry'}</td>
+            <td>${x.required_all ? '<span class="tag warn xs">Required</span>' : '—'}</td><td>${x.remind_days} days</td><td>${D.can_types ? `<button type="button" class="btn sm ghost" data-ctype="${esc(x.code)}">Edit</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+          ${D.can_types ? '<div class="btn-row"><button type="button" class="btn" data-ctype="">+ Add certificate type</button></div>' : ''}`;
+      }
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#tq', el)?.addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#tq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $('#tty', el)?.addEventListener('change', (e) => { f.type = e.target.value; draw(); });
+      $('[data-add]', el)?.addEventListener('click', () => certWindow({}));
+      $$('[data-addfor]', box).forEach((b) => b.addEventListener('click', () => certWindow({ person_id: b.dataset.addfor, type: b.dataset.type })));
+      $$('[data-edit]', box).forEach((b) => b.addEventListener('click', () => certWindow(D.certificates.find((c) => c.id === b.dataset.edit))));
+      $$('[data-renew]', box).forEach((b) => b.addEventListener('click', () => { const c = D.certificates.find((x) => x.id === b.dataset.renew); certWindow({ person_id: c.person_id, type: c.type, title: c.title, issuer: c.issuer }); }));
+      $$('[data-file]', box).forEach((b) => b.addEventListener('click', () => showCertFile(b.dataset.file)));
+      $$('[data-ver]', box).forEach((b) => b.addEventListener('click', async () => { try { await API.rpc('cms_cert_decide', { p_id: b.dataset.ver, p_action: 'verify', p_note: null }); toast('Certificate verified'); reload(); } catch (e) { toast(e.message, 'err'); } }));
+      $$('[data-rej]', box).forEach((b) => b.addEventListener('click', async () => {
+        const ok = await modal({ title: 'Not accept the certificate', ok: 'Not accept', danger: true, body: '<label class="fld"><span>Reason (the staff member sees it)</span><input name="note" required></label>',
+          onOk: async (fm) => { if (!fm.note.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_cert_decide', { p_id: b.dataset.rej, p_action: 'reject', p_note: fm.note.value }); } });
+        if (ok) { toast('Sent back to the staff member'); reload(); }
+      }));
+      $$('[data-tr]', box).forEach((b) => b.addEventListener('click', () => trainingWindow(b.dataset.tr)));
+      $$('[data-ctype]', box).forEach((b) => b.addEventListener('click', () => typeWindow(b.dataset.ctype)));
+      fitTables();
+    };
+    const certWindow = async (c) => {
+      const doc = { v: null }; const edit = !!c.id;
+      const ok = await modal({ title: edit ? `Certificate · ${c.name}` : 'Add certificate', ok: 'Save', wide: true,
+        body: `<div class="grid-2 tight">
+          <label class="fld"><span>Person</span><select name="person" ${edit ? 'disabled' : ''} required><option value="">Choose…</option>${D.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === c.person_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Certificate type</span><select name="type" required><option value="">Choose…</option>${D.types.filter((x) => x.is_active || x.code === c.type).map((x) => `<option value="${esc(x.code)}" ${x.code === c.type ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Title / course name</span><input name="title" value="${esc(c.title || '')}"></label><label class="fld"><span>Issued by</span><input name="issuer" value="${esc(c.issuer || '')}"></label>
+          <label class="fld"><span>Certificate no.</span><input name="no" value="${esc(c.cert_no || '')}"></label><span></span>
+          <label class="fld"><span>Issued on</span><input name="iss" type="date" value="${esc(c.issued_on || '')}"></label>
+          <label class="fld"><span>Expires on</span><input name="exp" type="date" value="${esc(c.expires_on || '')}"><small class="muted">Leave empty to count from the type's validity.</small></label>
+          ${fileField()}<label class="fld fld-2"><span>Note</span><input name="note" value="${esc(c.note || '')}"></label></div>`,
+        onOpen: (w) => wireDoc(w, doc),
+        onOk: async (fm) => { const pid = edit ? c.person_id : fm.person.value; if (!pid || !fm.type.value) throw new Error('Choose the person and the certificate type.');
+          await API.rpc('cms_cert_save', { p: { id: c.id || null, person_id: pid, type: fm.type.value, title: fm.title.value, issuer: fm.issuer.value, cert_no: fm.no.value,
+            issued_on: fm.iss.value || null, expires_on: fm.exp.value || null, file: doc.v, note: fm.note.value } }); } });
+      if (ok) { toast('Certificate saved'); reload(); }
+    };
+    const trainingWindow = async (id) => {
+      const x = D.trainings.find((y) => y.id === id) || { attendees: [] }; const inT = new Set(x.attendees.map((a) => a.person_id));
+      const ok = await modal({ title: id ? `Training · ${x.title}` : 'New training session', ok: D.can_edit ? 'Save' : null, cancel: 'Close', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Training</span><input name="title" required value="${esc(x.title || '')}" ${D.can_edit ? '' : 'disabled'}></label>
+          <label class="fld"><span>Provider</span><input name="provider" value="${esc(x.provider || '')}"></label><label class="fld"><span>Location</span><input name="loc" value="${esc(x.location || '')}"></label>
+          <label class="fld"><span>From</span><input name="from" type="date" required value="${esc(x.from || '')}"></label><label class="fld"><span>To</span><input name="to" type="date" value="${esc(x.to || '')}"></label>
+          <label class="fld"><span>Hours</span><input name="hours" type="number" min="0" step="0.5" value="${esc(x.hours ?? '')}"></label><label class="fld"><span>Cost (RM)</span><input name="cost" data-money inputmode="decimal" value="${x.cost != null ? m2(x.cost) : ''}"></label>
+          <label class="fld fld-2"><span>Gives this certificate when attended</span><select name="ct"><option value="">— none —</option>${D.types.filter((t) => t.is_active).map((t) => `<option value="${esc(t.code)}" ${t.code === x.cert_type ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></label></div>
+          ${id ? `<h4 class="sec-h">Attendees</h4><div class="table-wrap"><table class="data compact"><tbody>${x.attendees.map((a) => `<tr><td>${esc(a.name)}</td><td>${D.can_edit ? `<select data-att="${esc(a.person_id)}">${['registered', 'attended', 'absent'].map((s) => `<option ${a.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>` : esc(a.status)}${a.certificate_id ? ' <span class="tag ok xs">certificate added</span>' : ''}</td></tr>`).join('') || '<tr><td class="muted">No one yet</td></tr>'}</tbody></table></div>` : ''}
+          ${D.can_edit ? `<label class="fld"><span>Add people</span><select name="add" multiple size="6">${D.people.filter((p) => !inT.has(p.person_id)).map((p) => `<option value="${esc(p.person_id)}">${esc(p.name)}</option>`).join('')}</select><small class="muted">Hold Ctrl (or ⌘) to pick several.</small></label>` : ''}`,
+        onOpen: (w) => $$('[data-att]', w).forEach((s) => s.addEventListener('change', async () => {
+          try { await API.rpc('cms_training_attend', { p_training: id, p_person: s.dataset.att, p_status: s.value }); toast(s.value === 'attended' && x.cert_type ? 'Attended: certificate added' : 'Saved'); } catch (e) { toast(e.message, 'err'); } })),
+        onOk: async (fm) => { if (!fm.title.value.trim() || !fm.from.value) throw new Error('Give the training name and date.');
+          await API.rpc('cms_training_save', { p: { id: id || null, title: fm.title.value, provider: fm.provider.value, location: fm.loc.value, from: fm.from.value, to: fm.to.value || null,
+            hours: fm.hours.value || null, cost: fm.cost.value ? mval(fm.cost.value) : null, cert_type: fm.ct.value || null, people: [...fm.add.selectedOptions].map((o) => o.value) } }); } });
+      if (ok || id) reload();
+    };
+    const typeWindow = async (code) => {
+      const x = D.types.find((y) => y.code === code) || { is_active: true, remind_days: 60, category: 'other' };
+      const ok = await modal({ title: code ? `Certificate type · ${x.label}` : 'New certificate type', ok: 'Save',
+        body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Name</span><input name="label" required value="${esc(x.label || '')}"></label>
+          <label class="fld"><span>Kind</span><select name="cat">${['first_aid', 'childcare', 'food', 'safety', 'licence', 'skills', 'other'].map((c) => `<option ${x.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+          <label class="fld"><span>Valid for (months; empty = no expiry)</span><input name="months" type="number" min="1" value="${esc(x.validity_months ?? '')}"></label>
+          <label class="fld"><span>Remind before expiry (days)</span><input name="remind" type="number" min="1" value="${esc(x.remind_days)}"></label>
+          <div class="fld"><label class="chk"><input type="checkbox" name="req" ${x.required_all ? 'checked' : ''}> Required for all active staff</label><label class="chk"><input type="checkbox" name="act" ${x.is_active ? 'checked' : ''}> In use</label></div></div>`,
+        onOk: async (fm) => { await API.rpc('cms_cert_type_save', { p: { code: code || null, label: fm.label.value, category: fm.cat.value, validity_months: fm.months.value || null,
+          remind_days: fm.remind.value || 60, required_all: fm.req.checked, is_active: fm.act.checked } }); } });
+      if (ok) { toast('Certificate type saved'); reload(); }
+    };
+    draw();
+  }
+
+  async function meCertsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mcert-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_my_certs'); } catch (e) { $('#mcert-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const have = new Set(D.certificates.filter((c) => c.status === 'verified' && c.state !== 'expired').map((c) => c.type));
+    const need = D.types.filter((t) => t.required && !have.has(t.code));
+    $('#mcert-body', el).innerHTML = `
+      ${need.length ? `<div class="warn-box">${icon('clock')}<div><b>Required, not on record:</b> ${need.map((t) => esc(t.label)).join(', ')}. Send a copy if you have it.</div></div>` : ''}
+      <section class="card"><div class="card-head"><h3>My certificates</h3><button type="button" class="btn sm primary" id="mc-send">+ Send a certificate…</button></div>
+        ${D.certificates.length ? D.certificates.map((c) => `<div class="me-item"><div>${certName(c)}<small class="sub">${c.issued_on ? `Issued ${dShort(c.issued_on)}` : ''}${c.expires_on ? ` · expires ${dShort(c.expires_on)}` : ''}${c.reject_reason ? ` · ${esc(c.reject_reason)}` : ''}</small></div>
+          <div class="btn-row">${certTag(c)}${c.has_file ? `<button type="button" class="btn sm ghost" data-file="${esc(c.id)}">${icon('eye')}Copy</button>` : ''}</div></div>`).join('')
+          : '<div class="empty small"><p>No certificates on record</p></div>'}</section>
+      ${D.trainings.length ? `<section class="card"><div class="card-head"><h3>My training</h3></div>${D.trainings.map((x) => `<div class="me-item"><div><b>${esc(x.title)}</b><small class="sub">${dShort(x.from)}${x.provider ? ` · ${esc(x.provider)}` : ''}${x.hours ? ` · ${esc(String(x.hours))} h` : ''}</small></div><span class="tag ${x.status === 'attended' ? 'ok' : ''} xs">${esc(x.status)}</span></div>`).join('')}</section>` : ''}`;
+    $$('[data-file]', el).forEach((b) => b.addEventListener('click', () => showCertFile(b.dataset.file)));
+    $('#mc-send', el).addEventListener('click', async () => {
+      const doc = { v: null };
+      const ok = await modal({ title: 'Send a certificate to HR', ok: 'Send', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Certificate type</span><select name="type" required><option value="">Choose…</option>${D.types.map((t) => `<option value="${esc(t.code)}">${esc(t.label)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Title / course name</span><input name="title"></label><label class="fld"><span>Issued by</span><input name="issuer"></label>
+          <label class="fld"><span>Issued on</span><input name="iss" type="date"></label><label class="fld"><span>Expires on (if any)</span><input name="exp" type="date"></label>
+          <label class="fld"><span>Certificate no.</span><input name="no"></label><span></span>${fileField('Photo or PDF of the certificate')}</div>
+          <p class="muted small">HR checks it before it is added to your record.</p>`,
+        onOpen: (w) => wireDoc(w, doc),
+        onOk: async (fm) => { if (!fm.type.value) throw new Error('Choose the certificate type.'); if (!doc.v) throw new Error('Attach a photo or PDF of the certificate.');
+          await API.rpc('cms_my_cert_send', { p: { type: fm.type.value, title: fm.title.value, issuer: fm.issuer.value, issued_on: fm.iss.value || null, expires_on: fm.exp.value || null, cert_no: fm.no.value, file: doc.v } }); } });
+      if (ok) { toast('Sent to HR'); render(); }
+    });
+  }
+  async function loadCertsPending() { try { state.certsPending = await API.rpc('cms_certs_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function certTasks() {
+    const x = state.certsPending; const t = []; if (!x) return t;
+    if (x.mine_expiring && selfOn('certs')) t.push({ ic: 'shield', tone: 'orange', title: `${num(x.mine_expiring)} of your certificates expiring`, sub: 'Renew and send the new copy', href: '#/me/certs' });
+    if (x.hr_to_verify) t.push({ ic: 'shield', tone: 'blue', title: `${num(x.hr_to_verify)} certificate${x.hr_to_verify === 1 ? '' : 's'} to verify`, sub: 'Sent by staff', href: '#/training' });
+    if (x.hr_expiring) t.push({ ic: 'shield', tone: 'rose', title: `${num(x.hr_expiring)} certificate${x.hr_expiring === 1 ? '' : 's'} expiring within 30 days`, sub: 'Training & Certificates', href: '#/training' });
+    if (x.hr_missing) t.push({ ic: 'shield', tone: 'orange', title: `${num(x.hr_missing)} required certificate${x.hr_missing === 1 ? '' : 's'} missing`, sub: 'Required for all staff', href: '#/training' });
+    return t;
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -2989,7 +3163,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -3156,7 +3330,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 
