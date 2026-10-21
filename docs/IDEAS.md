@@ -11,6 +11,8 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Built in MyPayroll v2026.10.20-10:50 |
 | PRI-005 | 2026-10-21 | Money shown with thousands separator and 2 decimals everywhere in the CMS (0,000.00) | Recorded |
 | PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | Recorded · design proposed |
+| PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | Recorded |
+| PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | Recorded |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -140,3 +142,15 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 6. *Records:* full history per person and per item, printable acknowledgement (issue and hand-over) as PDF, audit log.
 - Depends on Phase 4 (employee app) for the employee's own confirmation; until then HR can record a signed paper
   acknowledgement with a photo.
+
+## PRI-007 · Staff timeline and Career Paths — recorded 2026-10-21
+- **Timeline** on each person: application and interview (MEG-EAF V2), offer / LOEC, hire and Employee ID, payroll start,
+  confirmation, increments, transfers / promotions, items issued, notice, hand-over, last day, rehire — one dated list.
+- **Career Paths** (sub-menu): per JD role family, the ladder of levels (e.g. Associate → Executive → Senior → Lead → Manager);
+  each employee shown on their current level with time in level, current salary vs the level cap, and the next level(s)
+  with their salary cap. List of all employees with filters (company, department, due for review, at / above cap).
+
+## PRI-008 · MyEden Group salary cap beside the JD range — recorded 2026-10-21
+- The JD Manual salary bands stay as the market reference. Beside each level, a **MyEden cap** (min / max) that
+  HR/Admin can edit, with effective date and change history (who, when, why). Career Paths and increment reviews
+  use the MyEden cap; the market range stays visible for comparison.
