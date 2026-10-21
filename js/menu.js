@@ -18,6 +18,9 @@ window.CMS_MENU = [
     { route: 'me/profile', label: 'My Profile', icon: 'users', phase: 4, live: true, self: 'profile', desc: 'Your employment and personal details. Changes are sent to HR for approval.' },
     { route: 'me/payslips', label: 'My Payslips & EA', icon: 'wallet', phase: 4, live: true, self: ['payslips', 'ea'], desc: 'Payslips and EA forms HR has released to you, from finalised payroll months. View, print or save as PDF.' },
     { route: 'me/salary', label: 'My Salary History', icon: 'trend', phase: 4, live: true, self: 'salary', desc: 'Your salary and each change, by month.' },
+    { route: 'me/claims', label: 'My Claims', icon: 'file-check', phase: 4, live: true, self: 'claims', desc: 'Your staff, overtime and mileage claims and where each one is: waiting for approval, approved, paid.' },
+    { route: 'me/handbook', label: 'My Handbook', icon: 'shield', phase: 4, live: true, self: 'handbook', desc: 'Your Employee Handbook: read it, and see what you have acknowledged.' },
+    { route: 'me/leave', label: 'My Leave', icon: 'calendar', phase: 4, live: true, self: 'leave', desc: 'Apply for leave and see your requests. Approved by the person you report to (or anyone above them).' },
     { route: 'me/items', label: 'My Items', icon: 'box', phase: 4, live: true, self: 'items', desc: 'Company items issued to you: confirm what you received, and hand them over when you leave.' },
   ] },
   { section: 'Workspace', items: [
@@ -43,6 +46,7 @@ window.CMS_MENU = [
     ] },
     { group: 'Time & Leave', icon: 'calendar', items: [
       { route: 'leave', label: 'Leave Records', phase: 2, source: 'MyPayroll V2.0', myp: 'leave', desc: 'Leave taken and approved, by person and type.' },
+      { route: 'leave/requests', label: 'Leave Requests', phase: 4, live: true, desc: 'Leave applied for in self-service, who approved it, and whether HR has entered it in payroll (payroll leave is still keyed in by hand).' },
       { route: 'leave/balances', label: 'Leave Balances', phase: 2, source: 'MyPayroll V2.0', myp: 'leave/balances', desc: 'Entitlements, carry-forward and adjustments.' },
       { route: 'leave/al-calculator', label: 'AL Calculator', phase: 2, source: 'MyPayroll V2.0', myp: 'leave/al-calculator', desc: 'Annual leave entitlement and pro-rata calculator.' },
       { route: 'leave/year-end', label: 'Year-end Close', phase: 2, source: 'MyPayroll V2.0', myp: 'leave/year-end', desc: 'Close the leave year: carry-forward, buy-back and new entitlements.' },
@@ -114,7 +118,7 @@ window.CMS_SOURCES = {
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
   'people/add': 'people', 'people/directory': 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
-  'leave/balances': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
+  'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
   'leave/al-calculator': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', time: 'leave',

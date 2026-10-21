@@ -159,7 +159,7 @@
   }
 
   function tasksFromDash(d) {
-    const t = [...selfTasks(), ...itemTasks()];
+    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks()];
     if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -1864,9 +1864,9 @@
     ['ea', 'EA forms', 'EA forms HR releases year by year'],
     ['salary', 'Salary history', 'Their salary and each change'],
     ['items', 'Items', 'My Items: confirm items received, hand them over when leaving'],
-    ['claims', 'Claims', 'Their SCF / OTCF / MTCF claims (arrives in Phase 4c)', '4c'],
-    ['leave', 'Leave', 'Apply for leave (built in Phase 4d, not in use yet)', '4d'],
-    ['handbook', 'Handbook', 'Their handbook (arrives in Phase 4c)', '4c'],
+    ['claims', 'Claims', 'My Claims: their SCF / OTCF / MTCF claims and status'],
+    ['leave', 'Leave', 'My Leave: apply for leave (not in use yet: leave runs in the other system)'],
+    ['handbook', 'Handbook', 'My Handbook: open the handbook and see what they acknowledged'],
   ];
   const PART_READY = (p) => !(PARTS.find((x) => x[0] === p) || [])[3];
   const PROFILE_FIELDS = [['contact', 'Phone'], ['email', 'Email'], ['home_address', 'Home address'], ['emergency_name', 'Emergency contact'],
@@ -1895,6 +1895,9 @@
       ['me/profile', 'users', 'My Profile', 'Your details; send changes to HR', selfOn('profile')],
       ['me/payslips', 'wallet', 'My Payslips & EA', s.payslips ? `${s.payslips} payslip${s.payslips === 1 ? '' : 's'} released${(s.new_payslips || []).length ? ` · ${s.new_payslips.length} new` : ''}` : 'Released by HR month by month', selfOn('payslips') || selfOn('ea')],
       ['me/salary', 'trend', 'My Salary History', 'Your salary and each change', selfOn('salary')],
+      ['me/claims', 'file-check', 'My Claims', 'Staff, overtime and mileage claims', selfOn('claims')],
+      ['me/handbook', 'shield', 'My Handbook', 'Read and acknowledge', selfOn('handbook')],
+      ['me/leave', 'calendar', 'My Leave', 'Apply and follow your requests', selfOn('leave')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -2195,7 +2198,7 @@
           ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>` : '<span class="tag warn xs">No login</span>'}</td>
             ${PARTS.map(([k, , , ph]) => `<td class="ctr"><input type="checkbox" class="sw" data-part="${k}" data-p="${esc(r.person_id)}" ${r.parts.includes(k) ? 'checked' : ''} ${!edit || ph ? 'disabled' : ''} aria-label="${esc(k)} for ${esc(r.name)}"></td>`).join('')}</tr>`).join('')
           || `<tr><td colspan="${PARTS.length + 3}"><div class="empty small"><p>No one here</p></div></td></tr>`}</tbody></table></div>
-          <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Claims and Handbook arrive in Phase 4c; Leave is built in 4d and stays off while leave runs in the other system.</p>`;
+          <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Leave stays off while leave runs in the other system.</p>`;
         wireSel(box, list, () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-bulk]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
         $$('.sw', box).forEach((c) => c.addEventListener('change', async () => {
           try { await API.rpc('cms_self_set', { p_people: [c.dataset.p], p_part: c.dataset.part, p_enabled: c.checked });
@@ -2531,6 +2534,125 @@
     return t;
   }
 
+  // ================================================================ 4c · MY CLAIMS, MY HANDBOOK
+  const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'] };
+  async function meClaimsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mc-body">${loading()}</div>`;
+    let rows; try { rows = await API.rpc('cms_my_claims'); } catch (e) { $('#mc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { v: 'open' };
+    const V = [['open', 'In progress', (r) => ['approval', 'processing', 'payment', 'draft'].includes(r.stage)], ['paid', 'Paid', (r) => r.stage === 'paid'],
+      ['no', 'Not approved', (r) => r.stage === 'disapproved'], ['all', 'All', () => true]];
+    const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
+    const draw = () => {
+      const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`).join('')}</div>
+        <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
+        ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
+          ${list.map((r) => `<tr><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small></td><td class="nowrap">${dShort(r.submitted_at)}</td>
+            <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
+            <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
+              ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No claims here</p><span>New claims are made in the claim forms (buttons above).</span></div>'}</section>
+        <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+    };
+    draw();
+  }
+  async function meHandbookPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mh-body">${loading()}</div>`;
+    let rows; try { rows = await API.rpc('cms_my_handbook'); } catch (e) { $('#mh-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const a = rows.find((r) => !r.revoked_at);
+    const steps = a ? [['Assigned', a.assigned_at], ['Opened', a.first_viewed_at], ['Read', a.read_at], ['Receipt signed', a.receipt_at], ['Acknowledged', a.acknowledged_at]] : [];
+    $('#mh-body', el).innerHTML = a ? `<section class="card"><div class="card-head"><h3>Employee Handbook ${esc(a.version || '')}</h3>
+        ${a.acknowledged_at ? '<span class="tag ok">Acknowledged</span>' : a.due_at ? `<span class="tag ${daysTo(a.due_at) < 0 ? 'bad' : 'warn'}">Due ${dShort(a.due_at)}</span>` : ''}</div>
+        <ol class="timeline">${steps.map(([l, d]) => `<li class="${d ? 'done' : ''}"><b>${l}</b> · ${d ? dShort(d) : '<span class="muted">not yet</span>'}</li>`).join('')}</ol>
+        <div class="btn-row"><a class="btn primary" href="${esc(EAF + 'handbook.html')}" target="_blank" rel="noopener">${icon('shield')}${a.acknowledged_at ? 'Open the handbook' : 'Read and acknowledge'}</a></div>
+        <p class="muted small">The handbook opens in MEG-EAF V2 with the same sign-in. Your reading and acknowledgement are saved there and show here.</p></section>`
+      : '<section class="card"><div class="empty small"><p>No handbook assigned to you yet</p><span>HR assigns the handbook when you join.</span></div></section>';
+  }
+
+  // ================================================================ 4d · LEAVE REQUESTS (built; switched off per person until used)
+  const LV_ST = { pending: ['Waiting for approval', 'warn'], approved: ['Approved', 'ok'], rejected: ['Not approved', 'bad'], cancelled: ['Cancelled', ''] };
+  const lvDates = (r) => `${dShort(r.from)}${r.to !== r.from ? ` – ${dShort(r.to)}` : ''}${r.half_day ? ' (half day)' : ''}`;
+  const lvTag = (r) => `<span class="tag ${LV_ST[r.status][1]} xs">${LV_ST[r.status][0]}</span>${r.decided_by && r.status !== 'pending' ? `<small class="sub">${esc(r.decided_by)} · ${dShort(r.decided_at)}</small>` : ''}${r.decision_note ? `<small class="sub">${esc(r.decision_note)}</small>` : ''}`;
+  async function leaveDecide(r, approve) {
+    const ok = await modal({ title: `${approve ? 'Approve' : 'Do not approve'} leave · ${r.name}`, ok: approve ? 'Approve' : 'Not approved', danger: !approve,
+      body: `<p><b>${esc(r.type_label || r.type)}</b> · ${lvDates(r)} · ${esc(String(r.days))} day${Number(r.days) === 1 ? '' : 's'}${r.reason ? `<br><span class="muted">${esc(r.reason)}</span>` : ''}</p>
+        ${r.has_attachment ? `<button type="button" class="btn sm ghost" data-lvatt="${esc(r.id)}">${icon('eye')}View attachment</button>` : ''}
+        <label class="fld"><span>${approve ? 'Note (optional)' : 'Reason (the staff member sees it)'}</span><input name="note" maxlength="300"></label>`,
+      onOpen: (w) => $('[data-lvatt]', w)?.addEventListener('click', async () => { try { const src = await API.rpc('cms_leave_attachment', { p_id: r.id }); window.open(src, '_blank'); } catch (e) { toast(e.message, 'err'); } }),
+      onOk: async (f) => { if (!approve && !f.note.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_leave_decide', { p_id: r.id, p_approve: approve, p_note: f.note.value || null }); } });
+    if (ok) { toast(`${r.name}: leave ${approve ? 'approved' : 'not approved'}`); loadLeavePending(); render(); }
+  }
+  async function meLeavePage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="ml-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_my_leave'); } catch (e) { $('#ml-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const tl = (c) => (D.types.find((t) => t.code === c) || {}).label || c;
+    $('#ml-body', el).innerHTML = `
+      <section class="card"><div class="card-head"><h3>Apply for leave</h3><span class="muted small">Approved by: ${esc(D.approvers || 'HR')}</span></div>
+        <div class="btn-row"><button type="button" class="btn primary" id="ml-new">${icon('plus')}New leave request…</button></div>
+        ${Object.keys(D.taken || {}).length ? `<p class="muted small">Taken this year (from payroll): ${Object.entries(D.taken).map(([k, v]) => `${esc(tl(k))} ${esc(String(v))} d`).join(' · ')}</p>` : ''}</section>
+      ${D.to_approve.length ? `<section class="card"><div class="card-head"><h3>For you to approve</h3></div><div class="table-wrap"><table class="data"><thead><tr><th>Person</th><th>Leave</th><th>Days</th><th></th></tr></thead><tbody>
+        ${D.to_approve.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small>${r.reason ? `<small class="sub">${esc(r.reason)}</small>` : ''}</td>
+          <td>${esc(String(r.days))}</td><td class="nowrap"><button type="button" class="btn sm primary" data-ok="${esc(r.id)}">Approve</button> <button type="button" class="btn sm" data-no="${esc(r.id)}">Not approve…</button></td></tr>`).join('')}</tbody></table></div></section>` : ''}
+      <section class="card"><div class="card-head"><h3>My requests</h3></div>
+        ${D.requests.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Leave</th><th>Days</th><th>Status</th><th></th></tr></thead><tbody>
+          ${D.requests.map((r) => `<tr><td><b>${esc(r.type_label || r.type)}</b><small class="sub">${lvDates(r)}</small></td><td>${esc(String(r.days))}</td><td>${lvTag(r)}</td>
+            <td>${r.status === 'pending' ? `<button type="button" class="btn sm ghost" data-cancel="${esc(r.id)}">Cancel</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No requests yet</p></div>'}</section>`;
+    $$('[data-ok]', el).forEach((b) => b.addEventListener('click', () => leaveDecide(D.to_approve.find((r) => r.id === b.dataset.ok), true)));
+    $$('[data-no]', el).forEach((b) => b.addEventListener('click', () => leaveDecide(D.to_approve.find((r) => r.id === b.dataset.no), false)));
+    $$('[data-cancel]', el).forEach((b) => b.addEventListener('click', async () => {
+      if (await confirmBox('Cancel this leave request?', 'Your approver will no longer see it.', 'Cancel request', true, () => API.rpc('cms_my_leave_cancel', { p_id: b.dataset.cancel }))) { toast('Request cancelled'); render(); }
+    }));
+    $('#ml-new', el).addEventListener('click', async () => {
+      const ph = { v: null };
+      const ok = await modal({ title: 'New leave request', ok: 'Send for approval',
+        body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Type of leave</span><select name="type" required><option value="">Choose…</option>${D.types.map((t) => `<option value="${esc(t.code)}">${esc(t.label)}</option>`).join('')}</select></label>
+          <label class="fld"><span>First day</span><input name="from" type="date" required></label><label class="fld"><span>Last day</span><input name="to" type="date"></label>
+          <label class="fld"><span>Working days</span><input name="days" type="number" min="0.5" step="0.5" placeholder="counted from the dates"></label>
+          <label class="fld"><span>&nbsp;</span><label class="chk"><input type="checkbox" name="half"> Half day</label></label>
+          <label class="fld fld-2"><span>Reason (optional)</span><input name="reason" maxlength="300"></label>
+          <label class="fld fld-2"><span>Medical certificate / supporting photo (needed for sick and hospitalisation leave)</span><input name="photo" type="file" accept="image/*" capture="environment"></label></div>`,
+        onOpen: (w) => wirePhoto(w, ph),
+        onOk: async (f) => { if (!f.type.value || !f.from.value) throw new Error('Choose the type and the first day.');
+          await API.rpc('cms_my_leave_apply', { p: { type: f.type.value, from: f.from.value, to: f.to.value || f.from.value, days: f.days.value || null, half_day: f.half.checked, reason: f.reason.value, attachment: ph.v } }); } });
+      if (ok) { toast('Sent for approval'); render(); }
+    });
+  }
+  async function leaveRequestsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="lr-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_leave_requests'); D.requests.forEach((r) => upKeys(r, 'name')); } catch (e) { $('#lr-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { v: 'pending' };
+    const V = [['pending', 'Waiting', (r) => r.status === 'pending'], ['topay', 'Approved, not in payroll', (r) => r.status === 'approved' && !r.payroll_done],
+      ['done', 'In payroll', (r) => r.payroll_done], ['all', 'All', () => true]];
+    const draw = () => {
+      const list = D.requests.filter(V.find((x) => x[0] === f.v)[2]);
+      $('#lr-body', el).innerHTML = `<section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${D.requests.filter(fn).length}</span></button>`).join('')}</div></div>
+        ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Person</th><th>Leave</th><th>Days</th><th>Status</th><th>Payroll</th></tr></thead><tbody>
+          ${list.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small></td><td>${esc(String(r.days))}</td>
+            <td>${lvTag(r)}${r.can_decide ? `<div class="btn-row"><button type="button" class="btn sm primary" data-ok="${esc(r.id)}">Approve</button><button type="button" class="btn sm" data-no="${esc(r.id)}">Not approve…</button></div>` : ''}</td>
+            <td>${r.status === 'approved' ? `<label class="chk"><input type="checkbox" data-pay="${esc(r.id)}" ${r.payroll_done ? 'checked' : ''} ${D.can_edit ? '' : 'disabled'}> Entered in payroll</label>` : '—'}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No requests here</p><span>Leave requests come from My Leave, which is switched on per person (Self-service Access).</span></div>'}</section>
+        <p class="muted small">Approval follows Reports to: the person they report to or anyone above (directors can approve anyone; a director is approved by the other director or HR; no Reports-to set → HR). Approved leave is entered in payroll by hand for now — tick it when done.</p>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $$('[data-ok]', el).forEach((b) => b.addEventListener('click', () => leaveDecide(D.requests.find((r) => r.id === b.dataset.ok), true)));
+      $$('[data-no]', el).forEach((b) => b.addEventListener('click', () => leaveDecide(D.requests.find((r) => r.id === b.dataset.no), false)));
+      $$('[data-pay]', el).forEach((c) => c.addEventListener('change', async () => {
+        try { await API.rpc('cms_leave_payroll_done', { p_id: c.dataset.pay, p_done: c.checked }); const r = D.requests.find((x) => x.id === c.dataset.pay); r.payroll_done = c.checked; toast(c.checked ? 'Marked as entered in payroll' : 'Unmarked'); loadLeavePending(); }
+        catch (e) { c.checked = !c.checked; toast(e.message, 'err'); }
+      }));
+    };
+    draw();
+  }
+  async function loadLeavePending() { try { state.leavePending = await API.rpc('cms_leave_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function leaveTasks() {
+    const x = state.leavePending; const t = []; if (!x) return t;
+    if (x.to_approve) t.push({ ic: 'calendar', tone: 'violet', title: `${num(x.to_approve)} leave request${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'Leave', href: canRoute('leave/requests') ? '#/leave/requests' : '#/me/leave' });
+    if (x.to_payroll) t.push({ ic: 'calendar', tone: 'orange', title: `${num(x.to_payroll)} approved leave not yet in payroll`, sub: 'Enter in payroll, then tick', href: '#/leave/requests?v=topay' });
+    return t;
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -2551,7 +2673,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    me: meHomePage, 'me/items': meItemsPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -2718,7 +2840,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

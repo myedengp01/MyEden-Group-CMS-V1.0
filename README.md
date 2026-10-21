@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-14:20 · **Phase 4 · Staff self-service** (Phases 0–3 live)
+**Current version:** v2026.10.21-14:35 · **Phase 4 · Staff self-service** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -46,6 +46,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 18. `20261021_cms_existing_employee_match.sql` — approved applications matched to existing employees (email or name): shown with "Link" instead of "Hire", Hire refuses duplicates, workflow-test applications hidden; one-off link of applications that already had an employee record
 19. `20261021_cms_self_service.sql` — Phase 4a staff self-service: per-person switches (all off by default), payslip / EA releases (finalised months only), Reports to (pre-filled from the offer's "reporting to" where the name matched), My Profile change requests approved by HR, salary history
 20. `20261021_cms_items_handover.sql` — Phase 4b items register and hand-over (PRI-006): item types, items with confirmation by the person, every change as an event (passwords never stored), hand-over opened automatically when a leaving date is confirmed, approval by the reports-to line or HR / Admin, clearance status
+21. `20261021_cms_self_claims_handbook.sql` — Phase 4c My Claims (own SCF / OTCF / MTCF with stage) and My Handbook (assignment status)
+22. `20261021_cms_self_leave.sql` — Phase 4d My Leave (built, switched off): leave requests, approval along Reports to (directors approve anyone below; a director by the other director or HR; none set → HR), HR tick for "entered in payroll"
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -95,6 +97,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-14:35** — Phase 4c · **My Claims** (own SCF / OTCF / MTCF claims and where each is: waiting, approved, paid, not approved; buttons to the
+  forms for a new claim) and **My Handbook** (assignment, opened / read / acknowledged, opens the handbook in MEG-EAF V2).
+  Phase 4d · **My Leave** built but switched off per person: apply (MC photo for sick / hospitalisation leave), cancel, approvers shown;
+  approvals follow Reports to (directors can approve anyone below; directors by the other director or HR; no Reports-to → HR; never
+  your own). New **Time & Leave › Leave Requests** for HR with "entered in payroll" tick (payroll leave stays manual for now).
+  Phase 4 complete. Database: `20261021_cms_self_claims_handbook.sql`, `20261021_cms_self_leave.sql`.
 - **v2026.10.21-14:20** — Phase 4b · Items & Hand-over (PRI-006). **Items & Hand-over** (menu, was "Assets & Equipment") for HR / Admin: issue items
   per person with photo; staff confirm receipt in **My Items** (time stamp, optional phone photo); returned, replaced, renewed, moved to
   another person, lost / damaged, written off and password changed / reset (the password itself is never stored) are each recorded in the
