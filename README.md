@@ -41,6 +41,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 
 15. `20261021_cms_recruitment.sql` — Phase 3: recruitment read functions (applications, JD, positions, offers & onboarding, handbook), one group-wide next Employee ID number for EAF / CMS / MyPayroll, and `cms_hire` (accepted applicant → person + payroll record)
 
+16. `20261021_cms_hire_from_approved.sql` — Offers & Onboarding lists applications with decision Approved (MEG-EAF V2 has no screen for the offer-accepted stage); Hire works straight from the application
+
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
 The browser never touches tables directly. Every read and write goes through a `cms_` function that checks the role first
@@ -89,6 +91,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-10:20** — Offers & Onboarding fix: MEG-EAF V2 records only the decision (Approved) and the Office Use details;
+  it has no screen for the "offer accepted" stage or the onboarding handoff, so approved applicants never reached this page.
+  It now lists every application with decision Approved and no employee record: **Hire…** when the Office Use start date
+  and salary are filled (the CMS writes the onboarding handoff itself), otherwise "Office Use incomplete". People already
+  created from an application in MEG-EAF V2 (Application Summary) appear under "Not yet in payroll" with **Add to payroll…**.
+  The "Prepare handoff" button was removed. Database: `20261021_cms_hire_from_approved.sql`.
 - **v2026.10.21-08:45** — **Phase 3 · Recruitment & onboarding** (MEG-EAF V2 data in the CMS):
   **Applications** (stage counts, company / stage tabs, summary and stage history per applicant), **Shortlist & Interviews**
   (the same list, opened on shortlisted and offers), **JD Manual** (119 positions by company and department with purpose,

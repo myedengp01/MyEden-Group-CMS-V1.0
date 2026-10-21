@@ -155,7 +155,7 @@
     if (can('admin.roles') && d.logins - d.logins_with_role > 0) t.push({ ic: 'lock', tone: 'teal', title: `${num(d.logins - d.logins_with_role)} logins have no CMS role yet`, sub: 'Review the suggested roles and accept or skip', href: '#/admin/roles' });
     if (can('admin.roles', 'E') && d.logins_unlinked > 0) t.push({ ic: 'users', tone: 'rose', title: `${num(d.logins_unlinked)} logins are not linked to a person`, sub: 'Link each login to its Employee Master record', href: '#/admin/roles?tab=logins' });
     const ob = state.onbSum;
-    if (ob && ob.accepted && can('onboarding')) t.push({ ic: 'user-plus', tone: 'green', title: `${num(ob.accepted)} accepted applicants to hire`, sub: 'Create the person and payroll record', href: '#/onboarding' });
+    if (ob && ob.accepted && can('onboarding')) t.push({ ic: 'user-plus', tone: 'green', title: `${num(ob.accepted)} approved applicants to hire`, sub: 'Create the person and payroll record', href: '#/onboarding' });
     if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
     if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
     const inc = state.incrSum;
@@ -1662,17 +1662,17 @@
     };
     $('#on-body', el).innerHTML = `
       <div class="pipe">
-        <div class="pipe-step ok"><b>${num(o.accepted.length)}</b><span>Accepted, to hire</span></div>
+        <div class="pipe-step ok"><b>${num(o.accepted.length)}</b><span>Approved, to hire</span></div>
         <div class="pipe-step warn"><b>${num(o.to_payroll.length)}</b><span>Not yet in payroll</span></div>
         <div class="pipe-step joint"><b>${num(o.offers.filter((x) => !['completed'].includes(x.status)).length)}</b><span>Offer letters open</span></div>
         <div class="pipe-step ${state.onbSum?.stampSoon ? 'bad' : ''}"><b>${num(o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length)}</b><span>Stamp duty due ≤ 7 days</span></div>
       </div>
-      <section class="card"><div class="card-head"><h3>Accepted applicants</h3><span class="muted small">Offer accepted in MEG-EAF V2. Hire creates the person record and the payroll record together.</span></div>
-        ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Handoff</th><th></th></tr></thead><tbody>
+      <section class="card"><div class="card-head"><h3>Approved applicants</h3><span class="muted small">Decision Approved in MEG-EAF V2 and no employee record yet. Hire creates the person record, Employee ID and payroll record together, and assigns the handbook.</span></div>
+        ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Office Use</th><th></th></tr></thead><tbody>
           ${o.accepted.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}${x.department ? `<small class="sub">${esc(x.department)}</small>` : ''}</td>
             <td class="nowrap">${x.start ? dShort(x.start) : '—'}</td>
-            <td>${x.handoff === 'pending_import' ? '<span class="tag ok xs">Ready</span>' : x.handoff === 'cancelled' ? '<span class="tag xs">Cancelled</span>' : '<span class="tag warn xs">Not prepared</span>'}${x.error ? `<small class="sub bad-txt">${esc(x.error)}</small>` : ''}</td>
-            <td class="nowrap">${x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : `<button type="button" class="btn sm" data-prep="${esc(x.application_id)}">Prepare handoff</button>`}</td></tr>`).join('')}
+            <td>${x.handoff === 'pending_import' || x.ready ? '<span class="tag ok xs">Ready to hire</span>' : '<span class="tag warn xs">Office Use incomplete</span><small class="sub">add start date and salary in MEG-EAF V2</small>'}${x.decision ? `<small class="sub">decision: ${esc(x.decision)}</small>` : ''}</td>
+            <td class="nowrap">${x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : eafBtn('hr', 'Open MEG-EAF V2', 'sm')}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an offer is accepted in MEG-EAF V2 it appears here.</span></div>'}
       </section>
       <section class="card"><div class="card-head"><h3>Not yet in payroll</h3><span class="muted small">People who are active or onboarding in the CMS but have no payroll record.</span></div>
@@ -1692,16 +1692,13 @@
     const reload = () => { state.onb = null; loadRecruitSummary(); onboardingPage(item, el); };
     $$('[data-hire-h]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ handoff: b.dataset.hireH })) reload(); }));
     $$('[data-hire-p]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ person: b.dataset.hireP })) reload(); }));
-    $$('[data-prep]', el).forEach((b) => b.addEventListener('click', async () => {
-      b.disabled = true;
-      try { await API.rpc('prepare_eaf_onboarding_handoff', { p_application_id: b.dataset.prep, p_note: 'Prepared from the CMS' }); toast('Handoff prepared: ready to hire'); reload(); }
-      catch (e) { b.disabled = false; toast(`${e.message}. Complete the Office Use section in MEG-EAF V2.`, 'err'); }
-    }));
+    $$('[data-hire-a]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ application: b.dataset.hireA })) reload(); }));
   }
 
-  async function hireWindow({ handoff = null, person = null }) {
+  async function hireWindow({ handoff = null, person = null, application = null }) {
     let P;
-    try { P = await API.rpc('cms_hire_prefill', { p_handoff: handoff, p_person: person }); } catch (e) { toast(e.message, 'err'); return false; }
+    try { P = application ? await API.rpc('cms_hire_prefill_app', { p_application: application }) : await API.rpc('cms_hire_prefill', { p_handoff: handoff, p_person: person }); }
+    catch (e) { toast(e.message, 'err'); return false; }
     const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
     const t5 = (s) => (s ? String(s).slice(0, 5) : '');
     const comp0 = P.companies.find((c) => c.code === P.employer) || P.companies[0] || {};
@@ -1710,7 +1707,7 @@
     const idNote = P.employee_id ? `Keeps Employee ID <b>${esc(P.employee_id)}</b>.` : `Gets the next group number, <b>${esc(String(P.next_serial).padStart(4, '0'))}</b>; the Employee ID is built from the employer, start month and gender (e.g. ${esc((P.employer || 'MEG')[0])}${esc((P.join_date || '').slice(5, 7) + (P.join_date || '').slice(2, 4))}${esc(P.gender || 'F')}${esc(String(P.next_serial).padStart(4, '0'))}).`;
     return modal({
       title: `${P.person_id ? 'Add to payroll' : 'Hire'} · ${P.name}`, wide: true, ok: P.person_id ? 'Add to payroll' : 'Hire', cancel: 'Cancel',
-      body: `<p class="muted small">Filled in from the accepted offer in MEG-EAF V2. Check every field: the person record and the payroll record are created together. ${idNote}</p>
+      body: `<p class="muted small">Filled in from the Office Use section in MEG-EAF V2. Check every field: the person record and the payroll record are created together. ${idNote}</p>
         <div class="fld-2">
           <label class="fld"><span>Name</span><input name="name" required value="${esc(P.name || '')}"></label>
           <label class="fld"><span>Gender <small class="muted">— used in the Employee ID</small></span><select name="gender" required>${opt([['F', 'Female'], ['M', 'Male']], P.gender, 'Confirm…')}</select></label>
@@ -1736,7 +1733,7 @@
         if (!form.join.value) throw new Error('Enter the start date.');
         if (!(Number(form.salary.value) >= 0) || form.salary.value === '') throw new Error('Enter the starting salary.');
         const r = await API.rpc('cms_hire', { p: {
-          handoff_id: P.handoff_id, person_id: P.person_id, name: form.name.value, gender: form.gender.value, employer: form.employer.value,
+          application_id: P.application_id || null, handoff_id: P.handoff_id, person_id: P.person_id, name: form.name.value, gender: form.gender.value, employer: form.employer.value,
           company_id: Number(form.company.value), join_date: form.join.value, department_id: form.dept.value || null,
           job_title_id: form.title.value || null, job_title_name: form.title.value ? null : (P.title || null),
           confirmation_status: form.conf.value, job_status: form.job.value || null, work_from: form.from.value || null, work_to: form.to.value || null,
