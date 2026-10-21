@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-16:25 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.21-16:45 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -100,6 +100,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-16:45** — Forms: full-width fields and tick boxes in windows lay out properly (e.g. "Ask for a self-assessment" in Start probation review).
 - **v2026.10.21-16:25** — Probation rules: the probation end date is the confirmation date (confirming sets the confirmation date to the probation end,
   not the approval day). Probation length varies (3–6 months or longer): taken from the record, else the offer's probation months in
   MEG-EAF V2, else assumed 3 months and marked "assumed"; HR sets the exact end date when starting the review. An approved extension

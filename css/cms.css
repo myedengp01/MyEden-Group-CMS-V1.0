@@ -778,3 +778,7 @@ ol.tl-kinds li { margin-bottom: 6px; }
 .fld[hidden] { display: none !important; }
 table.ap-scores select { min-width: 70px; }
 table.ap-scores input { width: 100%; min-width: 160px; }
+/* a field across both columns (the first .fld-2 rule is the two-column row helper) */
+.fld.fld-2 { display: flex; flex-direction: column; grid-column: 1 / -1; }
+.fld .chk input, label.chk input { width: auto; height: auto; flex: none; }
+.fld label.chk { font-size: 13.5px; color: var(--ink); }
