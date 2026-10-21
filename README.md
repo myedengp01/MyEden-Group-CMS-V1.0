@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-15:45 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.21-16:10 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -49,6 +49,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 21. `20261021_cms_self_claims_handbook.sql` — Phase 4c My Claims (own SCF / OTCF / MTCF with stage) and My Handbook (assignment status)
 22. `20261021_cms_self_leave.sql` — Phase 4d My Leave (built, switched off): leave requests, approval along Reports to (directors approve anyone below; a director by the other director or HR; none set → HR), HR tick for "entered in payroll"
 23. `20261021_cms_careers.sql` — Phase 5a MyEden salary caps beside each JD band (with history), JD position per person (matched by title or set by HR), Career Paths and the staff timeline
+24. `20261021_cms_appraisals.sql` — Phase 5b probation reviews and annual appraisals (JD KPI scores, KPI grade, recommendation), approval applies confirmation / probation extension / KPI grade to payroll / promotion; My Appraisal for self-assessment and reviewers
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -98,6 +99,13 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-16:10** — Phase 5b · **KPI & Appraisal** (Performance & Growth). Tabs: In progress, Probation due (on probation in payroll, ending within
+  30 days or overdue), Annual {year} (start one or all), Approved. HR starts an appraisal; the reviewer (the person they report to, or HR)
+  scores each JD KPI + conduct, attendance and child safety (1–5), gives the KPI grade E/S/A/I/U, strengths, improvements, goals and a
+  recommendation. HR / Admin or a director approves (or returns it): probation → confirmed in payroll + Employee Master (probation review
+  recorded) or extended; annual → KPI grade written to payroll (annual-leave carry forward), promotion to the next JD level, recommended
+  salary shown for Increments & Reviews. **My Appraisal** (staff): self-assessment when asked, results once approved, and appraisals to
+  review for managers. Bell reminders. Database: `20261021_cms_appraisals.sql`.
 - **v2026.10.21-15:45** — Phase 5a · **Performance & Growth › Career Paths** (PRI-007, PRI-008). *People*: every active employee on their JD level
   (matched by job title + employer, or placed by HR), time in level, salary, place in the band, level cap and next level with its cap.
   *Ladders & salary caps*: each company / department ladder with the JD (market) range and an editable **MyEden cap** per tier

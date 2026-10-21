@@ -159,7 +159,7 @@
   }
 
   function tasksFromDash(d) {
-    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks()];
+    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks()];
     if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -1908,6 +1908,7 @@
       ['me/claims', 'file-check', 'My Claims', 'Staff, overtime and mileage claims', selfOn('claims')],
       ['me/handbook', 'shield', 'My Handbook', 'Read and acknowledge', selfOn('handbook')],
       ['me/leave', 'calendar', 'My Leave', 'Apply and follow your requests', selfOn('leave')],
+      ['me/appraisal', 'trend', 'My Appraisal', 'Self-assessment and results', selfOn('appraisal')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -2807,6 +2808,157 @@
     draw();
   }
 
+  // ================================================================ 5b · KPI & APPRAISAL
+  const GRADE_LBL = { E: 'Excellent', S: 'Satisfactory', A: 'Average', I: 'Needs improvement', U: 'Under performing' };
+  const REC_LBL = { confirm: 'Confirm', extend: 'Extend probation', end: 'Do not confirm (end employment)', increment: 'Salary increment', promote: 'Promote to the next level',
+    no_change: 'No change', pip: 'Performance improvement plan' };
+  const AP_ST = { open: ['In progress', 'warn'], reviewed: ['Reviewed · waiting for approval', 'blue'], approved: ['Approved', 'ok'], cancelled: ['Cancelled', ''] };
+  const SELF_Q = [['achievements', 'What went well / what you achieved'], ['challenges', 'What was difficult'], ['goals', 'Your goals for the next period'], ['support', 'Support or training you need'], ['comment', 'Anything else']];
+  const apTag = (a) => `<span class="tag ${AP_ST[a.status][1]} xs">${AP_ST[a.status][0]}</span>${a.self_requested ? (a.self_done ? ' <span class="tag ok xs">self-assessment in</span>' : ' <span class="tag xs">self-assessment pending</span>') : ''}`;
+  const apName = (a) => (a.kind === 'annual' ? `Annual appraisal ${a.year}` : 'Probation review');
+  const gradeTag = (g, L = GRADE_LBL) => (g ? `<span class="tag ${g === 'E' || g === 'S' ? 'ok' : g === 'A' ? 'blue' : 'bad'} xs">${esc(g)} · ${esc(L[g] || '')}</span>` : '—');
+
+  async function appraisalWindow(id, after) {
+    let A; try { A = await API.rpc('cms_appraisal', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+    const L = { ...GRADE_LBL, ...(A.grade_labels || {}) };
+    if (A.role === 'self') {
+      const canSelf = A.self_requested && A.status === 'open' && !A.self_done; const R = A.result;
+      const ok = await modal({ title: apName(A), ok: canSelf ? 'Send to my reviewer' : null, cancel: 'Close', wide: true,
+        body: `${R ? `<h4 class="sec-h">Result</h4><p>Overall: ${gradeTag(R.rating, L)}</p>
+            <div class="table-wrap"><table class="data compact"><thead><tr><th>Area</th><th class="num">Score</th><th>Comment</th></tr></thead><tbody>${(R.scores || []).map((s) => `<tr><td>${esc(s.area)}</td><td class="num">${s.score ?? '—'} / 5</td><td>${esc(s.comment || '')}</td></tr>`).join('')}</tbody></table></div>
+            ${R.strengths ? `<p><b>Strengths:</b> ${esc(R.strengths)}</p>` : ''}${R.improvements ? `<p><b>To improve:</b> ${esc(R.improvements)}</p>` : ''}${R.goals ? `<p><b>Goals:</b> ${esc(R.goals)}</p>` : ''}` : ''}
+          ${A.self_requested ? `<h4 class="sec-h">My self-assessment ${A.self_done ? `<small class="muted">sent ${dShort(A.self_at)}</small>` : ''}</h4>
+            ${SELF_Q.map(([k, l]) => `<label class="fld"><span>${l}</span><textarea name="${k}" rows="2" ${canSelf ? '' : 'disabled'}>${esc((A.self_answers || {})[k] || '')}</textarea></label>`).join('')}` : ''}
+          ${!R && !canSelf ? '<p class="muted">Your reviewer is working on this appraisal. You will see the result here once it is approved.</p>' : ''}`,
+        onOk: async (f) => { const ans = Object.fromEntries(SELF_Q.map(([k]) => [k, f[k].value.trim()])); if (!ans.achievements) throw new Error('Write at least what went well.');
+          await API.rpc('cms_appraisal_self', { p_id: id, p_answers: ans }); } });
+      if (ok) { toast('Sent to your reviewer'); after?.(); }
+      return;
+    }
+    const scores = A.scores || []; const prob = A.kind === 'probation';
+    const recs = prob ? ['confirm', 'extend', 'end'] : ['increment', 'promote', 'no_change', 'pip'];
+    const edit = A.can_review;
+    const ok = await modal({ title: `${apName(A)} · ${A.name}`, ok: edit ? (A.status === 'reviewed' ? 'Save changes' : 'Save review') : null, cancel: 'Close', wide: true,
+      body: `<p class="muted small">${esc([A.employee_id, A.title, coShort(A.company)].filter(Boolean).join(' · '))}${A.position ? ` · JD ${esc(A.position.level)} ${esc(A.position.title)}` : ' · not placed on a JD position (Career Paths)'}
+          · reviewer ${esc(A.reviewer || 'HR')} ${apTag(A)}</p>
+        ${A.self_requested ? `<details class="card" ${A.self_done ? 'open' : ''}><summary><b>Self-assessment</b> ${A.self_done ? `<small class="muted">${dShort(A.self_at)}</small>` : '<small class="muted">not sent yet</small>'}</summary>
+          ${A.self_answers ? SELF_Q.map(([k, l]) => (A.self_answers[k] ? `<p><b>${l}:</b> ${esc(A.self_answers[k])}</p>` : '')).join('') : ''}</details>` : ''}
+        <div class="table-wrap"><table class="data compact ap-scores"><thead><tr><th>KPI area</th><th>Score (1–5)</th><th>Comment</th></tr></thead><tbody>
+          ${scores.map((s, i) => `<tr><td><b>${esc(s.area)}</b><small class="sub">${esc(s.measure || '')}</small></td>
+            <td><select name="s${i}" ${edit ? '' : 'disabled'}><option value="">—</option>${[5, 4, 3, 2, 1].map((n) => `<option ${Number(s.score) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+            <td><input name="c${i}" value="${esc(s.comment || '')}" ${edit ? '' : 'disabled'}></td></tr>`).join('')}</tbody></table></div>
+        <div class="grid-2 tight">
+          <label class="fld"><span>Overall KPI grade</span><select name="rating" ${edit ? '' : 'disabled'}><option value="">Choose…</option>${Object.keys(GRADE_LBL).map((g) => `<option value="${g}" ${A.rating === g ? 'selected' : ''}>${g} · ${esc(L[g])}</option>`).join('')}</select></label>
+          <label class="fld"><span>Recommendation</span><select name="rec" ${edit ? '' : 'disabled'}><option value="">Choose…</option>${recs.map((r) => `<option value="${r}" ${A.recommendation === r ? 'selected' : ''}>${esc(REC_LBL[r])}</option>`).join('')}</select></label>
+          <label class="fld" data-show="extend"><span>New probation end date</span><input name="ext" type="date" value="${esc(A.rec_extend_to || '')}" ${edit ? '' : 'disabled'}></label>
+          <label class="fld" data-show="promote"><span>Promote to</span><select name="pos" ${edit ? '' : 'disabled'}><option value="">Choose…</option>${(A.next_positions || []).map((p) => `<option value="${esc(p.id)}" ${A.rec_position === p.id ? 'selected' : ''}>${esc(p.level)} · ${esc(p.title)}</option>`).join('')}</select></label>
+          <label class="fld" data-show="increment promote"><span>Recommended new salary (RM)</span><input name="inc" data-money inputmode="decimal" value="${A.rec_increment != null ? m2(A.rec_increment) : ''}" ${edit ? '' : 'disabled'}></label>
+          <label class="fld fld-2"><span>Strengths</span><textarea name="str" rows="2" ${edit ? '' : 'disabled'}>${esc(A.strengths || '')}</textarea></label>
+          <label class="fld fld-2"><span>To improve</span><textarea name="imp" rows="2" ${edit ? '' : 'disabled'}>${esc(A.improvements || '')}</textarea></label>
+          <label class="fld fld-2"><span>Goals for the next period</span><textarea name="goals" rows="2" ${edit ? '' : 'disabled'}>${esc(A.goals || '')}</textarea></label></div>
+        ${A.status === 'approved' ? `<div class="warn-box"><b>Approved</b> by ${esc(A.approved_by || '')} · ${dShort(A.approved_at)}${A.outcome ? `<br>${esc(Object.entries(A.outcome).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · '))}` : ''}</div>` : ''}
+        ${A.can_approve ? `<div class="btn-row"><button type="button" class="btn primary" data-appr>Approve and apply…</button><button type="button" class="btn" data-ret>Return to reviewer…</button></div>
+          <p class="muted small">Approving applies the outcome: ${prob ? 'confirmation in payroll and the Employee Master, or the new probation end date' : 'the KPI grade goes to payroll (annual-leave carry forward); a promotion moves them to the new JD level; a salary increment is then recorded in Increments &amp; Reviews'}.</p>` : ''}`,
+      onOpen: (w) => {
+        const sync = () => { const r = $('select[name=rec]', w).value; $$('[data-show]', w).forEach((x) => { x.hidden = !x.dataset.show.split(' ').includes(r); }); };
+        $('select[name=rec]', w).addEventListener('change', sync); sync();
+        const act = async (ret) => {
+          const close = () => $('[data-x]', w).click(); close();
+          const done = await modal({ title: `${ret ? 'Return' : 'Approve'} · ${A.name}`, ok: ret ? 'Return to reviewer' : 'Approve', danger: false,
+            body: `<label class="fld"><span>${ret ? 'What should be changed' : 'Note (optional)'}</span><input name="note" maxlength="300" ${ret ? 'required' : ''}></label>`,
+            onOk: async (f) => { if (ret && !f.note.value.trim()) throw new Error('Say what should be changed.');
+              const out = await API.rpc('cms_appraisal_approve', { p_id: id, p_note: f.note.value || null, p_return: ret });
+              if (!ret && out) toast(Object.entries(out).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ') || 'Approved'); } });
+          if (done) { if (ret) toast('Returned to the reviewer'); after?.(); }
+        };
+        $('[data-appr]', w)?.addEventListener('click', () => act(false));
+        $('[data-ret]', w)?.addEventListener('click', () => act(true));
+      },
+      onOk: async (f) => {
+        const sc = scores.map((s, i) => ({ area: s.area, measure: s.measure, score: f[`s${i}`].value ? Number(f[`s${i}`].value) : null, comment: f[`c${i}`].value.trim() || null }));
+        if (sc.some((s) => s.score == null)) throw new Error('Score every KPI area (1–5).');
+        await API.rpc('cms_appraisal_review', { p_id: id, p: { scores: sc, rating: f.rating.value, recommendation: f.rec.value, rec_extend_to: f.ext.value || null, rec_position: f.pos.value || null,
+          rec_increment: f.inc.value ? mval(f.inc.value) : null, strengths: f.str.value, improvements: f.imp.value, goals: f.goals.value } });
+      } });
+    if (ok) { toast('Review saved'); after?.(); }
+  }
+
+  async function appraisalsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="ap2-body">${loading()}</div>`;
+    let D; const load = async () => { D = await API.rpc('cms_appraisals'); D.people.forEach((r) => upKeys(r, 'name')); D.appraisals.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#ap2-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const L = { ...GRADE_LBL, ...(D.grade_labels || {}) };
+    const f = { tab: 'progress', q: '' };
+    const reload = async () => { try { await load(); loadApprPending(); } catch (e) { toast(e.message, 'err'); } draw(); };
+    const draw = () => {
+      const prog = D.appraisals.filter((a) => ['open', 'reviewed'].includes(a.status)); const t = f.q.trim().toLowerCase();
+      const probDue = D.people.filter((p) => p.on_probation && !p.probation_open);
+      const annualTodo = D.people.filter((p) => !p.on_probation && !p.annual_done);
+      const T = [['progress', `In progress <span>${prog.length}</span>`], ['probation', `Probation due <span>${probDue.length}</span>`], ['annual', `Annual ${D.year} <span>${annualTodo.length}</span>`], ['done', 'Approved']];
+      const match = (r) => !t || `${r.name} ${r.employee_id || ''} ${r.title || ''}`.toLowerCase().includes(t);
+      $('#ap2-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="toolbar"><label class="search-in">${icon('search')}<input id="aq" type="search" placeholder="Name or Employee ID" value="${esc(f.q)}" aria-label="Search"></label>
+          ${D.can_edit && f.tab === 'annual' && annualTodo.length ? `<button type="button" class="btn sm" data-bulk>Start annual appraisals for all ${annualTodo.length}…</button>` : ''}</div>
+        <div id="ap2-tab"></div></section>
+        <p class="muted small">KPI grade (${Object.entries(L).map(([k, v]) => `${k} ${v}`).join(' · ')}) is set by the approved annual appraisal and goes to payroll for annual-leave carry forward (cut-off month ${D.kpi_cutoff_month}).
+          The reviewer is the person they report to (or HR); HR / Admin or a director approves.</p>`;
+      const box = $('#ap2-tab', el);
+      const apRows = (list) => (list.length ? `<div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Person</th><th>Appraisal</th><th>Reviewer</th><th>Due</th><th>Grade</th><th>Status</th></tr></thead><tbody>
+        ${list.map((a) => `<tr data-a="${esc(a.id)}"><td><b>${esc(a.name)}</b><small class="sub">${esc([a.employee_id, a.title].filter(Boolean).join(' · '))}</small></td><td>${esc(apName(a))}</td>
+          <td>${esc(a.reviewer || 'HR')}</td><td class="nowrap">${a.due ? dShort(a.due) : '—'}</td><td>${gradeTag(a.rating, L)}${a.recommendation ? `<small class="sub">${esc(REC_LBL[a.recommendation])}</small>` : ''}</td><td>${apTag(a)}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>Nothing here</p></div>');
+      if (f.tab === 'progress') box.innerHTML = apRows(prog.filter(match));
+      else if (f.tab === 'done') box.innerHTML = apRows(D.appraisals.filter((a) => a.status === 'approved' && match(a)));
+      else {
+        const list = (f.tab === 'probation' ? probDue : annualTodo).filter(match);
+        box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Started</th><th>${f.tab === 'probation' ? 'Probation ends' : `KPI grade ${D.year}`}</th><th></th></tr></thead><tbody>
+          ${list.map((p) => `<tr><td><b>${esc(p.name)}</b><small class="sub">${esc([p.employee_id, p.title].filter(Boolean).join(' · '))}</small></td><td class="nowrap">${p.start ? dShort(p.start) : '—'}</td>
+            <td class="nowrap">${f.tab === 'probation' ? `${p.probation_end ? dShort(p.probation_end) : '—'}${p.probation_end && daysTo(p.probation_end) < 0 ? ' <span class="tag bad xs">overdue</span>' : p.probation_end && daysTo(p.probation_end) <= 30 ? ' <span class="tag warn xs">within 30 days</span>' : ''}` : gradeTag(p.grade, L)}</td>
+            <td>${D.can_edit ? `<button type="button" class="btn sm primary" data-start="${esc(p.person_id)}" data-kind="${f.tab}">Start…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No one due</p></div>';
+      }
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#aq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#aq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $$('[data-a]', box).forEach((r) => r.addEventListener('click', () => appraisalWindow(r.dataset.a, reload)));
+      $$('[data-start]', box).forEach((b) => b.addEventListener('click', () => startWindow([b.dataset.start], b.dataset.kind)));
+      $('[data-bulk]', el)?.addEventListener('click', () => startWindow(annualTodo.map((p) => p.person_id), 'annual'));
+      fitTables();
+    };
+    const startWindow = async (ids, kind) => {
+      const one = ids.length === 1 ? D.people.find((p) => p.person_id === ids[0]) : null;
+      const reviewers = D.people.slice().sort((a, b) => a.name.localeCompare(b.name));
+      const ok = await modal({ title: `${kind === 'annual' ? `Annual appraisal ${D.year}` : 'Probation review'} · ${one ? one.name : `${ids.length} people`}`, ok: 'Start',
+        body: `<div class="grid-2 tight"><label class="fld"><span>Due date</span><input name="due" type="date" value="${esc(one?.probation_end || '')}"></label>
+          ${one ? `<label class="fld"><span>Reviewer</span><select name="rev"><option value="">Reports to (default) / HR</option>${reviewers.filter((r) => r.person_id !== one.person_id).map((r) => `<option value="${esc(r.person_id)}" ${r.person_id === one.reports_to_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>` : '<p class="muted small fld">Each person is reviewed by the person they report to (or HR where none is set).</p>'}
+          <label class="fld fld-2"><span>&nbsp;</span><label class="chk"><input type="checkbox" name="self" checked> Ask for a self-assessment (in My Appraisal; the person needs a linked login)</label></label></div>`,
+        onOk: async (fm) => { let n = 0; const errs = [];
+          for (const id of ids) { try { await API.rpc('cms_appraisal_start', { p: { person_id: id, kind, year: D.year, due: fm.due.value || null, reviewer_id: fm.rev ? fm.rev.value || null : null, self_requested: fm.self.checked } }); n += 1; } catch (e) { errs.push(e.message); } }
+          if (!n && errs.length) throw new Error(errs[0]);
+          toast(`${n} appraisal${n === 1 ? '' : 's'} started${errs.length ? ` (${errs.length} skipped)` : ''}`); } });
+      if (ok) { f.tab = 'progress'; reload(); }
+    };
+    draw();
+  }
+
+  async function meAppraisalPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="ma-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_my_appraisals'); } catch (e) { $('#ma-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const rows = (list, who) => list.map((a) => `<div class="me-item" data-a="${esc(a.id)}"><div><b>${esc(who ? a.name : apName(a))}</b><small class="sub">${esc(who ? apName(a) : (a.reviewer ? `Reviewer ${a.reviewer}` : ''))}${a.due ? ` · due ${dShort(a.due)}` : ''}</small></div>
+      <div class="btn-row">${apTag(a)}${a.status === 'approved' && !who ? gradeTag(a.rating) : ''}<button type="button" class="btn sm ${(!who && a.self_requested && !a.self_done && a.status === 'open') || (who && a.status === 'open') ? 'primary' : ''}">Open</button></div></div>`).join('');
+    $('#ma-body', el).innerHTML = `${D.to_review.length ? `<section class="card"><div class="card-head"><h3>For you to review</h3><span class="muted small">People who report to you</span></div>${rows(D.to_review, true)}</section>` : ''}
+      <section class="card"><div class="card-head"><h3>My appraisals</h3></div>${D.mine.length ? rows(D.mine, false) : '<div class="empty small"><p>No appraisal for you yet</p></div>'}</section>`;
+    $$('[data-a]', el).forEach((r) => r.querySelector('button').addEventListener('click', () => appraisalWindow(r.dataset.a, () => { refreshSelf(); loadApprPending(); render(); })));
+  }
+  async function loadApprPending() { try { state.apprPending = await API.rpc('cms_appraisals_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function apprTasks() {
+    const x = state.apprPending; const t = []; if (!x) return t;
+    if (x.self_to_do) t.push({ ic: 'trend', tone: 'blue', title: 'Your self-assessment is waiting', sub: 'My Appraisal', href: '#/me/appraisal' });
+    if (x.to_review) t.push({ ic: 'trend', tone: 'violet', title: `${num(x.to_review)} appraisal${x.to_review === 1 ? '' : 's'} for you to review`, sub: 'People who report to you', href: selfOn('appraisal') ? '#/me/appraisal' : '#/performance' });
+    if (x.to_approve) t.push({ ic: 'check-circle', tone: 'green', title: `${num(x.to_approve)} appraisal${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'KPI & Appraisal', href: '#/performance' });
+    if (x.probation_due) t.push({ ic: 'trend', tone: 'orange', title: `${num(x.probation_due)} probation review${x.probation_due === 1 ? '' : 's'} due`, sub: 'Ending within 30 days or overdue', href: '#/performance' });
+    return t;
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -2827,7 +2979,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -2994,7 +3146,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

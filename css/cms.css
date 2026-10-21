@@ -775,3 +775,6 @@ table.data.click tbody tr { cursor: pointer; }
 .ladder + .ladder { margin-top: 18px; }
 .ladder table.data td[rowspan] { vertical-align: top; }
 ol.tl-kinds li { margin-bottom: 6px; }
+.fld[hidden] { display: none !important; }
+table.ap-scores select { min-width: 70px; }
+table.ap-scores input { width: 100%; min-width: 160px; }
