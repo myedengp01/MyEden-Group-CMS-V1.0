@@ -166,3 +166,7 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $g$;
+
+-- security advisor: fixed search_path on two small helpers
+alter function private.cms_norm_name(text) set search_path = pg_catalog, pg_temp;
+alter function private.cms_photo_ok(text) set search_path = pg_catalog, pg_temp;
