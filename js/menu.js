@@ -12,6 +12,13 @@ window.CMS_PHASES = {
 };
 
 window.CMS_MENU = [
+  // Staff self-service: each page shows only when HR / Admin has switched that part on for the person (self: the part)
+  { section: 'My Self-service', items: [
+    { route: 'me', label: 'My Home', icon: 'home', phase: 4, live: true, self: '*', desc: 'Your own records in MyEden Group: the parts HR has switched on for you.' },
+    { route: 'me/profile', label: 'My Profile', icon: 'users', phase: 4, live: true, self: 'profile', desc: 'Your employment and personal details. Changes are sent to HR for approval.' },
+    { route: 'me/payslips', label: 'My Payslips & EA', icon: 'wallet', phase: 4, live: true, self: ['payslips', 'ea'], desc: 'Payslips and EA forms HR has released to you, from finalised payroll months. View, print or save as PDF.' },
+    { route: 'me/salary', label: 'My Salary History', icon: 'trend', phase: 4, live: true, self: 'salary', desc: 'Your salary and each change, by month.' },
+  ] },
   { section: 'Workspace', items: [
     { route: 'dashboard', label: 'Dashboard', icon: 'home', phase: 0, desc: 'Today across MyEden Group: people, positions, applications, approvals and your tasks.' },
     { group: 'People & Employment', icon: 'users', items: [
@@ -20,6 +27,7 @@ window.CMS_MENU = [
       { route: 'people/former', label: 'Former Staff', phase: 0, desc: 'Everyone who has left: last day and the company they worked for.' },
       { route: 'people/ids', label: 'Employee IDs', phase: 2, source: 'MyPayroll V2.0', myp: 'employees/ids', desc: 'The Employee ID register: format, next number and who holds which ID.' },
       { route: 'people/import', label: 'Import from Workbook', phase: 2, source: 'MyPayroll V2.0', myp: 'employees/import', desc: 'Bring staff in from the MEG-EPPD payroll workbook.' },
+      { route: 'people/selfservice', label: 'Self-service Access', phase: 4, live: true, desc: 'What each person can see in their own self-service: switch parts on per person, release payslips and EA forms, set who each person reports to, and approve profile changes.' },
       { route: 'people/directory', label: 'Employee Directory', phase: 4, desc: 'Who is who, by centre and department, with contact details staff are allowed to see.' },
       { route: 'org', label: 'Organisation Structure', phase: 0, desc: 'Companies, centres and departments, and the positions in each.', plan: ['Myeden Group · Myeden Edu Hub · Happy Dino · Aborne Project', 'Centres: Taska Genius Eden, PJK Eden, Tadika Genius Eden, Tadika Happy Dino, HQ', 'Department codes E1–E11, E3+, HQ'] },
       { route: 'documents', label: 'Employee Documents', phase: 5, desc: 'Contracts, IC copies, certificates and letters, filed per employee.' },
@@ -104,7 +112,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'people', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
   'leave/balances': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',

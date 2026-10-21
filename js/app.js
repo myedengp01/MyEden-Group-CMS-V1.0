@@ -28,6 +28,7 @@
     open: new Set(store.get('openGroups', ['People & Employment'])),
     route: 'dashboard',
     access: null,         // cms_my_access()
+    self: null,           // cms_my_self(): the person's own self-service parts
     dash: null,           // last cms_dashboard()
     people: null,         // cache for search
     org: null,
@@ -39,13 +40,25 @@
   // permissions
   const acts = (module) => (state.access?.permissions?.[module] || '');
   const can = (module, a = 'V') => !!state.access?.is_super_admin || acts(module).includes(a);
-  const canRoute = (route) => can(moduleOf(route), 'V');
+  const selfOn = (part) => !!state.self?.parts?.includes(part);
+  const hasSelf = () => !!state.self?.parts?.length;
+  const canRoute = (route) => {
+    const it = PAGES.get(route);
+    if (it?.self) return it.self === '*' ? hasSelf() : [].concat(it.self).some(selfOn);
+    return can(moduleOf(route), 'V');
+  };
+  const homeRoute = () => (canRoute('dashboard') ? 'dashboard' : hasSelf() ? 'me' : 'dashboard');
   const isSuper = () => !!state.access?.is_super_admin;
 
   // ---------------------------------------------------------------- small helpers
   const initials = (n) => String(n || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
   const num = (n) => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('en-MY');
   const money = (n) => 'RM ' + Number(n || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // amounts typed with or without thousands separators (2,300.50 / 2300.5)
+  const mval = (v) => Number(String(v ?? '').replace(/[,\s]|RM/gi, ''));
+  // money boxes show 0,000.00 when you leave them and the plain number while you type
+  document.addEventListener('focusout', (e) => { const t = e.target; if (t.matches?.('input[data-money]') && t.value.trim() !== '' && !isNaN(mval(t.value))) t.value = mval(t.value).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); });
+  document.addEventListener('focusin', (e) => { const t = e.target; if (t.matches?.('input[data-money]') && t.value) { t.value = String(mval(t.value)); t.select(); } });
   const fmtDate = (d) => d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
   const fmtTime = (d) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const dShort = (s) => { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? esc(s) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
@@ -146,8 +159,9 @@
   }
 
   function tasksFromDash(d) {
-    if (!d) return [];
-    const t = [];
+    const t = selfTasks();
+    if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
+    if (!d) return t;
     const bs = d.claims_by_stage || {};
     if (d.claims_pending && can('approvals')) t.push({ ic: 'file-check', tone: 'orange', title: `${num(d.claims_pending)} claims waiting`, sub: [bs.approval && `${bs.approval} to approve`, bs.processing && `${bs.processing} to process`, bs.payment && `${bs.payment} to pay`].filter(Boolean).join(' · ') + ` · ${money(d.claims_pending_amount)}`, href: '#/approvals' });
     if (d.applications_pending && can('recruitment')) t.push({ ic: 'search-user', tone: 'blue', title: `${num(d.applications_pending)} applications not yet processed`, sub: 'Screening and decision', href: '#/applications' });
@@ -173,7 +187,7 @@
         <button type="button" class="icon-btn theme-btn" aria-label="Switch light / dark" title="Light / dark">${icon(state.theme === 'dark' ? 'sun' : 'moon')}</button>
         <div class="pop-wrap"><button type="button" class="icon-btn bell-btn" aria-label="Notifications" aria-haspopup="true">${icon('bell')}</button>
           <div class="popover" data-pop="bell"><div class="pop-head">Waiting for attention</div><div id="bell-list">${loading('Checking…')}</div></div></div>
-        <div class="pop-wrap"><button type="button" class="user-btn" aria-haspopup="true"><span class="avatar">${esc(initials(a.name))}</span><span class="who"><b>${esc(a.name || '')}</b><small>${esc(top ? top.name : 'No role')}</small></span>${icon('chevron', 'chev down')}</button>
+        <div class="pop-wrap"><button type="button" class="user-btn" aria-haspopup="true"><span class="avatar">${esc(initials(a.name))}</span><span class="who"><b>${esc(a.name || '')}</b><small>${esc(top ? top.name : hasSelf() ? 'Self-service' : 'No role')}</small></span>${icon('chevron', 'chev down')}</button>
           <div class="popover right" data-pop="user"><div class="pop-head">Signed in as</div><div class="pop-user"><span class="avatar">${esc(initials(a.name))}</span><div><b>${esc(a.name || '')}</b><small>${esc(a.email || '')}</small></div></div>
             <div class="pop-roles">${(a.roles || []).map((r) => `<span class="role-chip r-${esc(r.code)}">${esc(r.name)}${r.companies ? ` · ${esc(r.companies.join(', '))}` : ''}</span>`).join('')}</div>
             ${a.person ? `<div class="pop-note">${icon('users')}${esc(a.person.employee_id || 'No Employee ID')} · ${esc(coShort(a.person.company_code))}</div>` : ''}
@@ -330,7 +344,8 @@
   // ---------------------------------------------------------------- page head
   function pageHead(item, extra = '') {
     const live = item.phase === 0 || item.live;
-    return `<div class="crumbs"><a href="#/dashboard">Dashboard</a>${item.group ? ` / <span>${esc(item.group)}</span>` : ''} / <span>${esc(item.label)}</span></div>
+    const home = homeRoute();
+    return `<div class="crumbs"><a href="#/${home}">${esc(PAGES.get(home).label)}</a>${item.group ? ` / <span>${esc(item.group)}</span>` : ''} / <span>${esc(item.label)}</span></div>
       <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.source ? `<span class="tag src">${icon('plug')}${live ? 'Data from' : 'Now in'} ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
   }
   function wireRetry(el) { $$('[data-retry]', el).forEach((b) => b.addEventListener('click', render)); }
@@ -564,11 +579,11 @@
               <label class="fld"><span>Company</span><select name="co" required>${coOpts(live.map((x) => x.company_code))}</select></label>
               <div class="grid-2 tight"><label class="fld"><span>First payroll month</span><input type="month" name="m" required value="${lastFin && monthNext(lastFin) > monthNow() ? monthNext(lastFin) : monthNow()}"></label>
               <label class="fld"><span>Pay basis</span><select name="basis"><option value="monthly">Monthly salary</option><option value="hourly">Hourly rate</option></select></label></div>
-              <label class="fld"><span>Salary paid by this company (RM)</span><input type="number" name="amt" min="0" step="0.01" required placeholder="0.00"></label>
+              <label class="fld"><span>Salary paid by this company (RM)</span><input type="text" inputmode="decimal" data-money name="amt" required placeholder="0.00"></label>
               ${statBoxes({})}
               <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. teaches 2 days a week at Edu Hub"></label>`,
             onOk: async (f) => { if (!f.co.value || !f.m.value || f.amt.value === '') throw new Error('Choose the company and month, and enter the salary.');
-              await API.rpc('cms_pay_add_company', { p_employment: empId, p_company: f.co.value, p_from: `${f.m.value}-01`, p_salary: Number(f.amt.value), p_pay_basis: f.basis.value, p_statutory: statOf(f), p_note: f.note.value || null }); } });
+              await API.rpc('cms_pay_add_company', { p_employment: empId, p_company: f.co.value, p_from: `${f.m.value}-01`, p_salary: mval(f.amt.value), p_pay_basis: f.basis.value, p_statutory: statOf(f), p_note: f.note.value || null }); } });
           if (ok) done(`Second company added for ${person.name}`);
         };
         load();
@@ -675,14 +690,14 @@
         const recordInc = async () => {
           const ok = await modal({ title: `Record increment · ${r.name}`, ok: 'Save increment',
             body: `<p class="muted small">Current salary ${salaryTxt(r.current_salary, r.pay_basis)} with ${esc(coShort(r.paid_by))}. The new salary applies from the month you choose; payroll picks it up from then. Months already finalised cannot be changed.</p>
-              <div class="grid-2 tight"><label class="fld"><span>New salary (RM)</span><input type="number" name="amt" min="0" step="0.01" required value="${r.current_salary ?? ''}"></label>
+              <div class="grid-2 tight"><label class="fld"><span>New salary (RM)</span><input type="text" inputmode="decimal" data-money name="amt" required value="${r.current_salary == null ? '' : m2(r.current_salary)}"></label>
               <label class="fld"><span>From payroll month</span><input type="month" name="m" required value="${monthNow()}"></label></div>
               <p class="muted small" data-diff></p>
               <label class="fld"><span>Reason</span><select name="reason"><option>Annual increment</option><option>Confirmation increment</option><option>Promotion</option><option>Merit increment</option><option>Adjustment</option></select></label>
               <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
-            onOpen: (w) => { const f = $('form', w); const upd = () => { const d = Number(f.amt.value) - Number(r.current_salary || 0); $('[data-diff]', w).textContent = f.amt.value ? `Change: ${d < 0 ? '−' : '+'}${money(Math.abs(d))}${r.current_salary ? ` (${(d / r.current_salary * 100).toFixed(1)}%)` : ''}` : ''; }; f.amt.addEventListener('input', upd); upd(); setTimeout(() => f.amt.select(), 30); },
+            onOpen: (w) => { const f = $('form', w); const upd = () => { const d = mval(f.amt.value) - Number(r.current_salary || 0); $('[data-diff]', w).textContent = f.amt.value ? `Change: ${d < 0 ? '−' : '+'}${money(Math.abs(d))}${r.current_salary ? ` (${(d / r.current_salary * 100).toFixed(1)}%)` : ''}` : ''; }; f.amt.addEventListener('input', upd); upd(); setTimeout(() => f.amt.select(), 30); },
             onOk: async (f) => { if (!f.amt.value || !f.m.value) throw new Error('Enter the new salary and the month.');
-              await API.rpc('cms_record_increment', { p_employment: r.employment_id, p_from: `${f.m.value}-01`, p_salary: Number(f.amt.value), p_reason: f.reason.value, p_note: f.note.value || null }); } });
+              await API.rpc('cms_record_increment', { p_employment: r.employment_id, p_from: `${f.m.value}-01`, p_salary: mval(f.amt.value), p_reason: f.reason.value, p_note: f.note.value || null }); } });
           if (ok) { changed = true; toast(`Increment saved for ${r.name}`); load(); }
         };
         const changeReview = async () => {
@@ -1060,7 +1075,7 @@
     if (v === true) return 'Yes'; if (v === false) return 'No';
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return dtShort(v);
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return dShort(v);
-    if (typeof v === 'number' && /amount|total|subtotal|pay|rate|price|claim/i.test(k)) return Number(v).toLocaleString('en-MY', { maximumFractionDigits: 2 });
+    if (typeof v === 'number' && /amount|total|subtotal|pay|rate|price|claim/i.test(k)) return Number(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return esc(v);
   };
   function claimDetailsHtml(c) {
@@ -1664,7 +1679,7 @@
           ${p.competencies.length ? `<h4 class="sec-h">Competencies</h4><p>${p.competencies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ')}</p>` : ''}
           ${para('Minimum qualifications', p.minimum_qualifications)}${para('Experience', p.required_experience)}${para('Skills & knowledge', p.skills_knowledge)}
           ${para('Safety & child protection', p.safety_child_protection)}${para('Career path', p.career_path)}
-          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Range</th><th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.range ? esc(b.range) : `${money(b.min)} – ${money(b.max)}`}</td><td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
+          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Range</th><th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null && b.max != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td><td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
           <div class="btn-row">${eafBtn('jd', 'Edit in the JD Manual (MEG-EAF V2)')}</div>`,
       });
     };
@@ -1760,7 +1775,7 @@
           <label class="fld"><span>Employment status</span><select name="conf">${opt(P.statuses.map((x) => [x.code, x.label]), 'UP')}</select></label>
           <label class="fld"><span>Job status${P.employment_type ? ` <small class="muted">— offer: ${esc(P.employment_type)}</small>` : ''}</span><select name="job">${opt(P.job_statuses.map((x) => [x.code, x.label]), /part/i.test(P.employment_type || '') ? 'PT' : 'FT', 'Not set')}</select></label>
           <label class="fld"><span>Working hours</span><span class="hours"><input type="time" name="from" value="${esc(t5(P.work_from))}"> – <input type="time" name="to" value="${esc(t5(P.work_to))}"></span></label>
-          <label class="fld"><span>Starting salary (RM)</span><input type="number" name="salary" step="0.01" min="0" required value="${esc(P.salary ?? '')}"></label>
+          <label class="fld"><span>Starting salary (RM)</span><input type="text" inputmode="decimal" data-money name="salary" required value="${P.salary == null || P.salary === '' ? '' : m2(P.salary)}"></label>
           <label class="fld"><span>Pay basis</span><select name="basis">${opt([['monthly', 'Monthly'], ['hourly', 'Hourly'], ['daily', 'Daily']], /hour/i.test(P.pay_basis || '') ? 'hourly' : /dai/i.test(P.pay_basis || '') ? 'daily' : 'monthly')}</select></label>
           <label class="fld"><span>Email</span><input name="email" type="email" value="${esc(P.email || '')}"></label>
           <label class="fld"><span>Phone</span><input name="phone" value="${esc(P.phone || '')}"></label>
@@ -1772,13 +1787,13 @@
       onOk: async (form) => {
         if (!form.gender.value) throw new Error('Confirm the gender: the Employee ID is built from it.');
         if (!form.join.value) throw new Error('Enter the start date.');
-        if (!(Number(form.salary.value) >= 0) || form.salary.value === '') throw new Error('Enter the starting salary.');
+        if (!(mval(form.salary.value) >= 0) || form.salary.value === '') throw new Error('Enter the starting salary.');
         const r = await API.rpc('cms_hire', { p: {
           application_id: P.application_id || null, handoff_id: P.handoff_id, person_id: P.person_id, name: form.name.value, gender: form.gender.value, employer: form.employer.value,
           company_id: Number(form.company.value), join_date: form.join.value, department_id: form.dept.value || null,
           job_title_id: form.title.value || null, job_title_name: form.title.value ? null : (P.title || null),
           confirmation_status: form.conf.value, job_status: form.job.value || null, work_from: form.from.value || null, work_to: form.to.value || null,
-          salary: Number(form.salary.value), pay_basis: form.basis.value, email: form.email.value || null, phone: form.phone.value || null,
+          salary: mval(form.salary.value), pay_basis: form.basis.value, email: form.email.value || null, phone: form.phone.value || null,
           dob: form.dob.value || null, nric: form.nric.value || null, note: form.note.value || null } });
         toast(`${form.name.value.toUpperCase()} hired · Employee ID ${r.employee_id}`);
         state.people = null;
@@ -1841,6 +1856,427 @@
   }
 
 
+  // ================================================================ PHASE 4 · STAFF SELF-SERVICE
+  // Every part is off by default; HR / Admin switch parts on per person (Self-service Access).
+  const PARTS = [
+    ['profile', 'Profile', 'My Profile: details, and change requests HR approves'],
+    ['payslips', 'Payslips', 'Payslips HR releases month by month (finalised months only)'],
+    ['ea', 'EA forms', 'EA forms HR releases year by year'],
+    ['salary', 'Salary history', 'Their salary and each change'],
+    ['items', 'Items', 'Company items issued to them (arrives in Phase 4b)', '4b'],
+    ['claims', 'Claims', 'Their SCF / OTCF / MTCF claims (arrives in Phase 4c)', '4c'],
+    ['leave', 'Leave', 'Apply for leave (built in Phase 4d, not in use yet)', '4d'],
+    ['handbook', 'Handbook', 'Their handbook (arrives with Phase 4b)', '4b'],
+  ];
+  const PART_READY = (p) => !(PARTS.find((x) => x[0] === p) || [])[3];
+  const PROFILE_FIELDS = [['contact', 'Phone'], ['email', 'Email'], ['home_address', 'Home address'], ['emergency_name', 'Emergency contact'],
+    ['emergency_relation', 'Relationship'], ['emergency_phone', 'Emergency phone'], ['bank_code', 'Bank'], ['bank_account_no', 'Bank account no.']];
+  const fieldLabel = (k) => (PROFILE_FIELDS.find((x) => x[0] === k) || [k, k])[1];
+  const monthName = (p) => (p ? new Date(`${String(p).slice(0, 7)}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : '');
+  const monthShort = (p) => (p ? new Date(`${String(p).slice(0, 7)}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '');
+  const m2 = (v) => Number(v || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function selfTasks() {
+    const t = []; const s = state.self; if (!s) return t;
+    (s.new_payslips || []).slice(-3).forEach((p) => t.push({ ic: 'wallet', tone: 'green', title: `Your payslip for ${monthName(p)} is ready`, sub: 'View, print or save as PDF', href: '#/me/payslips' }));
+    (s.profile_decided || []).slice(0, 1).forEach((x) => t.push({ ic: 'users', tone: x.status === 'approved' ? 'green' : 'rose', title: `HR ${x.status} your profile change`, sub: dShort(x.at), href: '#/me/profile' }));
+    return t;
+  }
+  async function loadSelfPending() {
+    if (!can('selfservice', 'E')) return;
+    try { state.selfPending = await API.rpc('cms_self_pending'); drawBell(); } catch (e) { /* reminder only */ }
+  }
+  async function refreshSelf() { try { state.self = await API.rpc('cms_my_self'); drawBell(); } catch (e) { /* keep the last */ } }
+
+  // ---------------------------------------------------------------- My Home
+  function meHomePage(item, el) {
+    const s = state.self || {};
+    const tiles = [
+      ['me/profile', 'users', 'My Profile', 'Your details; send changes to HR', selfOn('profile')],
+      ['me/payslips', 'wallet', 'My Payslips & EA', s.payslips ? `${s.payslips} payslip${s.payslips === 1 ? '' : 's'} released${(s.new_payslips || []).length ? ` · ${s.new_payslips.length} new` : ''}` : 'Released by HR month by month', selfOn('payslips') || selfOn('ea')],
+      ['me/salary', 'trend', 'My Salary History', 'Your salary and each change', selfOn('salary')],
+    ].filter((x) => x[4]);
+    el.innerHTML = `${pageHead(item)}
+      <section class="card me-hero"><div class="avatar lg">${esc(initials(s.name))}</div><div><h3>${esc(s.name || '')}</h3>
+        <p class="muted">${esc([s.employee_id, s.title, coShort(s.company)].filter(Boolean).join(' · '))}</p></div></section>
+      <div class="me-tiles">${tiles.map(([r, ic, t, sub]) => `<a class="card me-tile" href="#/${r}"><span class="t-ic">${icon(ic)}</span><div><b>${esc(t)}</b><small>${esc(sub)}</small></div>${icon('chevron', 'chev')}</a>`).join('')}</div>
+      <p class="muted small">Only the parts HR has switched on for you are shown. Ask HR if you need something else.</p>`;
+  }
+
+  // ---------------------------------------------------------------- My Profile
+  async function meProfilePage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mp-body">${loading()}</div>`;
+    let P;
+    try { P = await API.rpc('cms_my_profile'); } catch (e) { $('#mp-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const V = P.values || {}; const bankName = (c) => (P.banks.find((b) => b.code === c) || {}).label || c || '';
+    const kv = (k, v) => `<dt>${esc(k)}</dt><dd>${v === null || v === undefined || v === '' ? '<span class="muted">—</span>' : esc(v)}</dd>`;
+    const pending = P.requests.find((r) => r.status === 'pending');
+    const showVal = (k, v) => (k === 'bank_code' ? bankName(v) : v) || '—';
+    $('#mp-body', el).innerHTML = `
+      ${pending ? `<div class="warn-box">${icon('clock')}<div><b>Change waiting for HR</b> · sent ${dShort(pending.requested_at)}
+        <ul class="chg">${Object.entries(pending.changes).map(([k, v]) => `<li>${esc(fieldLabel(k))}: <s>${esc(showVal(k, (pending.previous || {})[k]))}</s> → <b>${esc(showVal(k, v))}</b></li>`).join('')}</ul>
+        <button type="button" class="btn sm ghost" data-cancel="${esc(pending.id)}">Cancel this request</button></div></div>` : ''}
+      <div class="grid-2">
+        <section class="card"><div class="card-head"><h3>Employment</h3></div><dl class="kv2">
+          ${kv('Employee ID', P.employee_id)}${kv('Employer', coShort(P.company))}${kv('Job title', P.title)}${kv('Department / centre', P.department)}
+          ${kv('Work location', P.work_location)}${kv('Employment type', P.employment_type)}${kv('Start date', P.start ? dShort(P.start) : '')}
+          ${kv('Working hours', P.hours)}${kv('Confirmation', P.confirmation)}${kv('Reports to', P.reports_to)}</dl></section>
+        <section class="card"><div class="card-head"><h3>Personal</h3>${pending ? '' : '<button type="button" class="btn sm primary" id="mp-edit">Request a change…</button>'}</div><dl class="kv2">
+          ${kv('Name', P.name)}${kv('NRIC / passport', P.nric || P.passport_no)}${kv('Date of birth', P.dob ? dShort(P.dob) : '')}
+          ${kv('Phone', V.contact)}${kv('Email', V.email)}${kv('Home address', V.home_address)}
+          ${kv('Emergency contact', [V.emergency_name, V.emergency_relation && `(${V.emergency_relation})`, V.emergency_phone].filter(Boolean).join(' '))}
+          ${kv('Bank', [bankName(V.bank_code), V.bank_account_no].filter(Boolean).join(' · '))}
+          ${kv('EPF / SOCSO / tax no.', [P.epf_no || '—', P.socso_no || '—', P.tax_no || '—'].join(' · '))}</dl>
+          <p class="muted small">Name, IC and statutory numbers are changed by HR only: contact HR with your document.</p></section>
+      </div>
+      ${P.requests.filter((r) => r.status !== 'pending').length ? `<section class="card"><div class="card-head"><h3>Earlier requests</h3></div><div class="table-wrap"><table class="data compact"><thead><tr><th>Sent</th><th>Changes</th><th>Result</th></tr></thead><tbody>
+        ${P.requests.filter((r) => r.status !== 'pending').map((r) => `<tr><td class="nowrap">${dShort(r.requested_at)}</td><td>${esc(Object.keys(r.changes).map(fieldLabel).join(', '))}</td>
+          <td><span class="tag ${r.status === 'approved' ? 'ok' : r.status === 'rejected' ? 'bad' : ''} xs">${esc(r.status)}</span>${r.decision_note ? `<small class="sub">${esc(r.decision_note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
+    $('[data-cancel]', el)?.addEventListener('click', async (e) => {
+      if (!(await confirmBox('Cancel the change request?', 'HR will no longer see it. You can send a new one afterwards.', 'Cancel request', true,
+        () => API.rpc('cms_my_profile_cancel', { p_id: e.currentTarget.dataset.cancel })))) return;
+      toast('Request cancelled'); refreshSelf(); render();
+    });
+    $('#mp-edit', el)?.addEventListener('click', async () => {
+      let photo = null;
+      const ok = await modal({ title: 'Request a change', ok: 'Send to HR', wide: true,
+        body: `<p class="muted small">Change only what is different. HR checks and approves the change before it takes effect.</p>
+          <div class="grid-2 tight">
+            <label class="fld"><span>Phone</span><input name="contact" value="${esc(V.contact || '')}" inputmode="tel"></label>
+            <label class="fld"><span>Email</span><input name="email" type="email" value="${esc(V.email || '')}"></label>
+            <label class="fld fld-2"><span>Home address</span><textarea name="home_address" rows="2">${esc(V.home_address || '')}</textarea></label>
+            <label class="fld"><span>Emergency contact</span><input name="emergency_name" value="${esc(V.emergency_name || '')}"></label>
+            <label class="fld"><span>Relationship</span><input name="emergency_relation" value="${esc(V.emergency_relation || '')}"></label>
+            <label class="fld"><span>Emergency phone</span><input name="emergency_phone" value="${esc(V.emergency_phone || '')}" inputmode="tel"></label>
+            <label class="fld"><span>Bank</span><select name="bank_code"><option value="">—</option>${P.banks.map((b) => `<option value="${esc(b.code)}" ${b.code === V.bank_code ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select></label>
+            <label class="fld"><span>Bank account no.</span><input name="bank_account_no" value="${esc(V.bank_account_no || '')}" inputmode="numeric"></label>
+            <label class="fld fld-2"><span>Photo of bank statement or bank card (needed for a bank change)</span><input name="photo" type="file" accept="image/*"></label>
+            <label class="fld fld-2"><span>Note to HR (optional)</span><input name="note" maxlength="300"></label>
+          </div>`,
+        onOpen: (w) => { $('input[name=photo]', w).addEventListener('change', async (e) => { photo = e.target.files[0] ? await shrinkImage(e.target.files[0]) : null; }); },
+        onOk: async (f) => {
+          const ch = {}; PROFILE_FIELDS.forEach(([k]) => { const v = (f[k].value || '').trim(); if (v !== (V[k] || '')) ch[k] = v; });
+          if (!Object.keys(ch).length) throw new Error('Nothing has changed.');
+          if ((ch.bank_code !== undefined || ch.bank_account_no !== undefined) && !photo) throw new Error('Attach a photo of your bank statement or bank card for a bank change.');
+          await API.rpc('cms_my_profile_request', { p_changes: ch, p_note: f.note.value || null, p_attachment: photo });
+        } });
+      if (ok) { toast('Sent to HR'); refreshSelf(); render(); }
+    });
+  }
+  // phone photos are large: scale to at most 1600 px and save as JPEG
+  function shrinkImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a picture.')); };
+      img.src = url;
+    });
+  }
+
+  // ---------------------------------------------------------------- payslip and EA figures (same as MyPayroll · Payslips & reports)
+  const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+  const itemAmt = (i) => Number(i.override ?? i.amount) || 0;
+  const PS_ORDER = ['BASIC', 'ALLOW_A1', 'ALLOW_A2', 'ALLOW_A3', 'LEADER', 'FIRST_AID', 'SKM1', 'SKM2', 'TRANSPORT', 'MVC', 'COMMISSION', 'INCENTIVE',
+    'FULL_ATT', 'REFERRAL', 'BONUS', 'ANG_BAO', 'AL_BUYBACK', 'OT_NORMAL', 'OT_RESTDAY', 'OT_PH', 'UNPAID_LEAVE', 'CHILDCARE', 'LOAN', 'OTHER_DED'];
+  const psOrder = (code) => { const i = PS_ORDER.indexOf(code); return i >= 0 ? i : 100; };
+  const isPersonalItem = (i) => i.kind === 'deduction' && i.category === 'personal';
+  const SUM_KEYS = ['gross', 'epf_ee', 'epf_er', 'socso_ee', 'socso_ee_nei', 'socso_er', 'eis_ee', 'eis_er', 'pcb', 'net', 'personal_deductions', 'reimbursements', 'net_paid'];
+  function sumPayLines(lines) {
+    const t = Object.fromEntries(SUM_KEYS.map((k) => [k, 0])); t.lines = 0;
+    for (const l of (lines || []).filter((x) => !x.excluded)) { t.lines += 1; for (const k of SUM_KEYS) t[k] = r2(t[k] + (Number(l[k]) || 0)); }
+    return t;
+  }
+  function payslipModel(line, ytdLines) {
+    const earn = new Map(), ded = new Map(), pers = new Map(), claims = new Map();
+    for (const i of line.items || []) {
+      const a = itemAmt(i); if (!a) continue;
+      const target = i.category === 'reimbursement' ? claims : i.kind === 'earning' ? earn : isPersonalItem(i) ? pers : ded;
+      const key = i.label || i.code; const prev = target.get(key);
+      target.set(key, { label: key, code: i.code, amount: r2((prev?.amount || 0) + a), order: psOrder(i.code) });
+    }
+    const sort = (m) => [...m.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+    const statutory = [
+      { label: 'EPF (KWSP)', ee: r2(line.epf_ee), er: r2(line.epf_er) },
+      { label: 'SOCSO (PERKESO) – Invalidity', ee: r2((Number(line.socso_ee) || 0) - (Number(line.socso_ee_nei) || 0)), er: r2(line.socso_er) },
+      { label: 'SOCSO – Non-employment injury (NEI)', ee: r2(line.socso_ee_nei), er: null },
+      { label: 'EIS (SIP)', ee: r2(line.eis_ee), er: r2(line.eis_er) }];
+    const statEe = r2(statutory.reduce((x, r) => x + r.ee, 0));
+    const s = { earnings: sort(earn), deductions: sort(ded), personal: sort(pers), claims: sort(claims) };
+    return { ...s, statutory, pcb: r2(line.pcb), gross: r2(line.gross), totalDeductions: r2(statEe + Number(line.pcb || 0) + Number(line.personal_deductions || 0)),
+      netPaid: r2(line.net_paid), claimsTotal: r2(s.claims.reduce((x, c) => x + c.amount, 0)), ytd: sumPayLines(ytdLines) };
+  }
+  function eaSection(i) {
+    if (isPersonalItem(i) || i.category === 'reimbursement') return null;
+    if (i.kind === 'earning' && i.category === 'compensation') return '6';
+    if (i.kind === 'earning' && i.pcb_subject === false) return 'F';
+    if (['basic', 'overtime', 'leave'].includes(i.category)) return '1a';
+    if (['incentive', 'bonus'].includes(i.category)) return '1b';
+    if (i.kind === 'deduction') return '1a';
+    return '1c';
+  }
+  function eaFigures(lines) {
+    const by = new Map();
+    for (const l of (lines || []).filter((x) => !x.excluded)) {
+      const key = String(l.company_id || 0);
+      const t = by.get(key) || { company_id: l.company_id, emp_name: l.emp_name, emp_code: l.emp_code, months: 0, b1a: 0, b1b: 0, b1c: 0, b6: 0, f_exempt: 0, d1_pcb: 0, e1_epf: 0, e2_perkeso: 0 };
+      t.months += 1; t.emp_name = l.emp_name || t.emp_name; t.emp_code = l.emp_code || t.emp_code;
+      for (const i of l.items || []) {
+        const sec = eaSection(i); if (!sec) continue;
+        const a = itemAmt(i) * (i.kind === 'deduction' ? -1 : 1);
+        if (sec === '1a') t.b1a += a; else if (sec === '1b') t.b1b += a; else if (sec === '1c') t.b1c += a; else if (sec === '6') t.b6 += a; else t.f_exempt += a;
+      }
+      t.d1_pcb += Number(l.pcb) || 0; t.e1_epf += Number(l.epf_ee) || 0; t.e2_perkeso += (Number(l.socso_ee) || 0) + (Number(l.eis_ee) || 0);
+      by.set(key, t);
+    }
+    return [...by.values()].map((t) => { for (const k of ['b1a', 'b1b', 'b1c', 'b6', 'f_exempt', 'd1_pcb', 'e1_epf', 'e2_perkeso']) t[k] = r2(t[k]); t.totalB = r2(t.b1a + t.b1b + t.b1c + t.b6); return t; });
+  }
+  const docHead = (c, title, sub) => `<div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}
+    <div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div><div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div>
+      <div>${esc([c.phone ? `Tel ${c.phone}` : null, c.email].filter(Boolean).join(' · '))}</div></div>
+    <div class="doc-title"><div>${esc(title)}</div>${sub ? `<div class="doc-sub">${esc(sub)}</div>` : ''}</div></div>`;
+  function payslipSheet(D, l) {
+    const c = D.companies[String(l.company_id)] || {}; const p = D.person || {}; const e = D.employment || {};
+    const m = payslipModel(l, (D.ytd || []).filter((y) => String(y.company_id || 0) === String(l.company_id || 0)));
+    const kv = (k, v) => `<div class="kv-row"><span>${esc(k)}</span><b>${esc(v || '—')}</b></div>`;
+    const rows = (list, sign = '') => list.map((i) => `<tr><td>${esc(i.label)}</td><td class="num">${sign}${m2(i.amount)}</td></tr>`).join('');
+    const tbl = (h, body, foot, small) => `<table class="doc-table${small ? ' small' : ''}"><thead><tr><th>${h}</th><th class="num">RM</th></tr></thead><tbody>${body}</tbody>${foot ? `<tfoot><tr><th>${foot[0]}</th><th class="num">${m2(foot[1])}</th></tr></tfoot>` : ''}</table>`;
+    const yr = String(D.period).slice(0, 4);
+    return `<section class="sheet payslip">${docHead(c, 'PAYSLIP', monthName(D.period))}
+      <div class="doc-grid"><div>${kv('Employee', l.emp_name || p.name)}${kv('Employee ID', l.emp_code || p.employee_id)}${kv('NRIC / Passport', p.nric || p.passport_no)}</div>
+        <div>${kv('Department', e.department)}${kv('Job title', e.title)}${kv('EPF / SOCSO / Tax no.', [p.epf_no || '—', p.socso_no || (p.nric ? String(p.nric).replace(/\D/g, '') : '') || '—', p.tax_no || '—'].join(' · '))}</div></div>
+      <div class="doc-two">${tbl('Earnings', rows(m.earnings) + rows(m.deductions, '−'), ['Gross pay', m.gross])}
+        ${tbl('Deductions', m.statutory.map((s) => `<tr><td>${esc(s.label)}</td><td class="num">${m2(s.ee)}</td></tr>`).join('') + `<tr><td>PCB (monthly tax deduction)</td><td class="num">${m2(m.pcb)}</td></tr>` + rows(m.personal), ['Total deductions', m.totalDeductions])}</div>
+      ${m.claims.length ? tbl('Claims reimbursed (not taxed)', rows(m.claims), ['Total claims', m.claimsTotal]) : ''}
+      <div class="doc-net"><span>${m.claims.length ? 'NET PAY (incl. claims)' : 'NET PAY'}</span><b>RM ${m2(m.netPaid)}</b></div>
+      <div class="doc-two">${tbl('Employer contributions', m.statutory.filter((s) => s.er !== null).map((s) => `<tr><td>${esc(s.label.replace(' – Invalidity', ''))}</td><td class="num">${m2(s.er)}</td></tr>`).join(''), null, true)}
+        ${tbl(`Year to date ${yr}`, [['Gross pay', m.ytd.gross], ['EPF', m.ytd.epf_ee], ['SOCSO – Invalidity', r2(m.ytd.socso_ee - m.ytd.socso_ee_nei)], ['SOCSO – NEI', m.ytd.socso_ee_nei], ['EIS', m.ytd.eis_ee], ['PCB', m.ytd.pcb], ['Net paid', m.ytd.net_paid]]
+          .map(([k, v]) => `<tr><td>${k}</td><td class="num">${m2(v)}</td></tr>`).join(''), null, true)}</div>
+      <div class="doc-foot"><span>Paid to: ${esc([p.bank, p.bank_account_no].filter(Boolean).join(' ') || 'bank details not recorded')}</span><span>This is a computer-generated payslip; no signature is required.</span></div></section>`;
+  }
+  function eaSheet(D, e) {
+    const c = D.companies[String(e.company_id)] || {}; const p = D.person || {}; const s = D.signatory || {}; const y = D.year;
+    const joined = (D.employments || []).find((x) => x.join_date && x.join_date.startsWith(String(y)) && x.join_date > `${y}-01-01`);
+    const left = (D.employments || []).find((x) => x.resigned_date && x.resigned_date.startsWith(String(y)));
+    const row = (no, label, v) => `<tr><td class="ea-no">${no}</td><td>${label}</td><td class="num">${v === null ? '' : m2(v)}</td></tr>`;
+    const sec = (h, body) => `<h3 class="ea-h">${h}</h3><table class="doc-table ea-tbl"><tbody>${body}</tbody></table>`;
+    return `<section class="sheet ea">
+      <div class="ea-top"><div><div class="small">Malaysia · Cukai Pendapatan</div><div class="ea-form">EA</div><div class="small">C.P.8A – Pin. 2023</div></div>
+        <div class="ea-title"><b>PENYATA SARAAN DARIPADA PENGGAJIAN BAGI TAHUN BERAKHIR 31 DISEMBER ${y}</b><div class="small">Statement of remuneration from employment for the year ended 31 December ${y}</div></div>
+        <div class="ea-ids"><div>No. Majikan E: <b>${esc(c.tax_employer_no || '—')}</b></div><div>No. Pengenalan Cukai (TIN) Pekerja: <b>${esc(p.tax_no || '—')}</b></div><div>LHDNM Negeri: <b></b></div></div></div>
+      ${sec('A. BUTIRAN PEKERJA / EMPLOYEE PARTICULARS', [['1', 'Nama penuh pekerja / Full name', e.emp_name || p.name], ['2', 'Jawatan / Position', (D.employment || {}).title], ['3', 'No. kakitangan / Staff no.', e.emp_code || p.employee_id],
+        ['4', 'No. K.P. baru / NRIC', p.nric], ['5', 'No. pasport / Passport no.', p.passport_no], ['6', 'No. KWSP / EPF no.', p.epf_no], ['7', 'No. PERKESO / SOCSO no.', p.socso_no || (p.nric ? String(p.nric).replace(/\D/g, '') : '')],
+        ['8', 'Bilangan anak yang layak untuk pelepasan cukai / Children qualifying for tax relief', ''],
+        ['9', 'Jika bekerja tidak genap setahun / If employed for part of the year: (a) tarikh mula / start date (b) tarikh berhenti / end date', [joined ? `(a) ${dShort(joined.join_date)}` : null, left ? `(b) ${dShort(left.resigned_date)}` : null].filter(Boolean).join('   ')]]
+        .map(([n, l, v]) => `<tr><td class="ea-no">${n}</td><td>${l}</td><td><b>${esc(v || '')}</b></td></tr>`).join(''))}
+      <h3 class="ea-h">B. PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN / EMPLOYMENT INCOME, BENEFITS AND LIVING ACCOMMODATION</h3>
+      <table class="doc-table ea-tbl"><tbody>
+        ${row('1(a)', 'Gaji kasar, upah atau gaji cuti (termasuk gaji lebih masa) / Gross salary, wages or leave pay (including overtime)', e.b1a)}
+        ${row('1(b)', 'Fi (termasuk fi pengarah), komisen atau bonus / Fees (including director fees), commission or bonus', e.b1b)}
+        ${row('1(c)', 'Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain / Gross tips, perquisites, awards or other allowances', e.b1c)}
+        ${row('1(d)', 'Cukai pendapatan yang dibayar oleh majikan bagi pihak pekerja / Income tax borne by the employer', 0)}
+        ${row('1(e)', 'Manfaat Skim Opsyen Saham Pekerja (ESOS) / ESOS benefit', 0)}${row('1(f)', 'Ganjaran / Gratuity', 0)}
+        ${row('2', 'Bayaran tunggakan dan lain-lain bagi tahun terdahulu / Arrears and others for preceding years', 0)}${row('3', 'Manfaat berupa barangan / Benefits in kind', 0)}
+        ${row('4', 'Nilai tempat kediaman / Value of living accommodation', 0)}${row('5', 'Bayaran balik daripada Kumpulan Wang Simpanan/Pencen yang tidak diluluskan / Refund from unapproved provident/pension fund', 0)}
+        ${row('6', 'Pampasan kerana kehilangan pekerjaan / Compensation for loss of employment', e.b6 || 0)}</tbody>
+        <tfoot><tr><th></th><th>JUMLAH / TOTAL</th><th class="num">${m2(e.totalB)}</th></tr></tfoot></table>
+      ${sec('C. PENCEN DAN LAIN-LAIN / PENSION AND OTHERS', row('1', 'Pencen / Pension', 0) + row('2', 'Anuiti atau bayaran berkala yang lain / Annuities or other periodical payments', 0))}
+      ${sec('D. JUMLAH POTONGAN / TOTAL DEDUCTIONS', row('1', 'Potongan cukai bulanan (PCB) yang dibayar kepada LHDNM / Monthly tax deductions (MTD) remitted to LHDNM', e.d1_pcb)
+        + row('2', 'Arahan potongan CP38 / CP38 deductions', 0) + row('3', 'Zakat yang dibayar melalui potongan gaji / Zakat paid via salary deduction', 0)
+        + row('4', 'Derma / hadiah / sumbangan diluluskan melalui potongan gaji / Approved donations via salary deduction', 0)
+        + row('5', 'Jumlah tuntutan potongan oleh pekerja melalui Borang TP1 / Total claims via Form TP1: (a) pelepasan / relief (b) zakat', 0) + row('6', 'Jumlah pelepasan bagi anak yang layak / Total qualifying child relief', 0))}
+      ${sec('E. CARUMAN YANG DIBAYAR OLEH PEKERJA / CONTRIBUTIONS PAID BY THE EMPLOYEE', row('1', 'Nama Kumpulan Wang: KUMPULAN WANG SIMPANAN PEKERJA (KWSP) — amaun caruman yang wajib dibayar (bahagian pekerja sahaja) / compulsory contribution (employee share only)', e.e1_epf)
+        + row('2', 'PERKESO (termasuk SIP) — amaun caruman yang wajib dibayar (bahagian pekerja sahaja) / SOCSO incl. EIS, employee share only', e.e2_perkeso))}
+      ${sec('F. JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI / TOTAL TAX-EXEMPT ALLOWANCES / PERQUISITES / GIFTS / BENEFITS', row('', 'RM', e.f_exempt))}
+      <div class="ea-sign"><div><div class="small muted">Nama pegawai / Officer</div><b>${esc(s.name || ' ')}</b><div class="small muted">Jawatan / Position</div><b>${esc(s.position || ' ')}</b></div>
+        <div><div class="small muted">Nama dan alamat majikan / Employer</div><b>${esc(c.name || '')}</b><div>${esc(c.address || '')}</div><div class="small muted">No. telefon majikan / Telephone</div><b>${esc(c.phone || s.phone || '')}</b></div>
+        <div><div class="small muted">Tarikh / Date</div><b>${esc(dShort(new Date().toISOString().slice(0, 10)))}</b><div class="ea-sigline">Tandatangan / Signature</div></div></div></section>`;
+  }
+  // a document on screen, with print / save as PDF (the rest of the app is hidden when printing)
+  function docView(el, title, sheets, back) {
+    el.innerHTML = `<div class="print-bar no-print"><button type="button" class="btn" data-back>‹ Back</button><span class="muted small">On a phone, use Share › Print or “Save as PDF”.</span>
+      <button type="button" class="btn primary" data-print>${icon('download')}Print / Save as PDF</button></div><div class="doc-scroll"><div class="print-doc">${sheets.join('')}</div></div>`;
+    document.body.classList.add('doc-mode'); const prev = document.title; document.title = title;
+    const done = () => { document.body.classList.remove('doc-mode'); document.title = prev; };
+    $('[data-back]', el).addEventListener('click', () => { done(); back(); });
+    $('[data-print]', el).addEventListener('click', () => window.print());
+    window.addEventListener('hashchange', done, { once: true });
+  }
+
+  // ---------------------------------------------------------------- My Payslips & EA
+  async function mePayslipsPage(item, el) {
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `${pageHead(item)}<div id="ps-body">${loading()}</div>`;
+    let L;
+    try { L = await API.rpc('cms_my_payslips'); } catch (e) { $('#ps-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const showSlip = async (period) => {
+      let D; try { D = await API.rpc('cms_my_payslip', { p_period: period }); } catch (e) { toast(e.message, 'err'); return; }
+      if (!D.lines.length) { toast('No payslip found for that month.', 'err'); return; }
+      docView(el, `Payslip ${monthShort(period)} · ${D.person?.name || ''}`, D.lines.map((l) => payslipSheet(D, l)), () => mePayslipsPage(item, el));
+      refreshSelf();
+    };
+    const showEa = async (year) => {
+      let D; try { D = await API.rpc('cms_my_ea', { p_year: year }); } catch (e) { toast(e.message, 'err'); return; }
+      const figs = eaFigures(D.lines); if (!figs.length) { toast('No EA figures for that year.', 'err'); return; }
+      docView(el, `EA ${year} · ${D.person?.name || ''}`, figs.map((f) => eaSheet(D, f)), () => mePayslipsPage(item, el));
+    };
+    const newOnes = new Set(state.self?.new_payslips || []);
+    $('#ps-body', el).innerHTML = `
+      ${L.payslips ? `<section class="card"><div class="card-head"><h3>Payslips</h3><span class="muted small">Released to you by HR</span></div>
+        ${L.payslips.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Month</th><th>Paid by</th><th class="num">Gross (RM)</th><th class="num">Net paid (RM)</th><th></th></tr></thead><tbody>
+          ${L.payslips.map((x) => `<tr><td class="nowrap"><b>${esc(monthName(x.period))}</b>${newOnes.has(String(x.period).slice(0, 7)) ? ' <span class="tag ok xs">New</span>' : ''}</td><td>${esc((x.companies || []).join(', '))}</td>
+            <td class="num">${m2(x.gross)}</td><td class="num"><b>${m2(x.net_paid)}</b></td><td><button type="button" class="btn sm primary" data-slip="${esc(x.period)}">${icon('eye')}View</button></td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No payslips released yet</p><span>HR releases each month after payroll is finalised.</span></div>'}</section>` : ''}
+      ${L.ea ? `<section class="card"><div class="card-head"><h3>EA forms</h3><span class="muted small">Statement of remuneration for your income tax return</span></div>
+        ${L.ea.length ? `<div class="btn-row">${L.ea.map((y) => `<button type="button" class="btn" data-ea="${y}">${icon('file-check')}EA ${y}</button>`).join('')}</div>`
+          : '<div class="empty small"><p>No EA form released yet</p><span>HR releases the EA form after the year ends (by end of February).</span></div>'}</section>` : ''}`;
+    $$('[data-slip]', el).forEach((b) => b.addEventListener('click', () => showSlip(b.dataset.slip)));
+    $$('[data-ea]', el).forEach((b) => b.addEventListener('click', () => showEa(Number(b.dataset.ea))));
+  }
+
+  // ---------------------------------------------------------------- My Salary History
+  async function meSalaryPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="sh-body">${loading()}</div>`;
+    let rows; try { rows = await API.rpc('cms_my_salary'); } catch (e) { $('#sh-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const asc = [...rows].reverse();
+    $('#sh-body', el).innerHTML = `<section class="card">${rows.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>From</th><th class="num">Salary (RM)</th><th class="num">Change (RM)</th><th>Paid by</th><th>Reason</th></tr></thead><tbody>
+      ${rows.map((r) => { const prev = asc[asc.indexOf(r) - 1]; const d = prev && prev.pay_basis === r.pay_basis ? r2(r.amount - prev.amount) : null;
+        return `<tr><td class="nowrap">${esc(monthName(r.from))}</td><td class="num"><b>${m2(r.amount)}</b>${r.pay_basis === 'hourly' ? ' /h' : r.pay_basis === 'daily' ? ' /day' : ''}</td>
+          <td class="num">${d === null ? '—' : `${d < 0 ? '−' : d > 0 ? '+' : ''}${m2(Math.abs(d))}`}</td><td>${esc(r.company || '')}</td><td>${esc(r.reason || '')}</td></tr>`; }).join('')}</tbody></table></div>`
+      : '<div class="empty small"><p>No salary recorded yet</p></div>'}</section>`;
+  }
+
+  // ---------------------------------------------------------------- Self-service Access (HR / Admin)
+  async function selfServicePage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="ss-body">${loading()}</div>`;
+    let S;
+    const load = async () => { S = await API.rpc('cms_self_service'); S.people.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#ss-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const f = { tab: q.get('tab') || 'access', q: '', co: 'all', former: false, sel: new Set(), month: S.months[0] || '', kind: 'payslip' };
+    const years = [...new Set(S.months.map((m) => Number(m.slice(0, 4))))];
+    f.year = years[0] || new Date().getFullYear();
+    const edit = S.can_edit;
+    const TABS = [['access', 'Access'], ['docs', 'Payslips & EA'], ['reports', 'Reports to'], ['requests', 'Change requests']];
+    const cos = [...new Set(S.people.map((r) => r.company).filter(Boolean))].sort();
+    const people = () => { const t = f.q.trim().toLowerCase(); return S.people.filter((r) => (f.former || r.status !== 'former') && (f.co === 'all' || r.company === f.co) && (!t || `${r.name} ${r.employee_id || ''} ${r.title || ''} ${r.login || ''}`.toLowerCase().includes(t))); };
+    const shell = () => {
+      $('#ss-body', el).innerHTML = `<section class="card">
+        <div class="seg ss-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}${k === 'requests' && S.requests.length ? ` <span>${S.requests.length}</span>` : ''}</button>`).join('')}</div>
+        ${f.tab === 'requests' ? '' : `<div class="toolbar">
+          <label class="search-in">${icon('search')}<input id="sq" type="search" placeholder="Name, Employee ID, job title or login" aria-label="Search" value="${esc(f.q)}"></label>
+          <select id="sco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}" ${f.co === c ? 'selected' : ''}>${esc(coShort(c))}</option>`).join('')}</select>
+          <label class="chk"><input type="checkbox" id="sfm" ${f.former ? 'checked' : ''}> Include recent former staff</label></div>`}
+        <div id="ss-tab"></div></section>`;
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; f.sel.clear(); shell(); }));
+      $('#sq', el)?.addEventListener('input', (e) => { f.q = e.target.value; tab(); });
+      $('#sco', el)?.addEventListener('change', (e) => { f.co = e.target.value; tab(); });
+      $('#sfm', el)?.addEventListener('change', (e) => { f.former = e.target.checked; tab(); });
+      tab();
+    };
+    const reload = async () => { try { await load(); loadSelfPending(); } catch (e) { toast(e.message, 'err'); } shell(); };
+    const selBox = (r) => (edit ? `<td class="sel"><input type="checkbox" data-sel="${esc(r.person_id)}" ${f.sel.has(r.person_id) ? 'checked' : ''} aria-label="Select ${esc(r.name)}"></td>` : '');
+    const selAll = (list) => (edit ? `<th class="sel"><input type="checkbox" data-selall ${list.length && list.every((r) => f.sel.has(r.person_id)) ? 'checked' : ''} aria-label="Select all"></th>` : '');
+    const wireSel = (box, list, after) => {
+      $$('[data-sel]', box).forEach((c) => c.addEventListener('change', () => { if (c.checked) f.sel.add(c.dataset.sel); else f.sel.delete(c.dataset.sel); after(); }));
+      $('[data-selall]', box)?.addEventListener('change', (e) => { list.forEach((r) => (e.target.checked ? f.sel.add(r.person_id) : f.sel.delete(r.person_id))); tab(); });
+    };
+    const who = (r) => `<td><b>${esc(r.name)}</b>${r.director ? ' <span class="tag blue xs">Director</span>' : ''}<small class="sub">${esc([r.employee_id, r.title].filter(Boolean).join(' · '))}</small></td>`;
+    const tab = () => {
+      const box = $('#ss-tab', el); const list = people();
+      if (f.tab === 'access') {
+        box.innerHTML = `${edit ? `<div class="bulk-bar"><span id="ssn">${f.sel.size} selected</span><select id="bpart" aria-label="Part">${PARTS.filter((p) => PART_READY(p[0])).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+            <button type="button" class="btn sm primary" data-bulk="1" ${f.sel.size ? '' : 'disabled'}>Switch on</button><button type="button" class="btn sm" data-bulk="0" ${f.sel.size ? '' : 'disabled'}>Switch off</button></div>` : ''}
+          <div class="table-wrap fill"><table class="data freeze2 ss-grid"><thead><tr>${selAll(list)}<th>Name</th><th>Login</th>${PARTS.map(([k, l, d, ph]) => `<th class="ctr" title="${esc(d)}">${esc(l)}${ph ? `<small class="sub">${ph}</small>` : ''}</th>`).join('')}</tr></thead><tbody>
+          ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>` : '<span class="tag warn xs">No login</span>'}</td>
+            ${PARTS.map(([k, , , ph]) => `<td class="ctr"><input type="checkbox" class="sw" data-part="${k}" data-p="${esc(r.person_id)}" ${r.parts.includes(k) ? 'checked' : ''} ${!edit || ph ? 'disabled' : ''} aria-label="${esc(k)} for ${esc(r.name)}"></td>`).join('')}</tr>`).join('')
+          || `<tr><td colspan="${PARTS.length + 3}"><div class="empty small"><p>No one here</p></div></td></tr>`}</tbody></table></div>
+          <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Items, Claims and Handbook arrive in Phase 4b–4c; Leave is built in 4d and stays off while leave runs in the other system.</p>`;
+        wireSel(box, list, () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-bulk]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
+        $$('.sw', box).forEach((c) => c.addEventListener('change', async () => {
+          try { await API.rpc('cms_self_set', { p_people: [c.dataset.p], p_part: c.dataset.part, p_enabled: c.checked });
+            const r = S.people.find((x) => x.person_id === c.dataset.p); r.parts = c.checked ? [...r.parts, c.dataset.part] : r.parts.filter((x) => x !== c.dataset.part);
+            toast(`${r.name}: ${PARTS.find((p) => p[0] === c.dataset.part)[1]} ${c.checked ? 'on' : 'off'}`);
+          } catch (e) { c.checked = !c.checked; toast(e.message, 'err'); }
+        }));
+        $$('[data-bulk]', box).forEach((b) => b.addEventListener('click', async () => {
+          const part = $('#bpart', box).value; const on = b.dataset.bulk === '1';
+          try { const n = await API.rpc('cms_self_set', { p_people: [...f.sel], p_part: part, p_enabled: on }); toast(`${PARTS.find((p) => p[0] === part)[1]} switched ${on ? 'on' : 'off'} for ${n} ${n === 1 ? 'person' : 'people'}`); f.sel.clear(); reload(); }
+          catch (e) { toast(e.message, 'err'); }
+        }));
+      } else if (f.tab === 'docs') {
+        const key = f.kind === 'ea' ? f.year : f.month;
+        const has = (r) => (f.kind === 'ea' ? r.paid.some((m) => m.startsWith(String(f.year))) : r.paid.includes(f.month));
+        const rel = (r) => (f.kind === 'ea' ? r.ea.includes(Number(f.year)) : r.payslips.includes(f.month));
+        const partOn = (r) => r.parts.includes(f.kind === 'ea' ? 'ea' : 'payslips');
+        box.innerHTML = `<div class="toolbar"><div class="seg sm">${[['payslip', 'Payslips'], ['ea', 'EA forms']].map(([k, l]) => `<button type="button" data-kind="${k}" class="${f.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+            ${f.kind === 'ea' ? `<select id="sper" aria-label="Year">${years.map((y) => `<option ${Number(f.year) === y ? 'selected' : ''}>${y}</option>`).join('')}</select>`
+              : `<select id="sper" aria-label="Month">${S.months.map((m) => `<option value="${m}" ${f.month === m ? 'selected' : ''}>${esc(monthName(m))}</option>`).join('')}</select>`}
+            ${edit ? `<span id="ssn" class="muted small">${f.sel.size} selected</span><button type="button" class="btn sm primary" data-rel="1" ${f.sel.size ? '' : 'disabled'}>Release</button><button type="button" class="btn sm" data-rel="0" ${f.sel.size ? '' : 'disabled'}>Withdraw</button>` : ''}</div>
+          ${S.months.length ? '' : '<div class="warn-box">No payroll month is finalised yet.</div>'}
+          <div class="table-wrap fill"><table class="data freeze2"><thead><tr>${selAll(list.filter(has))}<th>Name</th><th>${f.kind === 'ea' ? `EA ${f.year}` : esc(monthName(f.month))}</th><th>Can see ${f.kind === 'ea' ? 'EA forms' : 'payslips'}</th><th>Released ${f.kind === 'ea' ? 'years' : 'months'}</th></tr></thead><tbody>
+          ${list.map((r) => `<tr>${has(r) ? selBox(r) : (edit ? '<td class="sel"></td>' : '')}${who(r)}
+            <td>${!has(r) ? '<span class="muted small">No payslip this ' + (f.kind === 'ea' ? 'year' : 'month') + '</span>' : rel(r) ? '<span class="tag ok xs">Released</span>' : '<span class="tag xs">Not released</span>'}</td>
+            <td>${partOn(r) ? '<span class="tag ok xs">On</span>' : '<span class="tag warn xs">Off</span>'}</td>
+            <td class="small muted">${esc((f.kind === 'ea' ? r.ea : r.payslips.map(monthShort)).slice(-6).join(', ') || '—')}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Only finalised payroll months can be released. If a month is reopened in payroll, its payslips disappear from self-service until it is finalised again. A released document shows only if that part is switched on for the person (Access tab).</p>`;
+        $$('[data-kind]', box).forEach((b) => b.addEventListener('click', () => { f.kind = b.dataset.kind; f.sel.clear(); tab(); }));
+        $('#sper', box)?.addEventListener('change', (e) => { if (f.kind === 'ea') f.year = Number(e.target.value); else f.month = e.target.value; f.sel.clear(); tab(); });
+        wireSel(box, list.filter(has), () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-rel]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
+        $$('[data-rel]', box).forEach((b) => b.addEventListener('click', async () => {
+          const on = b.dataset.rel === '1';
+          try {
+            const r = await API.rpc('cms_self_release', { p_people: [...f.sel], p_kind: f.kind, p_period: f.kind === 'ea' ? `${f.year}-01-01` : `${key}-01`, p_release: on });
+            toast(`${f.kind === 'ea' ? `EA ${f.year}` : monthName(f.month)}: ${on ? 'released to' : 'withdrawn from'} ${r.done} ${r.done === 1 ? 'person' : 'people'}${r.skipped ? ` (${r.skipped} without a payslip skipped)` : ''}`);
+            f.sel.clear(); reload();
+          } catch (e) { toast(e.message, 'err'); }
+        }));
+      } else if (f.tab === 'reports') {
+        const active = S.people.filter((r) => r.status !== 'former').sort((a, b) => a.name.localeCompare(b.name));
+        const nameOf = (id) => (S.people.find((x) => x.person_id === id) || {}).name || '';
+        box.innerHTML = `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Name</th><th>Reports to</th><th>Leave approvers</th></tr></thead><tbody>
+          ${list.map((r) => {
+            const chain = []; let cur = r.reports_to_id; const seen = new Set();
+            while (cur && !seen.has(cur)) { seen.add(cur); chain.push(nameOf(cur)); cur = (S.people.find((x) => x.person_id === cur) || {}).reports_to_id; }
+            return `<tr>${who(r)}<td>${edit ? `<select data-rt="${esc(r.person_id)}" aria-label="Reports to"><option value="">— not set —</option>${active.filter((x) => x.person_id !== r.person_id).map((x) => `<option value="${esc(x.person_id)}" ${x.person_id === r.reports_to_id ? 'selected' : ''}>${esc(x.name)}${x.title ? ` · ${esc(x.title)}` : ''}</option>`).join('')}</select>` : esc(nameOf(r.reports_to_id) || '—')}
+              ${!r.reports_to_id && r.reporting_name ? `<small class="sub warn-txt">From the offer: “${esc(r.reporting_name)}” (no exact match: choose the person)</small>` : ''}</td>
+              <td class="small">${r.director ? 'The other director, or HR' : chain.length ? esc(chain.join(' → ')) : '<span class="muted">HR (no reports-to set)</span>'}</td></tr>`;
+          }).join('')}</tbody></table></div>
+          <p class="muted small">Leave approval (Phase 4d) follows this line: the person they report to, or anyone above in the same line, can approve. A director is approved by the other director or HR. Where no one is set, HR approves.</p>`;
+        $$('[data-rt]', box).forEach((s) => s.addEventListener('change', async () => {
+          const r = S.people.find((x) => x.person_id === s.dataset.rt);
+          try { await API.rpc('cms_set_reports_to', { p_person: r.person_id, p_manager: s.value || null }); r.reports_to_id = s.value || null; toast(`${r.name} reports to ${nameOf(s.value) || 'nobody'}`); tab(); }
+          catch (e) { s.value = r.reports_to_id || ''; toast(e.message, 'err'); }
+        }));
+      } else {
+        const show = (k, v) => esc((k === 'bank_code' ? S.banks[v] || v : v) || '—');
+        box.innerHTML = S.requests.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Person</th><th>Sent</th><th>Change</th><th></th></tr></thead><tbody>
+          ${S.requests.map((q) => `<tr><td><b>${esc(q.name)}</b><small class="sub">${esc(q.employee_id || '')}</small></td><td class="nowrap">${dShort(q.requested_at)}</td>
+            <td><ul class="chg">${Object.entries(q.changes).map(([k, v]) => `<li>${esc(fieldLabel(k))}: <s>${show(k, (q.previous || {})[k])}</s> → <b>${show(k, v)}</b></li>`).join('')}</ul>
+              ${q.note ? `<small class="sub">“${esc(q.note)}”</small>` : ''}${q.has_attachment ? `<button type="button" class="btn sm ghost" data-att="${esc(q.id)}">${icon('eye')}View photo</button>` : ''}</td>
+            <td class="nowrap">${edit ? `<button type="button" class="btn sm primary" data-dec="1" data-id="${esc(q.id)}">Approve</button> <button type="button" class="btn sm" data-dec="0" data-id="${esc(q.id)}">Reject…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No changes waiting</p><span>When staff send a change from My Profile it appears here.</span></div>';
+        $$('[data-att]', box).forEach((b) => b.addEventListener('click', async () => {
+          try { const src = await API.rpc('cms_profile_attachment', { p_id: b.dataset.att }); await modal({ title: 'Supporting photo', ok: null, cancel: 'Close', wide: true, body: `<img class="att-img" src="${esc(src)}" alt="Supporting photo">` }); }
+          catch (e) { toast(e.message, 'err'); }
+        }));
+        $$('[data-dec]', box).forEach((b) => b.addEventListener('click', async () => {
+          const q = S.requests.find((x) => x.id === b.dataset.id); const approve = b.dataset.dec === '1';
+          const ok = await modal({ title: `${approve ? 'Approve' : 'Reject'} · ${q.name}`, ok: approve ? 'Approve and update the record' : 'Reject', danger: !approve,
+            body: `${approve ? '<p>The new details replace the old ones in the Employee Master and payroll record. The change is logged.</p>' : ''}
+              <label class="fld"><span>${approve ? 'Note (optional)' : 'Reason (the staff member sees it)'}</span><input name="note" maxlength="300" ${approve ? '' : 'required'}></label>`,
+            onOk: async (fm) => { if (!approve && !fm.note.value.trim()) throw new Error('Give the reason for rejecting.'); await API.rpc('cms_profile_decide', { p_id: q.id, p_approve: approve, p_note: fm.note.value || null }); } });
+          if (ok) { toast(`${q.name}: change ${approve ? 'approved' : 'rejected'}`); reload(); }
+        }));
+      }
+      fitTables();
+    };
+    shell();
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -1861,6 +2297,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
+    me: meHomePage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -1896,7 +2333,7 @@
     if (!state.access || !$('#page')) return;
     const id = ++state.renderId;
     const r = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
-    const item = PAGES.get(r) || PAGES.get('dashboard');
+    const item = PAGES.get(r === 'dashboard' && !canRoute('dashboard') ? homeRoute() : r) || PAGES.get(homeRoute());
     state.route = item.route;
     const g = groupOf(item.route); if (g && !state.open.has(g)) { state.open.add(g); store.set('openGroups', [...state.open]); }
     drawSidebar();
@@ -2021,10 +2458,14 @@
     if (!state.access) authShell('Opening the CMS…', '', loading('Checking your access…'));
     try { state.access = upUser(await API.rpc('cms_my_access')); }
     catch (e) { loginScreen(e.message); return; }
+    const fresh = justSignedIn;
     if (justSignedIn) { justSignedIn = false; API.rpc('cms_note_sign_in').catch(() => {}); }
-    if (!state.access || !state.access.roles.length) { noRoleScreen(); return; }
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary();
-    if ((location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
+    try { state.self = state.access ? await API.rpc('cms_my_self') : null; } catch (e) { state.self = null; }
+    if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
+    const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
+    if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); drawBell();
+    if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 
   const boot = () => {

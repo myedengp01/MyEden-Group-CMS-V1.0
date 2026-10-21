@@ -9,7 +9,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-002 | 2026-10-19 | Rehire option for former staff, with a reminder of why they left; leaving reason mandatory for every leaver; for past employees, HR/Admin can add the reason | Built in MyPayroll v2026.10.20-10:50 + CMS v2026.10.20-10:50 |
 | PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Built in MyPayroll v2026.10.20-10:50 |
 | PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Built in MyPayroll v2026.10.20-10:50 |
-| PRI-005 | 2026-10-21 | Money shown with thousands separator and 2 decimals everywhere in the CMS (0,000.00) | Recorded |
+| PRI-005 | 2026-10-21 | Money shown with thousands separator and 2 decimals everywhere in the CMS (0,000.00) | **Built in v2026.10.21-14:00** |
 | PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | Recorded · design proposed |
 | PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | Recorded |
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | Recorded |
@@ -112,7 +112,8 @@ into that release and this entry is updated with the version and how it was impl
   3. Caps stay E 6, S 3, A 1, I 0, U 0; "confirmed staff only" stays on as a management setting that can be switched.
   4. No KPI grade at the cut-off → 0 days carried forward.
 
-## PRI-005 · Money format 0,000.00 — recorded 2026-10-21
+## PRI-005 · Money format 0,000.00 — built in v2026.10.21-14:00
+- **How it was built:** amounts already shown with `money()` (RM 0,000.00) everywhere; the salary boxes (Hire, Add paying company, Record increment) now show 2,300.00 when you leave the box and the plain number while typing; JD salary bands show RM 1,800.00 – RM 2,200.00; audit-log amounts and all self-service pages (payslips, EA, salary history) use 2 decimals.
 - Every salary and amount in the CMS shows a thousands separator and exactly 2 decimals (e.g. 2,300.00), in tables,
   windows and exports; inputs accept 2300 / 2300.5 and are shown back as 2,300.50 when the field is left.
 - Plan: one `money2()` helper used everywhere (no "RM" duplication where the column header already says RM);
