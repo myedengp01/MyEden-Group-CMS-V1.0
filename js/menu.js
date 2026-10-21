@@ -70,6 +70,7 @@ window.CMS_MENU = [
       { route: 'payroll/import', label: 'Import Past Months', phase: 2, source: 'MyPayroll V2.0', myp: 'payroll/import', desc: 'Bring past pay runs in from the workbook.' },
     ] },
     { group: 'Performance & Growth', icon: 'trend', items: [
+      { route: 'careers', label: 'Career Paths', phase: 5, live: true, desc: 'Every employee on their JD level: time in level, salary against the cap, and the next level with its cap. MyEden salary caps are set here beside the JD (market) ranges; each person\'s timeline from application to today.' },
       { route: 'performance', label: 'KPI & Appraisal', phase: 5, desc: 'Appraisals and probation confirmation. KPI grades for annual leave carry forward are already live in MyPayroll (Time & leave › KPI grades & carry forward).' },
       { route: 'training', label: 'Training & Certificates', phase: 5, desc: 'First aid, SKM, ECCE and other certificates, with expiry reminders.' },
     ] },

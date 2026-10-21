@@ -770,3 +770,8 @@ details.card > summary { cursor: pointer; padding: 2px 0 8px; }
 table.data.click tbody tr { cursor: pointer; }
 .warn-box:has(> svg) { display: flex; gap: 10px; align-items: flex-start; }
 .warn-box > svg { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+
+/* ---------- Phase 5a · career paths ---------- */
+.ladder + .ladder { margin-top: 18px; }
+.ladder table.data td[rowspan] { vertical-align: top; }
+ol.tl-kinds li { margin-bottom: 6px; }

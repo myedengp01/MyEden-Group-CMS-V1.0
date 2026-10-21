@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-15:00 · **Phase 4 · Staff self-service** (Phases 0–4 live)
+**Current version:** v2026.10.21-15:45 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -48,6 +48,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 20. `20261021_cms_items_handover.sql` — Phase 4b items register and hand-over (PRI-006): item types, items with confirmation by the person, every change as an event (passwords never stored), hand-over opened automatically when a leaving date is confirmed, approval by the reports-to line or HR / Admin, clearance status
 21. `20261021_cms_self_claims_handbook.sql` — Phase 4c My Claims (own SCF / OTCF / MTCF with stage) and My Handbook (assignment status)
 22. `20261021_cms_self_leave.sql` — Phase 4d My Leave (built, switched off): leave requests, approval along Reports to (directors approve anyone below; a director by the other director or HR; none set → HR), HR tick for "entered in payroll"
+23. `20261021_cms_careers.sql` — Phase 5a MyEden salary caps beside each JD band (with history), JD position per person (matched by title or set by HR), Career Paths and the staff timeline
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -97,6 +98,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-15:45** — Phase 5a · **Performance & Growth › Career Paths** (PRI-007, PRI-008). *People*: every active employee on their JD level
+  (matched by job title + employer, or placed by HR), time in level, salary, place in the band, level cap and next level with its cap.
+  *Ladders & salary caps*: each company / department ladder with the JD (market) range and an editable **MyEden cap** per tier
+  (effective date, reason, change history). *Not placed*: people whose job title does not match a JD position, with suggestions.
+  Each person opens a **timeline** from application, offer, joining, confirmation, salary changes, Employee ID, items and hand-over to
+  leaving. The JD Manual window and Increments & Reviews show the MyEden cap / "near cap" / "above cap". Database: `20261021_cms_careers.sql`.
 - **v2026.10.21-15:00** — Self-service Access: after a change (Reports to, a switch, a release) the list and the page stay where you were instead of jumping to the top.
 - **v2026.10.21-14:35** — Phase 4c · **My Claims** (own SCF / OTCF / MTCF claims and where each is: waiting, approved, paid, not approved; buttons to the
   forms for a new claim) and **My Handbook** (assignment, opened / read / acknowledged, opens the handbook in MEG-EAF V2).

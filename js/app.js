@@ -722,6 +722,14 @@
     try { [rows, intervals] = await Promise.all([API.rpc('cms_increments'), API.rpc('cms_review_intervals'), loadOrg()]); }
     catch (e) { $('#inc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     rows.forEach((r) => upKeys(r, 'name')); state.incr = rows;
+    // PRI-007/008: show where each salary sits against the level cap (Career Paths)
+    const capFlag = new Map();
+    if (can('careers')) try {
+      const C = await API.rpc('cms_careers'); const byId = new Map(C.positions.map((p) => [p.id, p]));
+      C.people.forEach((x) => { const pos = byId.get(x.position_id); const cap = pos ? levelCap(pos) : null;
+        if (!pos || cap == null || !x.salary || (x.salary.basis && x.salary.basis !== 'monthly')) return;
+        const s = Number(x.salary.amount); if (s > cap) capFlag.set(x.employee_id, ['bad', 'above cap']); else if (s >= cap * 0.95) capFlag.set(x.employee_id, ['warn', 'near cap']); });
+    } catch (e) { /* the cap check is extra */ }
     const f = { q: '', v: rows.some((r) => r.state === 'overdue' || r.state === 'due') ? 'attention' : 'all' };
     const V = [['attention', 'Needs attention', (r) => r.state === 'overdue' || r.state === 'due'], ['overdue', 'Overdue', (r) => r.state === 'overdue'],
       ['due', 'Due this month', (r) => r.state === 'due'], ['soon', 'Next 3 months', (r) => r.state === 'soon'], ['all', 'All active staff', () => true]];
@@ -750,7 +758,7 @@
         const list = rows.filter((r) => fn(r) && (!t || `${r.name} ${r.employee_id || ''}`.toLowerCase().includes(t)));
         $('#itable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-e="${r.employment_id}" class="click" tabindex="0">
           <td class="nowrap"><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td><td>${esc(coShort(r.paid_by))}</td>
-          <td class="nowrap">${confCell(r)}</td><td class="nowrap">${salaryTxt(r.current_salary, r.pay_basis)}</td><td class="nowrap">${changeTxt(r)}</td>
+          <td class="nowrap">${confCell(r)}</td><td class="nowrap">${salaryTxt(r.current_salary, r.pay_basis)}${capFlag.has(r.employee_id) ? ` <span class="tag ${capFlag.get(r.employee_id)[0]} xs" title="Against the level cap in Career Paths">${capFlag.get(r.employee_id)[1]}</span>` : ''}</td><td class="nowrap">${changeTxt(r)}</td>
           <td class="nowrap">${esc(r.interval_label || '—')}${r.interval_is_default ? '' : ' <span class="tag xs" title="Set for this person">set</span>'}</td>
           <td class="nowrap"><b>${dShort(r.next_review)}</b> ${incTag(r)}${r.next_review_set ? '<small class="sub">set by hand</small>' : ''}</td></tr>`).join('')
           : '<tr><td colspan="8"><div class="empty small"><p>No one here</p><span>Try another view.</span></div></td></tr>';
@@ -1667,6 +1675,8 @@
     $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
     const open = async (id) => {
       let p; try { p = await API.rpc('cms_jd_position', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+      let caps = []; try { if (p.salary_bands && p.salary_bands.length) caps = await API.rpc('cms_position_caps', { p_position: id }); } catch (e) { /* caps are extra */ }
+      const capOf = (b, i) => caps[i] && (caps[i].cap_min != null || caps[i].cap_max != null) ? `${caps[i].cap_min != null ? money(caps[i].cap_min) : '—'} – ${caps[i].cap_max != null ? money(caps[i].cap_max) : '—'}` : '<span class="muted">not set</span>';
       const para = (k, v) => (v ? `<h4 class="sec-h">${esc(k)}</h4><p class="pre">${esc(v)}</p>` : '');
       await modal({
         title: p.job_title, wide: true, ok: null, cancel: 'Close',
@@ -1679,7 +1689,7 @@
           ${p.competencies.length ? `<h4 class="sec-h">Competencies</h4><p>${p.competencies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ')}</p>` : ''}
           ${para('Minimum qualifications', p.minimum_qualifications)}${para('Experience', p.required_experience)}${para('Skills & knowledge', p.skills_knowledge)}
           ${para('Safety & child protection', p.safety_child_protection)}${para('Career path', p.career_path)}
-          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Range</th><th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null && b.max != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td><td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
+          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Market range (JD)</th>${caps.length ? '<th>MyEden cap</th>' : ''}<th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b, i) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null && b.max != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td>${caps.length ? `<td class="nowrap">${capOf(b, i)}</td>` : ''}<td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
           <div class="btn-row">${eafBtn('jd', 'Edit in the JD Manual (MEG-EAF V2)')}</div>`,
       });
     };
@@ -2656,6 +2666,147 @@
     return t;
   }
 
+  // ================================================================ 5a · CAREER PATHS, MYEDEN SALARY CAPS (PRI-007, PRI-008)
+  const lvNum = (l) => Number(String(l || '').replace(/\D/g, '')) || 0;
+  const effBands = (pos) => (pos?.bands || []).map((b) => ({ ...b, lo: b.cap_min ?? b.min, hi: b.cap_max ?? b.max, mine: b.cap_min != null || b.cap_max != null }));
+  const levelCap = (pos) => { const b = effBands(pos); return b.length ? b[b.length - 1].hi : null; };
+  const capMine = (pos) => effBands(pos).some((b) => b.mine);
+  function placeIn(pos, sal) {
+    if (!sal || sal.amount == null) return { txt: 'no salary yet', cls: '' };
+    if (sal.basis && sal.basis !== 'monthly') return { txt: `${sal.basis} pay`, cls: '' };
+    const b = effBands(pos); if (!b.length) return { txt: 'no bands in the JD', cls: '' };
+    const s = Number(sal.amount);
+    if (b[0].lo != null && s < b[0].lo) return { txt: 'Below the range', cls: 'warn' };
+    const cap = levelCap(pos); if (cap != null && s > cap) return { txt: 'Above the cap', cls: 'bad' };
+    const hit = b.find((x) => x.lo != null && x.hi != null && s >= x.lo && s <= x.hi);
+    return hit ? { txt: hit.tier, cls: 'ok' } : { txt: 'Between tiers', cls: '' };
+  }
+  const tenure = (d) => { if (!d) return '—'; const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / (30.44 * 864e5))); return m < 12 ? `${m} mth${m === 1 ? '' : 's'}` : `${Math.floor(m / 12)} yr${m >= 24 ? 's' : ''}${m % 12 ? ` ${m % 12} m` : ''}`; };
+  const words = (t) => new Set(String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 2));
+  function suggestPositions(C, person) {
+    const pw = words(person.title);
+    return C.positions.map((p) => { const w = words(p.title); let n = 0; pw.forEach((x) => { if (w.has(x)) n += 1; }); return { p, n: n + (p.company === person.company ? 0.5 : 0) }; })
+      .filter((x) => x.n >= 1).sort((a, b) => b.n - a.n).slice(0, 5).map((x) => x.p);
+  }
+
+  async function careersPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="cp-body">${loading()}</div>`;
+    let C;
+    const load = async () => { C = await API.rpc('cms_careers'); C.people.forEach((r) => upKeys(r, 'name')); C.byId = new Map(C.positions.map((p) => [p.id, p])); };
+    try { await load(); } catch (e) { $('#cp-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { tab: 'people', q: '', co: 'all', dept: '' };
+    const posOf = (r) => C.byId.get(r.position_id);
+    const nextOf = (pos) => (pos ? C.positions.filter((p) => p.company === pos.company && p.department_id === pos.department_id && lvNum(p.level) === lvNum(pos.level) + 1) : []);
+    const capTxt = (pos) => { const c = levelCap(pos); return c == null ? '—' : `${money(c)}${capMine(pos) ? ' <span class="tag blue xs">MyEden</span>' : ' <small class="muted">JD</small>'}`; };
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const draw = () => {
+      const unplaced = C.people.filter((r) => !r.position_id);
+      const T = [['people', 'People'], ['ladders', 'Ladders & salary caps'], ['unplaced', `Not placed <span>${unplaced.length}</span>`]];
+      const cos = [...new Set(C.positions.map((p) => p.company))].sort();
+      $('#cp-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="toolbar">${f.tab !== 'ladders' ? `<label class="search-in">${icon('search')}<input id="cq" type="search" placeholder="Name, Employee ID or job title" value="${esc(f.q)}" aria-label="Search"></label>` : ''}
+          <select id="cco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}" ${f.co === c ? 'selected' : ''}>${esc(coShort(c))}</option>`).join('')}</select>
+          ${f.tab === 'ladders' ? `<select id="cdp" aria-label="Department"><option value="">All departments</option>${[...new Set(C.positions.filter((p) => f.co === 'all' || p.company === f.co).map((p) => p.department || '—'))].sort().map((d) => `<option ${f.dept === d ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select>` : ''}</div>
+        <div id="cp-tab"></div></section>`;
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#cq', el)?.addEventListener('input', (e) => { f.q = e.target.value; tab(); });
+      $('#cco', el).addEventListener('change', (e) => { f.co = e.target.value; f.dept = ''; draw(); });
+      $('#cdp', el)?.addEventListener('change', (e) => { f.dept = e.target.value; tab(); });
+      tab();
+    };
+    const tab = () => {
+      const box = $('#cp-tab', el); const t = f.q.trim().toLowerCase();
+      const keep = { list: $('.table-wrap', box)?.scrollTop || 0, page: pageScroller().scrollTop };
+      requestAnimationFrame(() => { const w = $('.table-wrap', box); if (w) w.scrollTop = keep.list; pageScroller().scrollTop = keep.page; });
+      const ppl = C.people.filter((r) => (f.co === 'all' || r.company === f.co) && (!t || `${r.name} ${r.employee_id || ''} ${r.title || ''}`.toLowerCase().includes(t)));
+      if (f.tab === 'people') {
+        box.innerHTML = `<div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Name</th><th>JD level</th><th>In role</th>${C.can_pay ? '<th class="num">Salary (RM)</th><th>Place in band</th><th class="num">Level cap (RM)</th>' : ''}<th>Next level</th></tr></thead><tbody>
+          ${ppl.map((r) => { const pos = posOf(r); const nx = nextOf(pos)[0]; const pl = pos ? placeIn(pos, r.salary) : null;
+            return `<tr data-p="${esc(r.person_id)}"><td><b>${esc(r.name)}</b><small class="sub">${esc([r.employee_id, r.title].filter(Boolean).join(' · '))}</small></td>
+              <td>${pos ? `<b>${esc(pos.level || '')}</b> · ${esc(pos.title)}${r.auto ? ' <small class="muted">(matched by title)</small>' : ''}` : '<span class="tag warn xs">Not placed</span>'}</td>
+              <td class="nowrap">${tenure(r.since)}</td>
+              ${C.can_pay ? `<td class="num">${r.salary ? `${m2(r.salary.amount)}${r.salary.basis === 'hourly' ? ' /h' : ''}` : '—'}</td><td>${pl ? `<span class="tag ${pl.cls} xs">${esc(pl.txt)}</span>` : '—'}</td><td class="num nowrap">${pos ? capTxt(pos) : '—'}</td>` : ''}
+              <td>${nx ? `${esc(nx.level)} · ${esc(nx.title)}${C.can_pay && levelCap(nx) != null ? `<small class="sub">cap ${money(levelCap(nx))}</small>` : ''}` : pos ? '<span class="muted small">top of this ladder</span>' : '—'}</td></tr>`; }).join('')
+          || '<tr><td colspan="7"><div class="empty small"><p>No one here</p></div></td></tr>'}</tbody></table></div>
+          <p class="muted small">Level and next level come from the JD Manual (MEG-EAF V2). The cap is the top of the level's highest band: the MyEden cap where HR has set one, otherwise the JD (market) range. Click a person for their timeline and to change their JD position.</p>`;
+        $$('[data-p]', box).forEach((r) => r.addEventListener('click', () => personWindow(r.dataset.p)));
+      } else if (f.tab === 'unplaced') {
+        const list = ppl.filter((r) => !r.position_id);
+        box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Name</th><th>Job title on record</th><th>Possible JD positions</th><th></th></tr></thead><tbody>
+          ${list.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')} · ${esc(coShort(r.company))}</small></td><td>${esc(r.title || '—')}</td>
+            <td class="small">${suggestPositions(C, r).map((p) => `${esc(p.level)} · ${esc(p.title)} <span class="muted">(${esc(coShort(p.company))})</span>`).join('<br>') || '<span class="muted">no close match</span>'}</td>
+            <td>${C.can_edit ? `<button type="button" class="btn sm primary" data-place="${esc(r.person_id)}">Place…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">These people's job title on record does not match a JD position for their employer. Choose the JD position they hold, once; it is kept even if the title wording differs.</p>`
+          : '<div class="empty small"><p>Everyone is placed</p></div>';
+        $$('[data-place]', box).forEach((b) => b.addEventListener('click', () => placeWindow(b.dataset.place)));
+      } else {
+        const pos = C.positions.filter((p) => (f.co === 'all' || p.company === f.co) && (!f.dept || (p.department || '—') === f.dept));
+        const groups = new Map(); pos.forEach((p) => { const k = `${p.company}|${p.department || '—'}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
+        const at = (p) => C.people.filter((r) => r.position_id === p.id);
+        box.innerHTML = [...groups.entries()].map(([k, list]) => { const [co, dept] = k.split('|');
+          return `<div class="ladder"><h4 class="sec-h">${esc(coShort(co))} · ${esc(dept)}</h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Level</th><th>Position</th>${C.can_pay ? '<th>Tier</th><th>JD (market) range</th><th>MyEden cap</th>' : ''}<th>People</th></tr></thead><tbody>
+            ${list.sort((a, b) => lvNum(a.level) - lvNum(b.level)).map((p) => { const bs = C.can_pay && p.bands.length ? p.bands : [null]; const ppl = at(p);
+              return bs.map((b, i) => `<tr>${i === 0 ? `<td rowspan="${bs.length}"><b>${esc(p.level || '')}</b></td><td rowspan="${bs.length}">${esc(p.title)}<small class="sub">${esc(p.reference || '')}</small></td>` : ''}
+                ${C.can_pay ? (b ? `<td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td>
+                  <td class="nowrap">${b.cap_min != null || b.cap_max != null ? `<b>${b.cap_min != null ? money(b.cap_min) : '—'} – ${b.cap_max != null ? money(b.cap_max) : '—'}</b>` : '<span class="muted small">not set</span>'}
+                    ${C.can_edit ? ` <button type="button" class="btn sm ghost" data-cap="${esc(b.id)}" data-pos="${esc(p.id)}">${b.cap_min != null || b.cap_max != null ? 'Edit' : 'Set'}</button>` : ''}</td>` : '<td colspan="3" class="muted small">no bands in the JD</td>') : ''}
+                ${i === 0 ? `<td rowspan="${bs.length}" class="small">${ppl.map((r) => esc(r.name)).join('<br>') || '<span class="muted">—</span>'}</td>` : ''}</tr>`).join('');
+            }).join('')}</tbody></table></div></div>`; }).join('') || '<div class="empty small"><p>No positions</p></div>';
+        $$('[data-cap]', box).forEach((b) => b.addEventListener('click', () => capWindow(b.dataset.pos, b.dataset.cap)));
+      }
+      fitTables();
+    };
+
+    const capWindow = async (posId, bandId) => {
+      const p = C.byId.get(posId); const b = p.bands.find((x) => x.id === bandId);
+      let hist = []; try { hist = await API.rpc('cms_salary_cap_history', { p_band: bandId }); } catch (e) { /* optional */ }
+      const ok = await modal({ title: `MyEden cap · ${p.level} ${p.title} · ${b.tier}`, ok: 'Save cap',
+        body: `<p class="muted small">JD (market) range: <b>${b.min != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</b>. The MyEden cap is what MyEden Group pays for this tier; leave a box empty to use the JD figure.</p>
+          <div class="grid-2 tight"><label class="fld"><span>MyEden minimum (RM)</span><input name="min" data-money inputmode="decimal" value="${b.cap_min != null ? m2(b.cap_min) : ''}"></label>
+          <label class="fld"><span>MyEden maximum (RM)</span><input name="max" data-money inputmode="decimal" value="${b.cap_max != null ? m2(b.cap_max) : ''}"></label>
+          <label class="fld"><span>Effective from</span><input name="from" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+          <label class="fld"><span>Reason / note</span><input name="note" maxlength="300" placeholder="e.g. 2027 budget review"></label></div>
+          ${hist.length ? `<h4 class="sec-h">Changes</h4><ol class="timeline">${hist.map((h) => `<li><b>${h.min != null ? money(h.min) : '—'} – ${h.max != null ? money(h.max) : '—'}</b> from ${dShort(h.from)} · ${esc(h.by || '')} · ${dShort(h.at)}${h.note ? `<br><span class="muted">${esc(h.note)}</span>` : ''}</li>`).join('')}</ol>` : ''}`,
+        onOk: async (fm) => { const mn = fm.min.value.trim() ? mval(fm.min.value) : null; const mx = fm.max.value.trim() ? mval(fm.max.value) : null;
+          if ((mn != null && isNaN(mn)) || (mx != null && isNaN(mx))) throw new Error('Enter amounts as numbers.');
+          if (mn != null && mx != null && mx < mn) throw new Error('The maximum is below the minimum.');
+          await API.rpc('cms_salary_cap_save', { p_band: bandId, p_min: mn, p_max: mx, p_from: fm.from.value || null, p_note: fm.note.value || null }); } });
+      if (ok) { toast('MyEden cap saved'); reload(); }
+    };
+    const placeWindow = async (pid) => {
+      const r = C.people.find((x) => x.person_id === pid); const sug = suggestPositions(C, r);
+      const opts = (list) => list.map((p) => `<option value="${esc(p.id)}" ${p.id === r.position_id ? 'selected' : ''}>${esc(p.level || '')} · ${esc(p.title)} — ${esc(coShort(p.company))} · ${esc(p.department || '')}</option>`).join('');
+      const groups = new Map(); C.positions.forEach((p) => { const k = `${coShort(p.company)} · ${p.department || '—'}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
+      const ok = await modal({ title: `JD position · ${r.name}`, ok: 'Save', wide: true,
+        body: `<p class="muted small">Job title on record: <b>${esc(r.title || '—')}</b> (${esc(coShort(r.company))}).</p>
+          <div class="grid-2 tight"><label class="fld fld-2"><span>JD position held</span><select name="pos" required><option value="">Choose…</option>
+            ${sug.length ? `<optgroup label="Closest matches">${opts(sug)}</optgroup>` : ''}${[...groups.entries()].map(([k, l]) => `<optgroup label="${esc(k)}">${opts(l.sort((a, b) => lvNum(a.level) - lvNum(b.level)))}</optgroup>`).join('')}</select></label>
+          <label class="fld"><span>In this level since</span><input name="since" type="date" value="${esc(r.auto ? '' : (r.since || ''))}"></label>
+          <label class="fld"><span>Note (e.g. promoted)</span><input name="note" maxlength="300"></label></div>`,
+        onOk: async (fm) => { if (!fm.pos.value) throw new Error('Choose the JD position.'); await API.rpc('cms_person_position_set', { p_person: pid, p_position: fm.pos.value, p_since: fm.since.value || null, p_note: fm.note.value || null }); } });
+      if (ok) { toast(`${r.name}: JD position saved`); reload(); }
+    };
+    const personWindow = async (pid) => {
+      const r = C.people.find((x) => x.person_id === pid); const pos = posOf(r); const nx = nextOf(pos);
+      let tl = []; try { tl = await API.rpc('cms_person_timeline', { p_person: pid }); } catch (e) { toast(e.message, 'err'); }
+      const KIND = { recruit: 'blue', job: 'ok', pay: 'green', leave: 'warn', item: '', event: '' };
+      const pl = pos ? placeIn(pos, r.salary) : null;
+      await modal({ title: r.name, ok: null, cancel: 'Close', wide: true,
+        body: `<div class="grid-2 tight"><div>
+            <h4 class="sec-h">Career</h4>
+            ${pos ? `<dl class="kv2"><dt>JD level</dt><dd><b>${esc(pos.level)}</b> · ${esc(pos.title)}<br><small class="muted">${esc(pos.reference || '')} · ${esc(coShort(pos.company))} · ${esc(pos.department || '')}</small></dd>
+              <dt>In this level</dt><dd>${tenure(r.since)}${r.since ? ` (since ${dShort(r.since)})` : ''}</dd>
+              ${C.can_pay ? `<dt>Salary</dt><dd>${r.salary ? `RM ${m2(r.salary.amount)}${r.salary.basis === 'hourly' ? ' /h' : ''}` : '—'} ${pl ? `<span class="tag ${pl.cls} xs">${esc(pl.txt)}</span>` : ''}</dd><dt>Level cap</dt><dd>${capTxt(pos)}</dd>` : ''}
+              <dt>Next level</dt><dd>${nx.length ? nx.map((n) => `${esc(n.level)} · ${esc(n.title)}${C.can_pay && levelCap(n) != null ? ` — cap ${money(levelCap(n))}` : ''}`).join('<br>') : 'Top of this ladder'}</dd></dl>
+              ${Array.isArray(pos.career_path) && pos.career_path.length ? `<p class="small muted">${pos.career_path.map(esc).join(' → ')}</p>` : ''}`
+              : '<p class="warn-txt">Not placed on a JD position yet.</p>'}
+            ${C.can_edit ? `<button type="button" class="btn sm" data-place>${pos ? 'Change JD position…' : 'Place on a JD position…'}</button>` : ''}</div>
+          <div><h4 class="sec-h">Timeline</h4><ol class="timeline tl-kinds">${tl.map((x) => `<li class="k-${esc(x.kind)}"><span class="tag ${KIND[x.kind] || ''} xs">${dShort(x.at)}</span> <b>${esc(x.title)}</b>${x.amount != null ? ` · RM ${m2(x.amount)}${x.basis === 'hourly' ? ' /h' : ''}` : ''}${x.note ? `<br><span class="muted small">${esc(x.note)}</span>` : ''}</li>`).join('') || '<li class="muted">Nothing recorded yet</li>'}</ol></div></div>`,
+        onOpen: (w) => $('[data-place]', w)?.addEventListener('click', () => { $('[data-x]', w).click(); placeWindow(pid); }) });
+    };
+    draw();
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -2676,7 +2827,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
