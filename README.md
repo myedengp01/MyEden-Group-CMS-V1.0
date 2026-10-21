@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-18:05 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.21-18:30 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -52,6 +52,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 24. `20261021_cms_appraisals.sql` — Phase 5b probation reviews and annual appraisals (JD KPI scores, KPI grade, recommendation), approval applies confirmation / probation extension / KPI grade to payroll / promotion; My Appraisal for self-assessment and reviewers
 25. `20261021_cms_probation_rules.sql` — probation end date = confirmation date; probation length from the record, else the offer's probation months, else assumed 3 months; extension letter tracking and an automatic follow-up review
 26. `20261021_cms_training_certs.sql` — Phase 5c certificate types (validity, required for all, reminder days), certificates per person with copy and verification, training sessions with attendance that issues the certificate, My Certificates (self-service part "certs")
+27. `20261021_cms_documents_letters.sql` — Phase 5d employee documents (storage bucket `employee-documents` policies, register, remove with reason), HR letters from templates (context filled from records, drafts, issue, void; probation extension letter marks the appraisal letter issued), off-boarding hand-over checklist (approval needs every step done or a note)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -101,6 +102,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-18:30** — Phase 5d · **Documents, HR Letters, off-boarding checklist**: Employee Documents (upload to each person's folder, type, date,
+  expiry, open, remove with reason). HR Letters: pick a person and template, the letter is filled from records (name, address, position, dates, salary)
+  with a live preview on the company letterhead, missing fields must be filled before issue; drafts, issued register, void, print. Appraisal window can
+  issue the extension / confirmation / promotion letter directly. Hand-over now has a checklist (resignation letter, access, documents, exit interview,
+  final pay); approval needs all steps done or a note. Database: `20261021_cms_documents_letters.sql`.
 - **v2026.10.21-18:05** — Phase 5c · **Training & Certificates** (Performance & Growth): Expiring & expired, Missing required (types marked "required for
   all staff"), To verify (sent by staff), All certificates, Training sessions (attendees; "attended" adds the training's certificate with
   its expiry) and Certificate types (validity months, reminder days, required). Copies (photo or PDF) kept with each certificate; a renewed

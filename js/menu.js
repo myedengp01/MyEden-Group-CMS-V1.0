@@ -36,7 +36,7 @@ window.CMS_MENU = [
       { route: 'people/selfservice', label: 'Self-service Access', phase: 4, live: true, desc: 'What each person can see in their own self-service: switch parts on per person, release payslips and EA forms, set who each person reports to, and approve profile changes.' },
       { route: 'people/directory', label: 'Employee Directory', phase: 4, desc: 'Who is who, by centre and department, with contact details staff are allowed to see.' },
       { route: 'org', label: 'Organisation Structure', phase: 0, desc: 'Companies, centres and departments, and the positions in each.', plan: ['Myeden Group · Myeden Edu Hub · Happy Dino · Aborne Project', 'Centres: Taska Genius Eden, PJK Eden, Tadika Genius Eden, Tadika Happy Dino, HQ', 'Department codes E1–E11, E3+, HQ'] },
-      { route: 'documents', label: 'Employee Documents', phase: 5, desc: 'Contracts, IC copies, certificates and letters, filed per employee.' },
+      { route: 'documents', label: 'Employee Documents', phase: 5, live: true, desc: 'Contracts, IC copies, certificates, signed letters and other files per employee (shared with MEG-EAF V2): upload, replace and open.' },
     ] },
     { group: 'Recruitment', icon: 'search-user', items: [
       { route: 'jd', label: 'Job Description Manual', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'The JD master from MEG-EAF V2: every position by company and department, with purpose, responsibilities, KPIs, competencies and (HR / Admin) salary bands.' },
@@ -77,7 +77,7 @@ window.CMS_MENU = [
       { route: 'training', label: 'Training & Certificates', phase: 5, live: true, desc: 'First aid, PERMATA / KAAK, ECCE, SKM, food handler, typhoid and other certificates per person, with expiry reminders, required certificates, training sessions and certificates sent by staff for HR to verify.' },
     ] },
     { route: 'assets', label: 'Items & Hand-over', icon: 'box', phase: 4, live: true, desc: 'Every company item issued to staff — email and system accounts, keys, cards, thumb drives, devices, uniforms, handbook — confirmed by the person, changed or returned during employment, and handed over at offboarding with a deadline and approval.' },
-    { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, source: 'MEG-EAF V2', desc: 'Appointment, confirmation, service and other letters on company letterheads.' },
+    { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, live: true, desc: 'Confirmation, probation extension, increment, promotion, transfer, warning, show cause, resignation acceptance and other letters: filled from the person\'s records, issued on the company letterhead, kept and reprintable.' },
     { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators (in MEG-EAF V2).' },
     { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Every claim waiting for approval, processing or payment, across all MEG-FORMS forms.' },
     { route: 'reports', label: 'Reports & Analytics', icon: 'chart', phase: 5, desc: 'Headcount, turnover, cost and claims across companies and centres.' },

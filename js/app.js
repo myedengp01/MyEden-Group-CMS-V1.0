@@ -2401,6 +2401,7 @@
         body: `<div class="it-head">${p.leaving ? `<span class="tag warn">Leaving ${dShort(p.leaving)}</span>` : ''}${p.items_on ? '' : '<span class="tag xs">My Items is off for this person: they cannot confirm yet</span>'}</div>
           ${h ? `<div class="warn-box"><b>Hand-over open</b> · deadline ${h.deadline ? dShort(h.deadline) : 'not set'} · approver ${esc(h.approver || 'HR / Admin')} · ${h.outstanding} still with the person
               ${h.notes ? `<br><span class="muted">${esc(h.notes)}</span>` : ''}
+              <ul class="ho-steps">${(h.checklist || []).map((c) => `<li><label class="chk"><input type="checkbox" data-step="${esc(c.key)}" ${c.done ? 'checked' : ''} ${edit ? '' : 'disabled'}> ${esc(c.label)}</label>${c.done ? ` <small class="muted">${esc(c.by || '')} · ${dShort(c.at)}</small>` : ''}</li>`).join('')}</ul>
               ${edit ? `<div class="btn-row"><button type="button" class="btn sm" data-ho="edit">Deadline, approver, notes…</button><button type="button" class="btn sm primary" data-ho="approve">Approve hand-over…</button><button type="button" class="btn sm ghost" data-ho="cancel">Cancel hand-over…</button></div>` : ''}</div>`
             : (edit && out.length ? '<div class="btn-row"><button type="button" class="btn sm" data-ho="start">Start hand-over…</button></div>' : '')}
           <div class="table-wrap"><table class="data compact"><thead><tr><th>Item</th><th>Issued</th><th>Status</th><th></th></tr></thead><tbody>
@@ -2419,6 +2420,9 @@
             personItems(pid); }));
           $$('[data-act]', w).forEach((s) => s.addEventListener('change', async () => { const a = s.value; if (!a) return; const i = its.find((x) => x.id === s.dataset.act); close(); await itemAction(i, a, others); }));
           $$('[data-ho]', w).forEach((b) => b.addEventListener('click', async () => { close(); await handoverAction(p, h, b.dataset.ho); }));
+          $$('[data-step]', w).forEach((c) => c.addEventListener('change', async () => {
+            try { await API.rpc('cms_handover_step', { p_id: h.id, p_key: c.dataset.step, p_done: c.checked, p_note: null }); const st = h.checklist.find((x) => x.key === c.dataset.step); st.done = c.checked; toast(c.checked ? 'Step done' : 'Step reopened'); }
+            catch (e) { c.checked = !c.checked; toast(e.message, 'err'); } }));
         } });
       return done;
     };
@@ -2861,7 +2865,9 @@
           <label class="fld fld-2"><span>To improve</span><textarea name="imp" rows="2" ${edit ? '' : 'disabled'}>${esc(A.improvements || '')}</textarea></label>
           <label class="fld fld-2"><span>Goals for the next period</span><textarea name="goals" rows="2" ${edit ? '' : 'disabled'}>${esc(A.goals || '')}</textarea></label></div>
         ${A.status === 'approved' && A.recommendation === 'extend' ? (A.letter_issued_at ? `<p class="small">Extension letter issued ${dShort(A.letter_issued_at)}${A.letter_ref ? ` · ${esc(A.letter_ref)}` : ''}</p>`
-          : `<div class="err-box"><b>Issue the probation extension letter</b> (new end date ${dShort(A.rec_extend_to)}).<div class="btn-row">${eafBtn('letters', 'Open HR Letters in MEG-EAF V2', 'sm')}${A.role === 'hr' ? '<button type="button" class="btn sm primary" data-letter>Mark letter as issued…</button>' : ''}</div></div>`) : ''}
+          : `<div class="err-box"><b>Issue the probation extension letter</b> (new end date ${dShort(A.rec_extend_to)}).<div class="btn-row">${A.role === 'hr' ? '<button type="button" class="btn sm primary" data-pel>Issue extension letter…</button><button type="button" class="btn sm" data-letter>Already issued: mark it…</button>' : ''}</div></div>`) : ''}
+        ${A.status === 'approved' && A.recommendation === 'confirm' && A.role === 'hr' ? '<div class="btn-row"><button type="button" class="btn sm" data-loc>Issue confirmation letter…</button></div>' : ''}
+        ${A.status === 'approved' && A.recommendation === 'promote' && A.role === 'hr' ? '<div class="btn-row"><button type="button" class="btn sm" data-lop>Issue promotion letter…</button></div>' : ''}
         ${A.status === 'approved' ? `<div class="warn-box"><b>Approved</b> by ${esc(A.approved_by || '')} · ${dShort(A.approved_at)}${A.outcome ? `<br>${esc(Object.entries(A.outcome).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · '))}` : ''}</div>` : ''}
         ${A.can_approve ? `<div class="btn-row"><button type="button" class="btn primary" data-appr>Approve and apply…</button><button type="button" class="btn" data-ret>Return to reviewer…</button></div>
           <p class="muted small">Approving applies the outcome: ${prob ? 'confirmation in payroll and the Employee Master, or the new probation end date' : 'the KPI grade goes to payroll (annual-leave carry forward); a promotion moves them to the new JD level; a salary increment is then recorded in Increments &amp; Reviews'}.</p>` : ''}`,
@@ -2878,6 +2884,10 @@
           if (done) { if (ret) toast('Returned to the reviewer'); after?.(); }
         };
         $('[data-appr]', w)?.addEventListener('click', () => act(false));
+        const issueFrom = (code, extra = {}) => { $('[data-x]', w).click(); letterWindow({ person_id: A.person_id, template: code, ...extra }, (issued) => { after?.(); if (issued && state.lastLetter?.id) location.hash = `#/letters?open=${state.lastLetter.id}`; }); };
+        $('[data-pel]', w)?.addEventListener('click', () => issueFrom('PEL', { appraisal_id: id }));
+        $('[data-loc]', w)?.addEventListener('click', () => issueFrom('LOC'));
+        $('[data-lop]', w)?.addEventListener('click', () => issueFrom('LOP'));
         $('[data-letter]', w)?.addEventListener('click', async () => { $('[data-x]', w).click();
           const done = await modal({ title: `Extension letter · ${A.name}`, ok: 'Mark as issued', body: '<label class="fld"><span>Letter reference (optional)</span><input name="ref" maxlength="80"></label>',
             onOk: async (f) => { await API.rpc('cms_appraisal_letter', { p_id: id, p_ref: f.ref.value || null }); } });
@@ -3143,6 +3153,186 @@
     return t;
   }
 
+  // ================================================================ 5d · EMPLOYEE DOCUMENTS, HR LETTERS
+  const DOC_TYPES = [['contract', 'Employment contract / LOEC'], ['ic', 'IC / passport copy'], ['certificate', 'Certificate / qualification'], ['letter', 'HR letter (signed copy)'],
+    ['bank', 'Bank details'], ['medical', 'Medical'], ['resignation', 'Resignation letter'], ['other', 'Other']];
+  const docTypeLbl = (t) => (DOC_TYPES.find((x) => x[0] === t) || [t, t])[1];
+  async function openStored(path) {
+    try {
+      const { data, error } = await API.sb().storage.from('employee-documents').createSignedUrl(path, 300);
+      if (error) throw error; window.open(data.signedUrl, '_blank', 'noopener');
+    } catch (e) { toast(API.friendly(e), 'err'); }
+  }
+  async function documentsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="dc-body">${loading()}</div>`;
+    let D; const load = async () => { D = await API.rpc('cms_documents', {}); D.people.forEach((r) => upKeys(r, 'name')); D.documents.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#dc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { q: '', type: 'all', old: false };
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const draw = () => {
+      const t = f.q.trim().toLowerCase();
+      const list = D.documents.filter((d) => (f.old || d.current) && (f.type === 'all' || d.type === f.type) && (!t || `${d.name} ${d.employee_id || ''} ${d.label || ''} ${d.file_name || ''}`.toLowerCase().includes(t)));
+      const lets = D.letters.filter((l) => l.status === 'issued' && (!t || `${l.name} ${l.title || ''}`.toLowerCase().includes(t)));
+      $('#dc-body', el).innerHTML = `<section class="card"><div class="toolbar"><label class="search-in">${icon('search')}<input id="dq" type="search" placeholder="Name, Employee ID or document" value="${esc(f.q)}" aria-label="Search"></label>
+          <select id="dty" aria-label="Type"><option value="all">All types</option>${DOC_TYPES.map(([k, l]) => `<option value="${k}" ${f.type === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+          <label class="chk"><input type="checkbox" id="dold" ${f.old ? 'checked' : ''}> Include replaced copies</label>
+          ${D.can_edit ? '<button type="button" class="btn sm primary" data-up>+ Upload document…</button>' : ''}</div>
+        <div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Document</th><th>Date</th><th>Expires</th><th>Uploaded</th><th></th></tr></thead><tbody>
+          ${list.map((d) => `<tr class="${d.current ? '' : 'muted'}"><td><b>${esc(d.name)}</b><small class="sub">${esc(d.employee_id || '')}</small></td>
+            <td><b>${esc(d.label || d.file_name || '—')}</b><small class="sub">${esc(docTypeLbl(d.type))}${d.current ? '' : ' · replaced'}</small></td>
+            <td class="nowrap">${d.date ? dShort(d.date) : '—'}</td><td class="nowrap">${d.expiry ? `${dShort(d.expiry)}${daysTo(d.expiry) < 0 ? ' <span class="tag bad xs">expired</span>' : ''}` : '—'}</td>
+            <td class="nowrap">${dShort(d.uploaded_at)}</td>
+            <td class="nowrap"><button type="button" class="btn sm ghost" data-open="${esc(d.path)}">${icon('eye')}Open</button>${D.can_edit && d.current ? ` <button type="button" class="btn sm ghost" data-rep="${esc(d.id)}">Replace…</button> <button type="button" class="btn sm ghost" data-rm="${esc(d.id)}">Remove…</button>` : ''}</td></tr>`).join('')
+          || '<tr><td colspan="6"><div class="empty small"><p>No documents</p></div></td></tr>'}</tbody></table></div>
+        ${lets.length ? `<h4 class="sec-h">HR letters issued from the CMS</h4><div class="table-wrap"><table class="data compact"><tbody>${lets.map((l) => `<tr><td><b>${esc(l.name)}</b></td><td>${esc(l.title || l.template)}</td><td class="nowrap">${dShort(l.issued_at)}</td><td><a class="btn sm ghost" href="#/letters?open=${esc(l.id)}">Open</a></td></tr>`).join('')}</tbody></table></div>` : ''}
+        <p class="muted small">Files are kept in the employee documents store shared with MEG-EAF V2. Replacing keeps the older copy (tick "Include replaced copies" to see it); removing needs a reason and is logged.</p></section>`;
+      $('#dq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#dq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $('#dty', el).addEventListener('change', (e) => { f.type = e.target.value; draw(); });
+      $('#dold', el).addEventListener('change', (e) => { f.old = e.target.checked; draw(); });
+      $$('[data-open]', el).forEach((b) => b.addEventListener('click', () => openStored(b.dataset.open)));
+      $('[data-up]', el)?.addEventListener('click', () => uploadWindow({}));
+      $$('[data-rep]', el).forEach((b) => b.addEventListener('click', () => { const d = D.documents.find((x) => x.id === b.dataset.rep); uploadWindow({ person_id: d.person_id, type: d.type, label: d.label, replaces: d.id }); }));
+      $$('[data-rm]', el).forEach((b) => b.addEventListener('click', async () => {
+        const ok = await modal({ title: 'Remove document', ok: 'Remove', danger: true, body: '<label class="fld"><span>Reason</span><input name="r" required></label>',
+          onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_document_remove', { p_id: b.dataset.rm, p_reason: fm.r.value }); } });
+        if (ok) { toast('Document removed'); reload(); }
+      }));
+      fitTables();
+    };
+    const uploadWindow = async (pre) => {
+      const ok = await modal({ title: pre.replaces ? 'Replace document' : 'Upload document', ok: 'Upload', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld"><span>Person</span><select name="p" ${pre.person_id ? 'disabled' : ''} required><option value="">Choose…</option>${D.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === pre.person_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Type</span><select name="t">${DOC_TYPES.map(([k, l]) => `<option value="${k}" ${pre.type === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+          <label class="fld fld-2"><span>Name of the document</span><input name="l" value="${esc(pre.label || '')}" placeholder="e.g. Letter of Offer and Employment (signed)"></label>
+          <label class="fld"><span>Document date</span><input name="d" type="date"></label><label class="fld"><span>Expires (if any)</span><input name="x" type="date"></label>
+          <label class="fld fld-2"><span>File (PDF or picture, 10 MB at most)</span><input name="f" type="file" accept="application/pdf,image/*" required></label>
+          <label class="fld fld-2"><span>Note</span><input name="n"></label></div>`,
+        onOk: async (fm) => {
+          const pid = pre.person_id || fm.p.value; const file = fm.f.files[0];
+          if (!pid) throw new Error('Choose the person.'); if (!file) throw new Error('Choose the file.'); if (file.size > 10 * 1024 * 1024) throw new Error('The file is larger than 10 MB.');
+          const path = `${pid}/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+          const { error } = await API.sb().storage.from('employee-documents').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+          if (error) throw new Error(API.friendly(error));
+          await API.rpc('cms_document_add', { p: { person_id: pid, type: fm.t.value, label: fm.l.value || file.name, file_name: file.name, path, mime: file.type, size: file.size,
+            date: fm.d.value || null, expiry: fm.x.value || null, note: fm.n.value, replaces: pre.replaces || null } });
+        } });
+      if (ok) { toast('Document uploaded'); reload(); }
+    };
+    draw();
+  }
+
+  // ---------------------------------------------------------------- HR letters
+  const LONG_KEYS = /(details|areas|objectives|description|expectations|summary|evidence|allegation|particulars|conditions|information|process|findings|correspondence|resources|targets|gaps|actions|instructions|basis|arrangements|considered)/;
+  const tplKeys = (body) => [...new Set([...String(body || '').matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => m[1]))];
+  const fillTpl = (body, v) => String(body || '').replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => (v[k] != null && String(v[k]).trim() !== '' ? String(v[k]) : m));
+  function splitAddress(a) {
+    const parts = String(a || '').replace(/\.$/, '').split(/\s*[,\n]\s*/).filter(Boolean); if (!parts.length) return {};
+    const state = parts.length > 2 ? parts.pop() : ''; let pc = parts.findIndex((p) => /\b\d{5}\b/.test(p)); if (pc < 0) pc = parts.length - 1;
+    const town = parts.splice(pc, 1)[0] || ''; const l1 = parts.slice(0, 2).join(', '); const l2 = parts.slice(2).join(', ');
+    return { address_line1: l1, address_line2: l2, postcode_town: town, state };
+  }
+  function letterSheet(text, co) {
+    const c = co || {};
+    const lines = String(text).split('\n').map((ln) => {
+      const t = ln.trim(); if (!t) return '<div class="lt-gap"></div>';
+      if (/^PRIVATE & CONFIDENTIAL$/i.test(t)) return `<p class="lt-conf">${esc(t)}</p>`;
+      if (/^Subject:/i.test(t)) return `<p class="lt-subj">${esc(t.replace(/^Subject:\s*/i, ''))}</p>`;
+      return `<p>${esc(t)}</p>`;
+    }).join('');
+    return `<section class="sheet letter"><div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}
+      <div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div><div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div>
+      <div>${esc([c.phone ? `Tel ${c.phone}` : null, c.email].filter(Boolean).join(' · '))}</div></div></div><div class="lt-body">${lines}</div></section>`;
+  }
+  async function letterWindow(pre, after) {
+    let L; try { L = state.lettersData || (state.lettersData = await API.rpc('cms_letters')); } catch (e) { toast(e.message, 'err'); return; }
+    const ph = new Map(L.placeholders.map((p) => [p.key, p]));
+    let ctx = null; let co = null; const vals = { ...(pre.fields || {}) };
+    const ok = await modal({ title: pre.id ? 'HR letter (draft)' : 'New HR letter', ok: 'Issue letter…', cancel: 'Close', wide: true,
+      body: `<div class="grid-2 tight"><label class="fld"><span>Person</span><select name="p" required ${pre.person_id ? 'disabled' : ''}><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === pre.person_id ? 'selected' : ''}>${esc(p.name)}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></label>
+        <label class="fld"><span>Letter</span><select name="t" required><option value="">Choose…</option>${L.templates.map((t) => `<option value="${esc(t.code)}" ${t.code === pre.template ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select></label></div>
+        <div class="lt-split"><div id="lt-fields"></div><div id="lt-prev" class="lt-prev"></div></div>
+        <div class="btn-row"><button type="button" class="btn" data-draft>Save draft</button></div>`,
+      onOpen: (w) => {
+        const tpl = () => L.templates.find((t) => t.code === $('select[name=t]', w).value);
+        const preview = () => { const t = tpl(); $('#lt-prev', w).innerHTML = t ? letterSheet(fillTpl(t.body, vals), co) : '<p class="muted">Choose the person and the letter.</p>'; };
+        const fields = () => {
+          const t = tpl(); const box = $('#lt-fields', w); if (!t || !ctx) { box.innerHTML = ''; preview(); return; }
+          const keys = tplKeys(t.body);
+          box.innerHTML = keys.map((k) => { const p = ph.get(k) || {}; const lbl = p.label || k.replace(/_/g, ' '); const long = LONG_KEYS.test(k);
+            return `<label class="fld"><span>${esc(lbl)}${p.source === 'employee' || p.source === 'calculation' ? ' <small class="muted">from records</small>' : ''}</span>${long ? `<textarea data-k="${k}" rows="3">${esc(vals[k] ?? '')}</textarea>` : `<input data-k="${k}" value="${esc(vals[k] ?? '')}">`}</label>`; }).join('');
+          $$('[data-k]', box).forEach((i) => i.addEventListener('input', () => { vals[i.dataset.k] = i.value; preview(); }));
+          preview();
+        };
+        const loadCtx = async () => {
+          const pid = pre.person_id || $('select[name=p]', w).value; if (!pid) { ctx = null; fields(); return; }
+          try { ctx = await API.rpc('cms_letter_context', { p_person: pid }); } catch (e) { toast(e.message, 'err'); return; }
+          co = ctx._company || null; const auto = { ...ctx, ...splitAddress(ctx._home_address) };
+          Object.entries(auto).forEach(([k, v]) => { if (!k.startsWith('_') && v != null && (vals[k] == null || vals[k] === '')) vals[k] = v; });
+          Object.entries(pre.prefill || {}).forEach(([k, v]) => { if (v != null && v !== '') vals[k] = v; });
+          fields();
+        };
+        $('select[name=p]', w).addEventListener('change', () => { Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(); });
+        $('select[name=t]', w).addEventListener('change', fields);
+        $('[data-draft]', w).addEventListener('click', async () => {
+          const pid = pre.person_id || $('select[name=p]', w).value; const t = tpl(); if (!pid || !t) { toast('Choose the person and the letter.', 'err'); return; }
+          try { await API.rpc('cms_letter_save', { p: { id: pre.id || null, person_id: pid, template: t.code, fields: vals, appraisal_id: pre.appraisal_id || null } }); state.lettersData = null; toast('Draft saved'); $('[data-x]', w).click(); after?.(); }
+          catch (e) { toast(e.message, 'err'); }
+        });
+        loadCtx();
+      },
+      onOk: async (f) => {
+        const pid = pre.person_id || f.p.value; const t = L.templates.find((x) => x.code === f.t.value);
+        if (!pid || !t) throw new Error('Choose the person and the letter.');
+        const text = fillTpl(t.body, vals); const left = tplKeys(text);
+        if (left.length) throw new Error(`Fill in: ${left.map((k) => (ph.get(k) || {}).label || k.replace(/_/g, ' ')).join(', ')}.`);
+        const id = await API.rpc('cms_letter_save', { p: { id: pre.id || null, person_id: pid, template: t.code, fields: vals, issue: true, text, company: co ? { ...co, logo: undefined } : null, appraisal_id: pre.appraisal_id || null } });
+        state.lettersData = null; state.lastLetter = { id, text, co, title: `${t.title} · ${(L.people.find((p) => p.person_id === pid) || {}).name || ''}` };
+      } });
+    if (ok) { toast('Letter issued'); after?.(true); }
+  }
+  async function lettersPage(item, el) {
+    el.innerHTML = `${pageHead(item, eafBtn('letters', 'Templates in MEG-EAF V2', 'ghost'))}<div id="lt-body">${loading()}</div>`;
+    let L; const load = async () => { state.lettersData = null; L = await API.rpc('cms_letters'); state.lettersData = L; L.letters.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#lt-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { tab: 'issued', q: '' };
+    const printLetter = (text, co, title) => { docView(el, title, [letterSheet(text, co)], () => lettersPage(item, el)); };
+    const reload = async (issued) => { try { await load(); } catch (e) { toast(e.message, 'err'); } if (issued && state.lastLetter) { const x = state.lastLetter; state.lastLetter = null; printLetter(x.text, x.co, x.title); return; } draw(); };
+    const draw = () => {
+      const t = f.q.trim().toLowerCase(); const m = (l) => !t || `${l.name} ${l.title || ''} ${l.employee_id || ''}`.toLowerCase().includes(t);
+      const iss = L.letters.filter((l) => l.status === 'issued' && m(l)); const dr = L.letters.filter((l) => l.status === 'draft' && m(l));
+      const T = [['issued', `Issued <span>${iss.length}</span>`], ['drafts', `Drafts <span>${dr.length}</span>`], ['templates', 'Letters available']];
+      $('#lt-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="Name or letter" value="${esc(f.q)}" aria-label="Search"></label>
+          ${L.can_edit ? '<button type="button" class="btn sm primary" data-new>+ New letter…</button>' : ''}</div><div id="lt-tab"></div></section>
+        <p class="muted small">Letters are filled from the person's records (name, position, company, address, salary, probation and appraisal) and the fields you type. An issued letter is kept word for word and can be printed again. The company letterhead uses Paying Companies (name, registration no., address, phone): fill those in for a complete letterhead.</p>`;
+      const box = $('#lt-tab', el);
+      if (f.tab === 'templates') box.innerHTML = `<div class="table-wrap"><table class="data"><tbody>${L.templates.map((x) => `<tr><td><b>${esc(x.title)}</b><small class="sub">${tplKeys(x.body).length} fields</small></td><td>${L.can_edit ? `<button type="button" class="btn sm" data-tnew="${esc(x.code)}">Use…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+      else { const list = f.tab === 'issued' ? iss : dr;
+        box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Letter</th><th>${f.tab === 'issued' ? 'Issued' : 'Created'}</th><th></th></tr></thead><tbody>
+          ${list.map((l) => `<tr><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}</td>
+            <td class="nowrap">${dShort(l.issued_at || l.created_at)}${l.issued_by ? `<small class="sub">${esc(l.issued_by)}</small>` : ''}</td>
+            <td class="nowrap">${l.status === 'issued' ? `<button type="button" class="btn sm" data-print="${esc(l.id)}">${icon('download')}Print / PDF</button>` : L.can_edit ? `<button type="button" class="btn sm primary" data-edit="${esc(l.id)}">Continue…</button>` : ''}
+              ${L.can_edit ? ` <button type="button" class="btn sm ghost" data-void="${esc(l.id)}">Cancel…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>Nothing here</p></div>'; }
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#lq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#lq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $('[data-new]', el)?.addEventListener('click', () => letterWindow({}, reload));
+      $$('[data-tnew]', box).forEach((b) => b.addEventListener('click', () => letterWindow({ template: b.dataset.tnew }, reload)));
+      $$('[data-edit]', box).forEach((b) => b.addEventListener('click', () => { const l = L.letters.find((x) => x.id === b.dataset.edit); letterWindow({ id: l.id, person_id: l.person_id, template: l.template, fields: l.fields }, reload); }));
+      $$('[data-print]', box).forEach((b) => b.addEventListener('click', async () => { const l = L.letters.find((x) => x.id === b.dataset.print);
+        let co = null; try { co = (await API.rpc('cms_letter_context', { p_person: l.person_id }))._company; } catch (e) { /* letterhead optional */ }
+        printLetter(l.text, co, `${l.title} · ${l.name}`); }));
+      $$('[data-void]', box).forEach((b) => b.addEventListener('click', async () => {
+        const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: '<label class="fld"><span>Reason</span><input name="r" required></label>',
+          onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_letter_void', { p_id: b.dataset.void, p_reason: fm.r.value }); } });
+        if (ok) { toast('Letter cancelled'); reload(); }
+      }));
+      fitTables();
+    };
+    draw();
+    const open = new URLSearchParams(location.hash.split('?')[1] || '').get('open');
+    if (open) { const l = L.letters.find((x) => x.id === open); if (l && l.status === 'issued') $(`[data-print="${open}"]`, el)?.click(); }
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -3163,7 +3353,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
