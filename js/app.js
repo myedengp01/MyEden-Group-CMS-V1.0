@@ -159,7 +159,7 @@
   }
 
   function tasksFromDash(d) {
-    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks()];
+    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...letterTasks()];
     if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -1272,7 +1272,7 @@
     try { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), loadOrg()]); users.forEach(upUser); }
     catch (e) { $('#roles-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const body = $('#roles-body', el);
-    const sup = isSuper(); const canLink = can('admin.roles', 'E');
+    const sup = isSuper(); const canLink = can('admin.roles', 'E'); const canPerm = can('admin.roles', 'E');
     const filter = { q: '', show: 'all' };
     const reload = async () => { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix')]); users.forEach(upUser); draw(); };
 
@@ -1323,12 +1323,12 @@
     function drawGrid() {
       const roles = matrix.roles; const mods = matrix.modules; let grp = '';
       return `<section class="card"><div class="card-head"><h3>${icon('lock')}Who can do what</h3><span class="muted small">V view · C create · E edit · A approve · D delete · X export</span></div>
-        <p class="muted small">${sup ? 'Click a cell to change it. Super Admin always has everything. Every change is logged.' : 'Only a Super Admin can change permissions.'}</p>
+        <p class="muted small">${canPerm ? `Click a cell to change it; every change needs a reason and goes into the Audit Log. Super Admin always has everything. ${icon('lock')} Locked sections${sup ? '' : ' and the Admin role'} can only be changed by a Super Admin.` : 'Only Admin and Super Admin can change permissions.'}</p>
         <div class="table-wrap fill"><table class="grid perm-grid freeze1"><thead><tr><th>Module</th>${roles.map((r) => `<th title="${esc(r.description)}">${esc(r.name)}<small>${r.users} ${r.users === 1 ? 'user' : 'users'}</small></th>`).join('')}</tr></thead><tbody>
         ${mods.map((m) => { const head = m.grp !== grp ? `<tr class="grp"><td colspan="${roles.length + 1}">${esc(m.grp)}</td></tr>` : ''; grp = m.grp;
-          return `${head}<tr><td>${esc(m.label)} ${m.phase === 0 ? '<span class="tag live xs">Live</span>' : `<span class="tag phase p${m.phase} xs">P${m.phase}</span>`}</td>${roles.map((r) => {
+          return `${head}<tr><td>${m.locked ? `<span class="lock-ic" title="Locked: only a Super Admin can change this">${icon('lock')}</span>` : ''}${esc(m.label)} ${m.phase === 0 ? '<span class="tag live xs">Live</span>' : `<span class="tag phase p${m.phase} xs">P${m.phase}</span>`}</td>${roles.map((r) => {
             const a = matrix.permissions[r.code]?.[m.code] || '';
-            return `<td><button type="button" class="pcell ${a ? 'on' : ''}" data-role="${esc(r.code)}" data-mod="${esc(m.code)}" ${sup && r.code !== 'super_admin' ? '' : 'disabled'} aria-label="${esc(r.name)} · ${esc(m.label)}: ${a || 'none'}">${a ? 'VCEADX'.split('').filter((x) => a.includes(x)).map((x) => `<i>${x}</i>`).join('') : '·'}</button></td>`; }).join('')}</tr>`; }).join('')}
+            return `<td><button type="button" class="pcell ${a ? 'on' : ''}" data-role="${esc(r.code)}" data-mod="${esc(m.code)}" ${canPerm && r.code !== 'super_admin' && (sup || (!m.locked && r.code !== 'admin')) ? '' : 'disabled'} aria-label="${esc(r.name)} · ${esc(m.label)}: ${a || 'none'}">${a ? 'VCEADX'.split('').filter((x) => a.includes(x)).map((x) => `<i>${x}</i>`).join('') : '·'}</button></td>`; }).join('')}</tr>`; }).join('')}
         </tbody></table></div></section>
         <section class="card"><div class="card-head"><h3>${icon('shield')}Roles</h3></div>
           <ul class="role-desc">${roles.map((r) => `<li><span class="role-chip r-${esc(r.code)}">${esc(r.name)}</span><span>${esc(r.description)}</span>${r.phase > 0 ? `<span class="tag phase p${r.phase}">used from ${esc(window.CMS_PHASES[r.phase])}</span>` : ''}</li>`).join('')}</ul></section>`;
@@ -1405,10 +1405,12 @@
       await modal({
         title: `${r.name} · ${m.label}`,
         body: `<div class="checks big">${L.map(([k, l]) => `<label><input type="checkbox" name="a" value="${k}" ${cur.includes(k) ? 'checked' : ''}> <b>${k}</b> ${l}</label>`).join('')}</div>
-          <p class="muted small">Any action also needs View, which is added automatically. People holding this role see the change on their next page load.</p>`,
+          <p class="muted small">Any action also needs View, which is added automatically. People holding this role see the change on their next page load.${mod === 'payroll' ? ' Payroll “Edit” also gives MyPayroll access (prepare and finalise).' : ''}${role === 'hr' && mod === 'letters' ? ' HR cannot approve letters.' : ''}</p>
+          <label class="fld"><span>Reason for the change</span><input name="why" required maxlength="300" placeholder="e.g. HR now runs the monthly payroll"></label>`,
         onOk: async (form) => {
           const v = $$('input[name=a]:checked', form).map((x) => x.value).join('');
-          const saved = await API.rpc('cms_set_permission', { p_role: role, p_module: mod, p_actions: v });
+          if (!form.why.value.trim()) throw new Error('Give a reason for the change.');
+          const saved = await API.rpc('cms_permission_change', { p_role: role, p_module: mod, p_actions: v, p_reason: form.why.value.trim() });
           matrix.permissions[role] = matrix.permissions[role] || {}; matrix.permissions[role][mod] = saved;
           toast(`${r.name} · ${m.label}: ${saved || 'none'}`); draw();
         },
@@ -2756,7 +2758,7 @@
               return bs.map((b, i) => `<tr>${i === 0 ? `<td rowspan="${bs.length}"><b>${esc(p.level || '')}</b></td><td rowspan="${bs.length}">${esc(p.title)}<small class="sub">${esc(p.reference || '')}</small></td>` : ''}
                 ${C.can_pay ? (b ? `<td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td>
                   <td class="nowrap">${b.cap_min != null || b.cap_max != null ? `<b>${b.cap_min != null ? money(b.cap_min) : '—'} – ${b.cap_max != null ? money(b.cap_max) : '—'}</b>` : '<span class="muted small">not set</span>'}
-                    ${C.can_edit ? ` <button type="button" class="btn sm ghost" data-cap="${esc(b.id)}" data-pos="${esc(p.id)}">${b.cap_min != null || b.cap_max != null ? 'Edit' : 'Set'}</button>` : ''}</td>` : '<td colspan="3" class="muted small">no bands in the JD</td>') : ''}
+                    ${C.can_caps ? ` <button type="button" class="btn sm ghost" data-cap="${esc(b.id)}" data-pos="${esc(p.id)}">${b.cap_min != null || b.cap_max != null ? 'Edit' : 'Set'}</button>` : ''}</td>` : '<td colspan="3" class="muted small">no bands in the JD</td>') : ''}
                 ${i === 0 ? `<td rowspan="${bs.length}" class="small">${ppl.map((r) => esc(r.name)).join('<br>') || '<span class="muted">—</span>'}</td>` : ''}</tr>`).join('');
             }).join('')}</tbody></table></div></div>`; }).join('') || '<div class="empty small"><p>No positions</p></div>';
         $$('[data-cap]', box).forEach((b) => b.addEventListener('click', () => capWindow(b.dataset.pos, b.dataset.cap)));
@@ -2884,7 +2886,7 @@
           if (done) { if (ret) toast('Returned to the reviewer'); after?.(); }
         };
         $('[data-appr]', w)?.addEventListener('click', () => act(false));
-        const issueFrom = (code, extra = {}) => { $('[data-x]', w).click(); letterWindow({ person_id: A.person_id, template: code, ...extra }, (issued) => { after?.(); if (issued && state.lastLetter?.id) location.hash = `#/letters?open=${state.lastLetter.id}`; }); };
+        const issueFrom = (code, extra = {}) => { $('[data-x]', w).click(); location.hash = `#/letters?ws=new&person=${encodeURIComponent(A.person_id)}&type=${code}${extra.appraisal_id ? `&appraisal=${encodeURIComponent(extra.appraisal_id)}` : ''}`; };
         $('[data-pel]', w)?.addEventListener('click', () => issueFrom('PEL', { appraisal_id: id }));
         $('[data-loc]', w)?.addEventListener('click', () => issueFrom('LOC'));
         $('[data-lop]', w)?.addEventListener('click', () => issueFrom('LOP'));
@@ -3221,116 +3223,642 @@
     draw();
   }
 
-  // ---------------------------------------------------------------- HR letters
+  // ---------------------------------------------------------------- HR letters centre
+  // Letters: draft → submit → approve (Admin / Super Admin / Director, never the drafter) → issue (HR / Admin / Super Admin / Director).
+  // Templates: text (with [b] [i] [u]) or a Word file whose {{placeholders}} are filled inside the .docx, keeping its layout.
   const LONG_KEYS = /(details|areas|objectives|description|expectations|summary|evidence|allegation|particulars|conditions|information|process|findings|correspondence|resources|targets|gaps|actions|instructions|basis|arrangements|considered)/;
   const tplKeys = (body) => [...new Set([...String(body || '').matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => m[1]))];
   const fillTpl = (body, v) => String(body || '').replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => (v[k] != null && String(v[k]).trim() !== '' ? String(v[k]) : m));
+  const LETTERHEADS = { MEG: 'assets/letterheads/MEG.jpg', HD: 'assets/letterheads/HD.jpg', ABP: 'assets/letterheads/ABP.jpg', MEH: 'assets/letterheads/MEH.jpg' };
+  const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const longDate = (iso) => { const [y, m, d] = String(iso).split('-').map(Number); return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : ''; };
+  const TPL_ST = { draft: ['Draft', ''], pending: ['Waiting for approval', 'warn'], published: ['Published', 'ok'], rejected: ['Sent back', 'bad'], retired: ['Retired', ''] };
+  const LET_ST = { draft: ['Draft', ''], pending_approval: ['Waiting for approval', 'warn'], approved: ['Approved · to issue', 'blue'], issued: ['Issued', 'ok'], void: ['Cancelled', 'bad'] };
+  const KINDS = [['text', 'Text'], ['paragraph', 'Paragraph'], ['date', 'Date'], ['money', 'Money (RM)'], ['number', 'Number'], ['percentage', 'Percentage']];
+  const SOURCES = [['manual', 'Typed in for each letter'], ['employee', 'From the person’s records'], ['calculation', 'Calculated']];
   function splitAddress(a) {
     const parts = String(a || '').replace(/\.$/, '').split(/\s*[,\n]\s*/).filter(Boolean); if (!parts.length) return {};
     const state = parts.length > 2 ? parts.pop() : ''; let pc = parts.findIndex((p) => /\b\d{5}\b/.test(p)); if (pc < 0) pc = parts.length - 1;
     const town = parts.splice(pc, 1)[0] || ''; const l1 = parts.slice(0, 2).join(', '); const l2 = parts.slice(2).join(', ');
     return { address_line1: l1, address_line2: l2, postcode_town: town, state };
   }
-  function letterSheet(text, co) {
-    const c = co || {};
+  // [b] [i] [u] → bold / italic / underline; an unfilled {{key}} shows as a red [Label]
+  const richLine = (t, labelOf) => esc(t).replace(/\[(\/?)(b|i|u)\]/g, '<$1$2>')
+    .replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => `<mark class="lt-miss">[${esc(labelOf ? labelOf(k) : k.replace(/_/g, ' '))}]</mark>`);
+  function letterSheet(text, co, coCode, labelOf) {
+    const c = co || {}; const head = LETTERHEADS[coCode] || LETTERHEADS[c.code];
     const lines = String(text).split('\n').map((ln) => {
       const t = ln.trim(); if (!t) return '<div class="lt-gap"></div>';
       if (/^PRIVATE & CONFIDENTIAL$/i.test(t)) return `<p class="lt-conf">${esc(t)}</p>`;
-      if (/^Subject:/i.test(t)) return `<p class="lt-subj">${esc(t.replace(/^Subject:\s*/i, ''))}</p>`;
-      return `<p>${esc(t)}</p>`;
+      if (/^Subject:/i.test(t)) return `<p class="lt-subj">${richLine(t.replace(/^Subject:\s*/i, ''), labelOf)}</p>`;
+      return `<p>${richLine(t, labelOf)}</p>`;
     }).join('');
-    return `<section class="sheet letter"><div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}
-      <div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div><div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div>
-      <div>${esc([c.phone ? `Tel ${c.phone}` : null, c.email].filter(Boolean).join(' · '))}</div></div></div><div class="lt-body">${lines}</div></section>`;
+    const top = head ? `<img class="lt-head" src="${esc(asset(head))}" alt="${esc(c.name || coCode || '')} letterhead">`
+      : `<div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}<div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div>
+        <div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div></div></div>`;
+    return `<section class="sheet letter">${top}<div class="lt-body">${lines}</div></section>`;
   }
-  async function letterWindow(pre, after) {
-    let L; try { L = state.lettersData || (state.lettersData = await API.rpc('cms_letters')); } catch (e) { toast(e.message, 'err'); return; }
-    const ph = new Map(L.placeholders.map((p) => [p.key, p]));
-    let ctx = null; let co = null; const vals = { ...(pre.fields || {}) };
-    const ok = await modal({ title: pre.id ? 'HR letter (draft)' : 'New HR letter', ok: 'Issue letter…', cancel: 'Close', wide: true,
-      body: `<div class="grid-2 tight"><label class="fld"><span>Person</span><select name="p" required ${pre.person_id ? 'disabled' : ''}><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === pre.person_id ? 'selected' : ''}>${esc(p.name)}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></label>
-        <label class="fld"><span>Letter</span><select name="t" required><option value="">Choose…</option>${L.templates.map((t) => `<option value="${esc(t.code)}" ${t.code === pre.template ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select></label></div>
-        <div class="lt-split"><div id="lt-fields"></div><div id="lt-prev" class="lt-prev"></div></div>
-        <div class="btn-row"><button type="button" class="btn" data-draft>Save draft</button></div>`,
-      onOpen: (w) => {
-        const tpl = () => L.templates.find((t) => t.code === $('select[name=t]', w).value);
-        const preview = () => { const t = tpl(); $('#lt-prev', w).innerHTML = t ? letterSheet(fillTpl(t.body, vals), co) : '<p class="muted">Choose the person and the letter.</p>'; };
-        const fields = () => {
-          const t = tpl(); const box = $('#lt-fields', w); if (!t || !ctx) { box.innerHTML = ''; preview(); return; }
-          const keys = tplKeys(t.body);
-          box.innerHTML = keys.map((k) => { const p = ph.get(k) || {}; const lbl = p.label || k.replace(/_/g, ' '); const long = LONG_KEYS.test(k);
-            return `<label class="fld"><span>${esc(lbl)}${p.source === 'employee' || p.source === 'calculation' ? ' <small class="muted">from records</small>' : ''}</span>${long ? `<textarea data-k="${k}" rows="3">${esc(vals[k] ?? '')}</textarea>` : `<input data-k="${k}" value="${esc(vals[k] ?? '')}">`}</label>`; }).join('');
-          $$('[data-k]', box).forEach((i) => i.addEventListener('input', () => { vals[i.dataset.k] = i.value; preview(); }));
-          preview();
-        };
-        const loadCtx = async () => {
-          const pid = pre.person_id || $('select[name=p]', w).value; if (!pid) { ctx = null; fields(); return; }
-          try { ctx = await API.rpc('cms_letter_context', { p_person: pid }); } catch (e) { toast(e.message, 'err'); return; }
-          co = ctx._company || null; const auto = { ...ctx, ...splitAddress(ctx._home_address) };
-          Object.entries(auto).forEach(([k, v]) => { if (!k.startsWith('_') && v != null && (vals[k] == null || vals[k] === '')) vals[k] = v; });
-          Object.entries(pre.prefill || {}).forEach(([k, v]) => { if (v != null && v !== '') vals[k] = v; });
-          fields();
-        };
-        $('select[name=p]', w).addEventListener('change', () => { Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(); });
-        $('select[name=t]', w).addEventListener('change', fields);
-        $('[data-draft]', w).addEventListener('click', async () => {
-          const pid = pre.person_id || $('select[name=p]', w).value; const t = tpl(); if (!pid || !t) { toast('Choose the person and the letter.', 'err'); return; }
-          try { await API.rpc('cms_letter_save', { p: { id: pre.id || null, person_id: pid, template: t.code, fields: vals, appraisal_id: pre.appraisal_id || null } }); state.lettersData = null; toast('Draft saved'); $('[data-x]', w).click(); after?.(); }
-          catch (e) { toast(e.message, 'err'); }
-        });
-        loadCtx();
-      },
+
+  // ---- Word (.docx) tools: read, find & replace across styled runs, fill, preview (no document leaves the browser except to our storage)
+  let libsP = null;
+  const loadLib = (src) => new Promise((ok, no) => { const s = document.createElement('script'); s.src = asset(src); s.onload = ok; s.onerror = () => no(new Error('The Word tools could not be loaded — check the connection and try again.')); document.head.appendChild(s); });
+  const wordLibs = () => libsP || (libsP = (async () => { if (!window.JSZip) await loadLib('vendor/jszip.min.js'); if (!window.docx) await loadLib('vendor/docx-preview.min.js'); })().catch((e) => { libsP = null; throw e; }));
+  const WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const W = {
+    parts: /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/,
+    xml(t) { const d = new DOMParser().parseFromString(t, 'application/xml'); if (d.getElementsByTagName('parsererror').length) throw new Error('This Word file could not be read.'); return d; },
+    paras: (d) => Array.from(d.getElementsByTagNameNS(WNS, 'p')),
+    texts: (p) => Array.from(p.getElementsByTagNameNS(WNS, 't')),
+    ptext: (p) => W.texts(p).map((n) => n.textContent).join(''),
+    // replace character ranges of a paragraph, keeping each run's own style (Word often splits one word over several runs)
+    splice(p, ranges) {
+      const nodes = W.texts(p);
+      for (const r of ranges.sort((a, b) => b.start - a.start)) {
+        let off = 0; let put = false;
+        for (const n of nodes) { const s = n.textContent; const stop = off + s.length;
+          if (stop > r.start && off < r.end) { n.textContent = s.slice(0, Math.max(0, r.start - off)) + (put ? '' : r.text) + s.slice(Math.max(0, r.end - off)); n.setAttribute('xml:space', 'preserve'); put = true; }
+          off = stop; }
+      }
+    },
+    async zip(bytes) {
+      await wordLibs();
+      if (!bytes?.byteLength || bytes.byteLength > 10 * 1024 * 1024) throw new Error('Choose a Word .docx file of 10 MB or less.');
+      let z; try { z = await window.JSZip.loadAsync(bytes); } catch (e) { throw new Error('This is not a Word .docx file (old .doc files: open in Word and “Save as” .docx).'); }
+      if (!z.file('word/document.xml')) throw new Error('This is not a Word .docx file.');
+      for (const name of Object.keys(z.files)) {
+        if (/vbaProject|embeddings\/|afchunk|altchunk/i.test(name)) throw new Error('Remove macros, embedded files and embedded web content from the Word file first.');
+        if (name.endsWith('.rels')) { const d = W.xml(await z.file(name).async('string')); if (Array.from(d.getElementsByTagName('Relationship')).some((r) => r.getAttribute('TargetMode') === 'External')) throw new Error('Remove external links and linked pictures from the Word file (insert pictures instead).'); }
+      }
+      return z;
+    },
+    async read(bytes) {
+      const z = await W.zip(bytes); const out = [];
+      const names = Object.keys(z.files).filter((n) => W.parts.test(n)).sort((a, b) => (a === 'word/document.xml' ? -1 : b === 'word/document.xml' ? 1 : a.localeCompare(b)));
+      for (const n of names) { const d = W.xml(await z.file(n).async('string')); W.paras(d).forEach((p) => out.push(W.ptext(p))); }
+      const text = out.join('\n'); if (!text.trim()) throw new Error('The Word file has no text.'); if (text.length > 100000) throw new Error('The Word file is too long (100,000 characters at most).');
+      const broken = text.replace(/\{\{[a-z0-9_]+\}\}/g, '').match(/\{\{[^}]*\}\}/g);
+      return { text, fields: tplKeys(text), broken: broken ? [...new Set(broken)] : [] };
+    },
+    async edit(bytes, fn) {
+      const z = await W.zip(bytes); let count = 0;
+      for (const n of Object.keys(z.files).filter((x) => W.parts.test(x))) {
+        const d = W.xml(await z.file(n).async('string')); let changed = false;
+        W.paras(d).forEach((p) => { const c = fn(p, W.ptext(p), d); if (c) { count += c; changed = true; } });
+        if (changed) z.file(n, new XMLSerializer().serializeToString(d));
+      }
+      return { bytes: await z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME }), count };
+    },
+    // pairs: [{find, key}] — every occurrence of the phrase becomes {{key}}
+    replace(bytes, pairs) {
+      const list = pairs.filter((x) => x.find && x.key).sort((a, b) => b.find.length - a.find.length);
+      return W.edit(bytes, (p, text) => {
+        const used = []; const ranges = [];
+        for (const x of list) { let i = 0; const hay = text.toLowerCase(); const needle = x.find.toLowerCase();
+          while ((i = hay.indexOf(needle, i)) >= 0) { const e = i + needle.length;
+            const inTag = /\{\{[a-z0-9_]*$/.test(text.slice(0, i)) && /^[a-z0-9_]*\}\}/.test(text.slice(e));
+            if (!inTag && !used.some(([s, t]) => i < t && e > s)) { used.push([i, e]); ranges.push({ start: i, end: e, text: `{{${x.key}}}` }); }
+            i = e; } }
+        if (ranges.length) W.splice(p, ranges); return ranges.length;
+      });
+    },
+    async fill(bytes, values, labelOf) {
+      const r = await W.edit(bytes, (p, text, d) => {
+        const ranges = [...text.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => { const v = values[m[1]]; return { start: m.index, end: m.index + m[0].length, text: v != null && String(v).trim() !== '' ? String(v) : `[${labelOf(m[1])}]` }; });
+        if (!ranges.length) return 0; W.splice(p, ranges);
+        // typed line breaks become Word line breaks
+        W.texts(p).filter((n) => n.textContent.includes('\n')).forEach((n) => { const bits = n.textContent.split(/\r?\n/);
+          bits.forEach((b, i) => { if (i) n.parentNode.insertBefore(d.createElementNS(WNS, 'w:br'), n); const t = n.cloneNode(false); t.textContent = b; t.setAttribute('xml:space', 'preserve'); n.parentNode.insertBefore(t, n); }); n.parentNode.removeChild(n); });
+        return ranges.length;
+      });
+      return r.bytes;
+    },
+    // a plain-text template from the Word file: paragraphs as lines, bold / italic / underline as [b] [i] [u]
+    async toText(bytes) {
+      const z = await W.zip(bytes); const d = W.xml(await z.file('word/document.xml').async('string'));
+      const on = (rPr, tag) => { const x = rPr && Array.from(rPr.childNodes).find((c) => c.localName === tag); if (!x) return false; const v = x.getAttributeNS(WNS, 'val') || x.getAttribute('w:val'); return !(v === '0' || v === 'false' || v === 'none'); };
+      return W.paras(d).map((p) => {
+        let out = ''; let cur = '';
+        Array.from(p.getElementsByTagNameNS(WNS, 'r')).forEach((r) => { const rPr = Array.from(r.childNodes).find((c) => c.localName === 'rPr');
+          const t = Array.from(r.getElementsByTagNameNS(WNS, 't')).map((n) => n.textContent).join(''); if (!t) return;
+          const st = ['b', 'i', 'u'].filter((g) => on(rPr, g)).join('');
+          if (st !== cur) { out += [...cur].reverse().map((g) => `[/${g}]`).join('') + [...st].map((g) => `[${g}]`).join(''); cur = st; }
+          out += t; });
+        return out + [...cur].reverse().map((g) => `[/${g}]`).join('');
+      }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    },
+    // read-only preview in a sandboxed frame (no scripts, no network); unfilled [Label] and raw {{key}} are marked
+    async render(bytes, host, opts = {}) {
+      await wordLibs(); const box = document.createElement('div');
+      await window.docx.renderAsync(bytes, box, box, { useBase64URL: true, renderAltChunks: false, renderComments: false, ignoreLastRenderedPageBreak: false });
+      box.querySelectorAll('a').forEach((a) => a.removeAttribute('href'));
+      const marks = opts.marks || []; const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT); const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+      const re = new RegExp(`(\\{\\{[a-z0-9_]+\\}\\}${marks.length ? `|${marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}` : ''})`, 'g');
+      nodes.forEach((n) => { if (n.parentElement?.closest('style') || !re.test(n.textContent)) return; re.lastIndex = 0;
+        const frag = document.createDocumentFragment(); let at = 0; n.textContent.replace(re, (m, g, i) => { frag.append(document.createTextNode(n.textContent.slice(at, i)));
+          const mk = document.createElement('mark'); mk.textContent = m; mk.style.cssText = m.startsWith('{{') ? 'background:#dbeafe;color:#1e40af' : 'background:#fee2e2;color:#991b1b'; frag.append(mk); at = i + m.length; return m; });
+        frag.append(document.createTextNode(n.textContent.slice(at))); n.replaceWith(frag); });
+      if (opts.stamp) box.querySelectorAll('section.docx').forEach((s) => { const p = document.createElement('p'); p.textContent = opts.stamp; p.style.cssText = 'font:bold 11pt Arial;color:#a00;margin:0 0 6pt'; s.prepend(p); });
+      const frame = document.createElement('iframe'); frame.className = 'lw-frame'; frame.title = 'Word letter preview'; frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+      const fit = () => { for (const pg of frame.contentDocument?.querySelectorAll('section.docx') || []) pg.style.zoom = opts.zoom || Math.min(1, (frame.clientWidth - 20) / pg.offsetWidth); };
+      frame.onload = () => { fit(); try { frame.style.height = `${Math.max(500, frame.contentDocument.body.scrollHeight + 20)}px`; } catch (e) { /* sizing only */ } };
+      frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><style>body{margin:0;background:#e5e7eb}.docx-wrapper{padding:8px!important;background:#e5e7eb!important}section.docx{margin:0 auto 10px!important}@media print{body,.docx-wrapper{background:#fff!important;padding:0!important}section.docx{zoom:1!important;box-shadow:none!important;margin:0!important}mark{background:none!important;color:inherit!important}}</style></head><body>${box.innerHTML}</body></html>`;
+      host.replaceChildren(frame);
+      return { frame, refit: fit, print: () => frame.contentWindow.print(), selection: () => { try { return String(frame.contentWindow.getSelection() || '').trim(); } catch (e) { return ''; } } };
+    },
+  };
+  const srcBucket = () => API.sb().storage.from('hr-letter-sources');
+  async function getDocx(path) { const { data, error } = await srcBucket().download(path); if (error) throw new Error(API.friendly(error)); return new Uint8Array(await data.arrayBuffer()); }
+  async function putDocx(folder, bytes, name) {
+    const path = `cms/${folder}/${name || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16).padStart(8, '0')}-0000-4000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`)}.docx`;
+    const { error } = await srcBucket().upload(path, new Blob([bytes], { type: DOCX_MIME }), { contentType: DOCX_MIME, upsert: false });
+    if (error) throw new Error(API.friendly(error)); return path;
+  }
+  const saveBytes = (bytes, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: DOCX_MIME })); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); };
+  const fileSafe = (s) => String(s || 'letter').replace(/[^A-Za-z0-9 ._-]+/g, '').trim().replace(/\s+/g, '-');
+
+  const ask = (text, ok) => confirmBox(ok, esc(text), ok);
+  async function lettersData(force) { if (force || !state.lettersData) state.lettersData = await API.rpc('cms_letters'); return state.lettersData; }
+  async function loadLettersPending() { try { state.lettersPending = await API.rpc('cms_letters_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function letterTasks() {
+    const x = state.lettersPending; const t = []; if (!x) return t;
+    if (x.to_approve) t.push({ ic: 'file-check', tone: 'orange', title: `${num(x.to_approve)} HR letter${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'Drafted by HR', href: '#/letters?tab=todo' });
+    if (x.to_issue) t.push({ ic: 'file-check', tone: 'blue', title: `${num(x.to_issue)} approved letter${x.to_issue === 1 ? '' : 's'} to issue`, sub: 'HR Letters', href: '#/letters?tab=todo' });
+    if (x.sent_back) t.push({ ic: 'file-check', tone: 'rose', title: `${num(x.sent_back)} of your letters sent back`, sub: 'See the reason and correct', href: '#/letters?tab=todo' });
+    if (x.templates_to_review) t.push({ ic: 'file-check', tone: 'violet', title: `${num(x.templates_to_review)} letter template${x.templates_to_review === 1 ? '' : 's'} to review`, sub: 'New, changed or to retire', href: '#/letters?tab=templates' });
+    return t;
+  }
+
+  // new or changed placeholder
+  async function placeholderWindow(L, p, preKey) {
+    const isNew = !p; let saved = null;
+    const ok = await modal({ title: isNew ? 'New placeholder' : `Placeholder {{${p.key}}}`, ok: 'Save', wide: true,
+      body: `<div class="grid-2 tight">
+          <label class="fld"><span>Name used in templates</span><input name="key" ${isNew ? '' : 'disabled'} value="${esc(p?.key || preKey || '')}" placeholder="e.g. probation_months" pattern="[a-z][a-z0-9_]*" required><small class="muted">lower-case, numbers and _ · written as {{name}}</small></label>
+          <label class="fld"><span>Label shown to HR</span><input name="label" required value="${esc(p?.label || '')}" placeholder="e.g. Probation period (months)"></label>
+          <label class="fld"><span>Type</span><select name="kind">${KINDS.map(([k, l]) => `<option value="${k}" ${(p?.kind || 'text') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="fld"><span>Filled</span><select name="source">${SOURCES.map(([k, l]) => `<option value="${k}" ${(p?.source || 'manual') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="fld" data-srckey><span>Record field</span><input name="skey" value="${esc(p?.source_key || '')}" placeholder="e.g. confirmation_date"></label>
+          <label class="fld"><span>Default value (optional)</span><input name="def" value="${esc(p?.default || '')}"></label>
+          <label class="fld fld-2"><span>Help text (optional)</span><input name="desc" value="${esc(p && p.description !== p.label ? p.description || '' : '')}"></label>
+          <div class="fld fld-2 chk-row"><label class="chk"><input type="checkbox" name="req" ${p?.required === false ? '' : 'checked'}> Must be filled before submitting</label>
+            <label class="chk"><input type="checkbox" name="edit" ${p?.editable === false ? '' : 'checked'}> HR may change it in a letter</label>
+            ${isNew ? '' : `<label class="chk"><input type="checkbox" name="act" ${p.active ? 'checked' : ''}> In use</label>`}</div>
+          ${isNew ? '' : '<label class="fld fld-2"><span>Reason for the change</span><input name="why" required maxlength="300"></label>'}</div>`,
+      onOpen: (w) => { const sync = () => { $('[data-srckey]', w).hidden = $('select[name=source]', w).value !== 'employee'; }; $('select[name=source]', w).addEventListener('change', sync); sync(); },
       onOk: async (f) => {
-        const pid = pre.person_id || f.p.value; const t = L.templates.find((x) => x.code === f.t.value);
-        if (!pid || !t) throw new Error('Choose the person and the letter.');
-        const text = fillTpl(t.body, vals); const left = tplKeys(text);
-        if (left.length) throw new Error(`Fill in: ${left.map((k) => (ph.get(k) || {}).label || k.replace(/_/g, ' ')).join(', ')}.`);
-        const id = await API.rpc('cms_letter_save', { p: { id: pre.id || null, person_id: pid, template: t.code, fields: vals, issue: true, text, company: co ? { ...co, logo: undefined } : null, appraisal_id: pre.appraisal_id || null } });
-        state.lettersData = null; state.lastLetter = { id, text, co, title: `${t.title} · ${(L.people.find((p) => p.person_id === pid) || {}).name || ''}` };
+        const key = (isNew ? f.key.value : p.key).trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_]{0,79}$/.test(key)) throw new Error('The name uses lower-case letters, numbers and _, starting with a letter.');
+        if (isNew && L.placeholders.some((x) => x.key === key)) throw new Error(`{{${key}}} already exists.`);
+        if (!isNew && !f.why.value.trim()) throw new Error('Give the reason for the change.');
+        saved = await API.rpc('cms_letter_placeholder_save', { p: { key, label: f.label.value.trim(), description: f.desc.value.trim(), kind: f.kind.value, source: f.source.value,
+          source_key: f.source.value === 'employee' ? f.skey.value.trim() : '', default: f.def.value, required: f.req.checked, editable: f.edit.checked,
+          active: isNew ? true : f.act.checked, revision: p?.revision || null, reason: isNew ? null : f.why.value.trim() } });
       } });
-    if (ok) { toast('Letter issued'); after?.(true); }
+    if (ok) { toast(isNew ? `{{${saved}}} created` : 'Placeholder saved'); const fresh = await lettersData(true); L.placeholders = fresh.placeholders; }
+    return ok ? saved : null;
   }
+  const phOptions = (L, sel, blank = 'Choose…') => `<option value="">${blank}</option>${L.placeholders.filter((p) => p.active).map((p) => `<option value="${esc(p.key)}" ${p.key === sel ? 'selected' : ''}>${esc(p.label)} — {{${esc(p.key)}}}</option>`).join('')}<option value="__new">＋ New placeholder…</option>`;
+  const typeList = (L) => L.templates.filter((t) => t.code === t.letter_type && t.status !== 'retired');
+  const typeField = (L, sel, allowNew = true) => `<label class="fld"><span>Letter type</span><select name="ltype" required><option value="">Choose…</option>${typeList(L).map((t) => `<option value="${esc(t.code)}" ${t.code === sel ? 'selected' : ''}>${esc(t.title)} (${esc(t.code)})</option>`).join('')}${allowNew ? '<option value="__new">＋ A new letter type…</option>' : ''}</select></label>
+      <div class="grid-2 tight" data-newtype hidden><label class="fld"><span>New type code</span><input name="ncode" maxlength="12" placeholder="e.g. LOA" style="text-transform:uppercase"></label><label class="fld"><span>New type name</span><input name="ntitle" placeholder="e.g. Letter of Appointment"></label></div>`;
+  const companyField = (sel) => `<label class="fld"><span>Company</span><select name="co"><option value="">Any company</option>${window.CMS_COMPANIES.map((c) => `<option value="${esc(c.code)}" ${c.code === sel ? 'selected' : ''}>${esc(c.short)}</option>`).join('')}</select></label>`;
+  const wireTypeField = (w) => { const s = $('select[name=ltype]', w); const box = $('[data-newtype]', w); if (!s || !box) return; const sync = () => { box.hidden = s.value !== '__new'; }; s.addEventListener('change', sync); sync(); };
+  const readType = (f) => (f.ltype.value === '__new' ? { new_type: { code: f.ncode.value.trim().toUpperCase(), title: f.ntitle.value.trim() } } : { letter_type: f.ltype.value });
+
+  // ================================================================ HR Letters page
   async function lettersPage(item, el) {
-    el.innerHTML = `${pageHead(item, eafBtn('letters', 'Templates in MEG-EAF V2', 'ghost'))}<div id="lt-body">${loading()}</div>`;
-    let L; const load = async () => { state.lettersData = null; L = await API.rpc('cms_letters'); state.lettersData = L; L.letters.forEach((r) => upKeys(r, 'name')); };
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    if (q.get('open')) { location.replace(`#/letters?ws=${encodeURIComponent(q.get('open'))}`); return; }
+    if (q.get('ws')) return letterWorkspace(item, el, q);
+    if (q.get('tpl')) return templateEditor(item, el, q);
+    if (q.get('import')) return wordImport(item, el, q);
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `${pageHead(item)}<div id="lt-body">${loading()}</div>`;
+    let L; const load = async () => { L = await lettersData(true); L.letters.forEach((r) => upKeys(r, 'name')); };
     try { await load(); } catch (e) { $('#lt-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
-    const f = { tab: 'issued', q: '' };
-    const printLetter = (text, co, title) => { docView(el, title, [letterSheet(text, co)], () => lettersPage(item, el)); };
-    const reload = async (issued) => { try { await load(); } catch (e) { toast(e.message, 'err'); } if (issued && state.lastLetter) { const x = state.lastLetter; state.lastLetter = null; printLetter(x.text, x.co, x.title); return; } draw(); };
+    const me = L.me; const todo = () => ({
+      approve: L.can_approve ? L.letters.filter((l) => l.status === 'pending_approval' && l.created_by !== me) : [],
+      issue: L.can_issue ? L.letters.filter((l) => l.status === 'approved') : [],
+      back: L.letters.filter((l) => l.status === 'draft' && l.rejected && l.created_by === me),
+      tpls: L.can_approve ? L.templates.filter((t) => t.status === 'pending' || t.pending?.submitted_at || t.retire_request) : [] });
+    const T0 = todo(); const nTodo = T0.approve.length + T0.issue.length + T0.back.length + T0.tpls.length;
+    const f = { tab: q.get('tab') || (nTodo ? 'todo' : 'issued'), q: '', retired: false };
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); loadLettersPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const tag = (m, s) => { const [l, c] = m[s] || [s, '']; return `<span class="tag ${c} xs">${esc(l)}</span>`; };
+    const letterRows = (list, when) => (list.length ? `<div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Person</th><th>Letter</th><th>Status</th><th>${when}</th><th></th></tr></thead><tbody>
+      ${list.map((l) => `<tr data-ws="${esc(l.id)}"><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}${l.format === 'docx' ? ' <span class="tag xs">Word</span>' : ''}</td>
+        <td>${tag(LET_ST, l.status)}${l.rejected && l.status === 'draft' ? '<small class="sub bad-t">sent back</small>' : ''}</td>
+        <td class="nowrap">${dShort(l.issued_at || l.approved_at || l.submitted_at || l.created_at)}<small class="sub">${esc(l.issued_by || l.approved_by_name || l.created_by_name || '')}</small></td>
+        <td><button type="button" class="btn sm" data-ws="${esc(l.id)}">Open</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>Nothing here</p></div>');
     const draw = () => {
-      const t = f.q.trim().toLowerCase(); const m = (l) => !t || `${l.name} ${l.title || ''} ${l.employee_id || ''}`.toLowerCase().includes(t);
-      const iss = L.letters.filter((l) => l.status === 'issued' && m(l)); const dr = L.letters.filter((l) => l.status === 'draft' && m(l));
-      const T = [['issued', `Issued <span>${iss.length}</span>`], ['drafts', `Drafts <span>${dr.length}</span>`], ['templates', 'Letters available']];
-      $('#lt-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-        <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="Name or letter" value="${esc(f.q)}" aria-label="Search"></label>
-          ${L.can_edit ? '<button type="button" class="btn sm primary" data-new>+ New letter…</button>' : ''}</div><div id="lt-tab"></div></section>
-        <p class="muted small">Letters are filled from the person's records (name, position, company, address, salary, probation and appraisal) and the fields you type. An issued letter is kept word for word and can be printed again. The company letterhead uses Paying Companies (name, registration no., address, phone): fill those in for a complete letterhead.</p>`;
+      const T = todo(); const t = f.q.trim().toLowerCase(); const m = (l) => !t || `${l.name} ${l.title || ''} ${l.employee_id || ''}`.toLowerCase().includes(t);
+      const iss = L.letters.filter((l) => l.status === 'issued' && m(l)); const prog = L.letters.filter((l) => ['draft', 'pending_approval', 'approved'].includes(l.status) && m(l));
+      const n = T.approve.length + T.issue.length + T.back.length + T.tpls.length;
+      const TABS = [['todo', `To do <span>${n}</span>`], ['issued', `Issued <span>${iss.length}</span>`], ['progress', `In progress <span>${prog.length}</span>`], ['templates', `Templates <span>${L.templates.filter((x) => x.status !== 'retired').length}</span>`], ['placeholders', `Placeholders <span>${L.placeholders.filter((x) => x.active).length}</span>`]];
+      $('#lt-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="${f.tab === 'placeholders' ? 'Placeholder name or label' : f.tab === 'templates' ? 'Template' : 'Name or letter'}" value="${esc(f.q)}" aria-label="Search"></label>
+          ${f.tab === 'templates' ? `<label class="chk"><input type="checkbox" id="lret" ${f.retired ? 'checked' : ''}> Show retired</label>${L.can_edit ? `<button type="button" class="btn sm" data-imp>${icon('plus')}Import from Word…</button><a class="btn sm" href="#/letters?tpl=new">+ New text template</a>` : ''}`
+            : f.tab === 'placeholders' ? (L.can_change ? '<button type="button" class="btn sm primary" data-phnew>+ New placeholder…</button>' : '')
+            : L.can_edit ? '<a class="btn sm primary" href="#/letters?ws=new">+ New letter</a>' : ''}</div><div id="lt-tab"></div></section>
+        <p class="muted small">HR drafts a letter and sends it for approval; Admin, Super Admin or a Director approves it (never the person who drafted it); then HR, Admin, Super Admin or a Director issues it. The approved wording is what gets issued, and every issued letter is kept in the person's records. New and changed templates need approval too, unless made by someone who can approve.</p>`;
       const box = $('#lt-tab', el);
-      if (f.tab === 'templates') box.innerHTML = `<div class="table-wrap"><table class="data"><tbody>${L.templates.map((x) => `<tr><td><b>${esc(x.title)}</b><small class="sub">${tplKeys(x.body).length} fields</small></td><td>${L.can_edit ? `<button type="button" class="btn sm" data-tnew="${esc(x.code)}">Use…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
-      else { const list = f.tab === 'issued' ? iss : dr;
-        box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Letter</th><th>${f.tab === 'issued' ? 'Issued' : 'Created'}</th><th></th></tr></thead><tbody>
-          ${list.map((l) => `<tr><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}</td>
-            <td class="nowrap">${dShort(l.issued_at || l.created_at)}${l.issued_by ? `<small class="sub">${esc(l.issued_by)}</small>` : ''}</td>
-            <td class="nowrap">${l.status === 'issued' ? `<button type="button" class="btn sm" data-print="${esc(l.id)}">${icon('download')}Print / PDF</button>` : L.can_edit ? `<button type="button" class="btn sm primary" data-edit="${esc(l.id)}">Continue…</button>` : ''}
-              ${L.can_edit ? ` <button type="button" class="btn sm ghost" data-void="${esc(l.id)}">Cancel…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>Nothing here</p></div>'; }
-      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      if (f.tab === 'todo') {
+        const sec = (h, list, when) => (list.length ? `<h4 class="sec-h">${h} <span class="muted">${list.length}</span></h4>${letterRows(list.filter(m), when)}` : '');
+        box.innerHTML = (sec('Waiting for your approval', T.approve, 'Sent') + sec('Approved — ready to issue', T.issue, 'Approved') + sec('Sent back to you', T.back, 'Drafted')
+          + (T.tpls.length ? `<h4 class="sec-h">Templates to review <span class="muted">${T.tpls.length}</span></h4><div class="table-wrap"><table class="data compact"><tbody>${T.tpls.map((x) => `<tr><td><b>${esc(x.title)}</b> <small class="muted">${esc(x.code)}</small><small class="sub">${x.retire_request ? `Retire: ${esc(x.retire_request.reason)} · ${esc(x.retire_request.by_name || '')}` : x.pending?.submitted_at ? `Change: ${esc(x.pending.reason || '')} · ${esc(x.pending.by_name || '')}` : `New ${x.format === 'docx' ? 'Word' : 'text'} template · ${esc(x.created_by_name || '')}`}</small></td><td><button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button></td></tr>`).join('')}</tbody></table></div>` : ''))
+          || '<div class="empty small"><p>Nothing waiting for you</p></div>';
+      } else if (f.tab === 'issued') box.innerHTML = letterRows(iss, 'Issued');
+      else if (f.tab === 'progress') box.innerHTML = letterRows(prog, 'Last step');
+      else if (f.tab === 'templates') {
+        const list = L.templates.filter((x) => (f.retired || x.status !== 'retired') && (!t || `${x.title} ${x.code} ${x.type_title}`.toLowerCase().includes(t)));
+        const groups = new Map(); list.forEach((x) => { const k = x.letter_type; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); });
+        box.innerHTML = groups.size ? `<div class="table-wrap fill"><table class="data"><thead><tr><th>Template</th><th>Status</th><th>In use</th><th class="num">Issued</th><th></th></tr></thead><tbody>
+          ${[...groups.entries()].map(([k, xs]) => `<tr class="grp"><td colspan="5">${esc(xs[0].type_title)} <small class="muted">${esc(k)}</small></td></tr>${xs.map((x) => `<tr>
+            <td><b>${esc(x.title)}</b> <small class="muted">${esc(x.code)}</small> ${x.format === 'docx' ? '<span class="tag xs">Word</span>' : '<span class="tag xs">Text</span>'}${x.company ? ` <span class="tag xs">${esc(coShort(x.company) || x.company)}</span>` : ''}
+              <small class="sub">${tplKeys(x.body).length} field${tplKeys(x.body).length === 1 ? '' : 's'}${x.created_by_name ? ` · by ${esc(x.created_by_name)}` : ''}${x.reviewed_by_name ? ` · approved by ${esc(x.reviewed_by_name)}` : ''}</small></td>
+            <td>${tag(TPL_ST, x.status)}${x.pending?.submitted_at ? '<small class="sub">change waiting for approval</small>' : x.pending ? `<small class="sub">${x.pending.rejected ? 'change sent back' : 'change in draft'}</small>` : ''}${x.retire_request ? '<small class="sub">retirement asked</small>' : ''}${x.status === 'rejected' && x.review_note ? `<small class="sub">${esc(x.review_note)}</small>` : ''}</td>
+            <td>${x.status === 'published' ? (L.can_approve ? `<label class="switch" title="Switch on to use for letters"><input type="checkbox" data-on="${esc(x.code)}" ${x.active ? 'checked' : ''}><span></span></label>` : (x.active ? '<span class="tag ok xs">On</span>' : '<span class="tag xs">Off</span>')) : '—'}</td>
+            <td class="num">${num(x.used || 0)}</td>
+            <td class="nowrap">${x.status === 'published' && x.active && L.can_edit ? `<a class="btn sm" href="#/letters?ws=new&template=${encodeURIComponent(x.code)}">Use</a> ` : ''}
+              ${L.can_approve && (x.status === 'pending' || x.pending?.submitted_at || x.retire_request) ? `<button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button> ` : ''}
+              ${L.can_change && x.status !== 'retired' ? `<a class="btn sm ghost" href="#/letters?${x.format === 'docx' ? 'import' : 'tpl'}=${encodeURIComponent(x.code)}">Edit</a> ` : ''}
+              <button type="button" class="btn sm ghost" data-hist="${esc(x.code)}">History</button>
+              ${L.can_change && x.status !== 'retired' && !x.retire_request ? ` <button type="button" class="btn sm ghost" data-retire="${esc(x.code)}">Retire…</button>` : ''}</td></tr>`).join('')}`).join('')}</tbody></table></div>` : '<div class="empty small"><p>No templates</p></div>';
+      } else {
+        const list = L.placeholders.filter((p) => !t || `${p.key} ${p.label}`.toLowerCase().includes(t));
+        box.innerHTML = `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Placeholder</th><th>Label</th><th>Type</th><th>Filled</th><th>Used in</th><th></th></tr></thead><tbody>
+          ${list.map((p) => { const used = L.templates.filter((x) => x.status !== 'retired' && x.body.includes(`{{${p.key}}}`)).length;
+            return `<tr class="${p.active ? '' : 'muted'}"><td><code>{{${esc(p.key)}}}</code>${p.protected ? ` <span class="lock-ic" title="Protected: filled from the Employee Master">${icon('lock')}</span>` : ''}${p.active ? '' : ' <span class="tag xs">off</span>'}</td>
+              <td>${esc(p.label)}${p.required ? '' : ' <small class="muted">optional</small>'}</td><td>${esc((KINDS.find((k) => k[0] === p.kind) || [0, p.kind])[1])}</td>
+              <td>${esc((SOURCES.find((k) => k[0] === p.source) || [0, p.source])[1])}${p.source_key ? `<small class="sub">${esc(p.source_key)}</small>` : ''}</td><td class="num">${used} template${used === 1 ? '' : 's'}</td>
+              <td>${L.can_change && !p.protected ? `<button type="button" class="btn sm ghost" data-ph="${esc(p.key)}">Edit…</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+      }
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; f.q = ''; draw(); }));
       $('#lq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#lq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-      $('[data-new]', el)?.addEventListener('click', () => letterWindow({}, reload));
-      $$('[data-tnew]', box).forEach((b) => b.addEventListener('click', () => letterWindow({ template: b.dataset.tnew }, reload)));
-      $$('[data-edit]', box).forEach((b) => b.addEventListener('click', () => { const l = L.letters.find((x) => x.id === b.dataset.edit); letterWindow({ id: l.id, person_id: l.person_id, template: l.template, fields: l.fields }, reload); }));
-      $$('[data-print]', box).forEach((b) => b.addEventListener('click', async () => { const l = L.letters.find((x) => x.id === b.dataset.print);
-        let co = null; try { co = (await API.rpc('cms_letter_context', { p_person: l.person_id }))._company; } catch (e) { /* letterhead optional */ }
-        printLetter(l.text, co, `${l.title} · ${l.name}`); }));
-      $$('[data-void]', box).forEach((b) => b.addEventListener('click', async () => {
-        const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: '<label class="fld"><span>Reason</span><input name="r" required></label>',
-          onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_letter_void', { p_id: b.dataset.void, p_reason: fm.r.value }); } });
-        if (ok) { toast('Letter cancelled'); reload(); }
+      $('#lret', el)?.addEventListener('change', (e) => { f.retired = e.target.checked; draw(); });
+      $$('[data-ws]', box).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); location.hash = `#/letters?ws=${b.dataset.ws}`; }));
+      $('[data-imp]', el)?.addEventListener('click', () => { location.hash = '#/letters?import=new'; });
+      $('[data-phnew]', el)?.addEventListener('click', async () => { if (await placeholderWindow(L, null)) draw(); });
+      $$('[data-ph]', box).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, L.placeholders.find((p) => p.key === b.dataset.ph))) draw(); }));
+      $$('[data-on]', box).forEach((c) => c.addEventListener('change', async () => {
+        try { await API.rpc('cms_letter_template_switch', { p_code: c.dataset.on, p_on: c.checked }); toast(`${c.dataset.on} switched ${c.checked ? 'on' : 'off'}`); reload(); }
+        catch (e) { c.checked = !c.checked; toast(e.message, 'err'); } }));
+      $$('[data-review]', box).forEach((b) => b.addEventListener('click', async () => { if (await reviewTemplate(L, L.templates.find((x) => x.code === b.dataset.review))) reload(); }));
+      $$('[data-hist]', box).forEach((b) => b.addEventListener('click', () => templateHistory(L, b.dataset.hist)));
+      $$('[data-retire]', box).forEach((b) => b.addEventListener('click', async () => {
+        const x = L.templates.find((y) => y.code === b.dataset.retire); let out = null;
+        const ok = await modal({ title: `Retire ${x.title} (${x.code})`, ok: L.can_approve ? 'Retire' : 'Ask to retire', danger: true,
+          body: `<p class="muted small">${L.can_approve ? 'It stops being used for new letters; letters already issued are kept.' : 'Admin, Super Admin or a Director approves the retirement.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
+          onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); out = await API.rpc('cms_letter_template_retire', { p_code: x.code, p_reason: fm.r.value.trim() }); } });
+        if (ok) { toast(out === 'retired' ? 'Template retired' : 'Retirement sent for approval'); reload(); }
       }));
       fitTables();
     };
     draw();
-    const open = new URLSearchParams(location.hash.split('?')[1] || '').get('open');
-    if (open) { const l = L.letters.find((x) => x.id === open); if (l && l.status === 'issued') $(`[data-print="${open}"]`, el)?.click(); }
+  }
+
+  async function templateHistory(L, code) {
+    let H = []; try { H = await API.rpc('cms_letter_template_history', { p_code: code }); } catch (e) { toast(e.message, 'err'); return; }
+    const x = L.templates.find((t) => t.code === code);
+    await modal({ title: `History · ${x?.title || code}`, ok: '', cancel: 'Close', wide: true,
+      body: H.length ? `<ul class="tl-list">${H.map((h) => `<li><b>${dShort(h.at)}</b> · ${esc(h.by || '')}${h.current ? ' <span class="tag ok xs">in use</span>' : ''}<small class="sub">${esc(h.reason || '')}</small>
+        <details><summary class="small">Wording</summary><pre class="lt-pre">${esc(h.body)}</pre></details></li>`).join('')}</ul>` : '<p class="muted">No history yet.</p>', onOk: async () => {} });
+  }
+
+  async function reviewTemplate(L, x) {
+    const what = x.retire_request ? 'retire' : x.pending?.submitted_at ? 'change' : 'new';
+    const body = what === 'change' ? x.pending.body : x.body; const fmt = x.format;
+    let back = false; let wv = null;
+    const ok = await modal({ title: `${what === 'retire' ? 'Retire' : what === 'change' ? 'Changed template' : 'New template'} · ${x.title}`, ok: what === 'retire' ? 'Approve retirement' : 'Approve and publish', wide: true,
+      body: `<p class="small">${what === 'retire' ? `<b>${esc(x.retire_request.by_name || '')}</b> asks to retire it: ${esc(x.retire_request.reason)}` : what === 'change' ? `<b>${esc(x.pending.by_name || '')}</b> changed it: ${esc(x.pending.reason || '')}. The current wording stays in use until you approve.` : `Made by <b>${esc(x.created_by_name || '')}</b> · ${fmt === 'docx' ? `Word file ${esc(x.file_name || '')}` : 'text template'}${x.company ? ` · ${esc(coShort(x.company) || x.company)}` : ''}`}</p>
+        ${what === 'retire' ? '' : `<p class="muted small">Fields: ${tplKeys(body).map((k) => `<code>{{${esc(k)}}}</code>`).join(' ') || 'none'}</p><div id="rv-prev" class="lt-prev tall">${fmt === 'docx' ? loading() : letterSheet(body, null, x.company, (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k)}</div>`}
+        <label class="fld"><span>Note (needed when sending back)</span><input name="note" maxlength="300"></label>
+        <div class="btn-row"><button type="button" class="btn danger" data-back>Send back</button></div>`,
+      onOpen: async (w) => {
+        $('[data-back]', w).addEventListener('click', async () => { const n = $('input[name=note]', w).value.trim(); if (!n) { toast('Write the reason in the note first.', 'err'); return; }
+          try { await API.rpc('cms_letter_template_review', { p_code: x.code, p_approve: false, p_note: n }); back = true; toast('Sent back'); $('[data-x]', w).click(); } catch (e) { toast(e.message, 'err'); } });
+        if (what !== 'retire' && fmt === 'docx') { try { wv = await W.render(await getDocx(what === 'change' ? x.pending.source_path : x.source_path), $('#rv-prev', w)); } catch (e) { $('#rv-prev', w).innerHTML = errorCard(e.message); } }
+      },
+      onOk: async (f) => { await API.rpc('cms_letter_template_review', { p_code: x.code, p_approve: true, p_note: f.note.value.trim() || null }); } });
+    if (ok) toast(what === 'retire' ? 'Template retired' : 'Template published — switch it on to use it');
+    return ok || back;
+  }
+
+  // ---------------------------------------------------------------- letter workspace (full page)
+  async function letterWorkspace(item, el, q) {
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = loading();
+    let L; try { L = await lettersData(true); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const ph = new Map(L.placeholders.map((p) => [p.key, p])); const labelOf = (k) => ph.get(k)?.label || k.replace(/_/g, ' ');
+    const id = q.get('ws') === 'new' ? null : q.get('ws'); const rec = id ? L.letters.find((x) => x.id === id) : null;
+    if (id && !rec) { el.innerHTML = errorCard('This letter was not found, or you cannot see it.'); return; }
+    const usable = L.templates.filter((t) => t.status === 'published' && t.active);
+    const type = q.get('type');
+    let code = rec?.template || q.get('template') || (type ? (usable.find((t) => t.code === type) || usable.find((t) => t.letter_type === type))?.code : '') || '';
+    let personId = rec?.person_id || q.get('person') || '';
+    const appraisal = rec?.appraisal_id || q.get('appraisal') || null;
+    const vals = { ...(rec?.fields || {}) }; const status = rec?.status || 'new';
+    const editable = (status === 'new' || status === 'draft') && L.can_edit;
+    let ctx = null; let co = null; let coCode = null; let srcBytes = null; let srcFor = null; let view = null; let timer = null; let zoom = 'fit';
+    const tpl = () => L.templates.find((t) => t.code === code); const person = () => L.people.find((p) => p.person_id === personId);
+    const choices = L.templates.filter((t) => (t.status === 'published' && t.active) || t.code === code);
+    if (type && !code) toast(`No ${type} template is switched on yet — switch one on under Templates.`, 'err');
+    const banner = !rec ? '' : status === 'draft' && rec.rejected ? `<div class="note bad">${icon('help')}<div><b>Sent back by ${esc(rec.rejected.by || '')}</b> · ${dShort(rec.rejected.at)}<br>${esc(rec.rejected.reason)}</div></div>`
+      : status === 'pending_approval' ? `<div class="note warn">${icon('clock')}<div><b>Waiting for approval</b> · sent ${dShort(rec.submitted_at)} by ${esc(rec.created_by_name || '')}${L.can_approve && rec.created_by === L.me ? '<br>You drafted it, so someone else must approve it.' : ''}</div></div>`
+      : status === 'approved' ? `<div class="note ok">${icon('check-circle')}<div><b>Approved</b> by ${esc(rec.approved_by_name || '')} · ${dShort(rec.approved_at)} — ready to issue.</div></div>`
+      : status === 'issued' ? `<div class="note ok">${icon('check-circle')}<div><b>Issued</b> ${dShort(rec.issued_at)} by ${esc(rec.issued_by || '')}${rec.approved_by_name ? ` · approved by ${esc(rec.approved_by_name)}` : ''}. Kept in ${esc(rec.name)}'s records.</div></div>`
+      : status === 'void' ? `<div class="note bad">${icon('x')}<div><b>Cancelled</b>${rec.void_reason ? ` · ${esc(rec.void_reason)}` : ''}</div></div>` : '';
+    el.innerHTML = `<div class="lw">
+      <div class="lw-bar"><a class="btn ghost sm" href="#/letters">‹ HR Letters</a><div class="lw-title"><b>${rec ? esc(`${rec.title || rec.template} · ${rec.name}`) : 'New HR letter'}</b>${rec ? ` <span class="tag ${(LET_ST[status] || [])[1] || ''} xs">${esc((LET_ST[status] || [status])[0])}</span>` : ''}</div><div class="lw-acts" id="lw-acts"></div></div>
+      ${banner}
+      <div class="lw-grid">
+        <section class="card lw-form">
+          <div class="fld"><span>Person</span>${editable && !rec ? `<input id="lw-pq" type="search" placeholder="Type to find a name or Employee ID" aria-label="Find person">` : ''}
+            <select id="lw-p" ${editable && !rec ? '' : 'disabled'}><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === personId ? 'selected' : ''}>${esc(p.name)} · ${esc(p.employee_id || 'no ID')}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></div>
+          <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
+          ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
+          <div id="lw-fields"></div>
+        </section>
+        <section class="card lw-pv-card" id="lw-pv-card">
+          <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
+            <select id="lw-zoom" aria-label="Zoom"><option value="fit">Fit width</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option></select>
+            <button type="button" class="btn sm ghost" id="lw-full">${icon('eye')}Full screen</button></div>
+          <div class="lw-pv" id="lw-pv"></div>
+        </section>
+      </div></div>`;
+    const pv = $('#lw-pv', el); const st = $('#lw-pv-st', el);
+    const keys = () => tplKeys(tpl()?.body);
+    const textNow = () => (status === 'new' || status === 'draft' ? fillTpl(tpl()?.body, vals) : rec.text || fillTpl(tpl()?.body, vals));
+    const missing = () => tplKeys(textNow()).filter((k) => ph.get(k)?.required !== false);
+    const applyZoom = () => {
+      const s = $('.sheet', pv); if (s) s.style.zoom = zoom === 'fit' ? Math.max(0.35, Math.min(1.4, (pv.clientWidth - 24) / 794)) : zoom;
+      if (view) { try { view.frame.contentDocument.querySelectorAll('section.docx').forEach((p) => { p.style.zoom = ''; p.style.zoom = zoom === 'fit' ? Math.max(0.35, Math.min(1.4, (view.frame.clientWidth - 24) / (p.offsetWidth || 794))) : zoom; });
+        view.frame.style.height = `${Math.max(500, view.frame.contentDocument.body.scrollHeight + 20)}px`; } catch (e) { /* zoom only */ } } };
+    const stamp = () => (status === 'issued' ? null : status === 'approved' ? 'APPROVED — NOT YET ISSUED' : missing().length ? 'DRAFT — INCOMPLETE' : 'DRAFT — NOT ISSUED');
+    const preview = async () => {
+      const t = tpl(); if (!t || !personId) { pv.innerHTML = '<div class="empty small"><p>Choose the person and the letter.</p></div>'; st.textContent = ''; return; }
+      const miss = missing(); st.textContent = status === 'issued' ? 'as issued' : miss.length ? `${miss.length} field${miss.length === 1 ? '' : 's'} still to fill (red)` : 'all fields filled';
+      if (t.format !== 'docx') { view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf)}`; requestAnimationFrame(applyZoom); return; }
+      try {
+        let bytes;
+        if (status === 'issued' && rec.docx_path) bytes = await getDocx(rec.docx_path);
+        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.fill(srcBytes, vals, labelOf); }
+        view = await W.render(bytes, pv, { marks: missing().map((k) => `[${labelOf(k)}]`), stamp: stamp() }); view.frame.addEventListener('load', () => setTimeout(applyZoom, 30));
+      } catch (e) { pv.innerHTML = errorCard(e.message); }
+    };
+    const later = () => { clearTimeout(timer); timer = setTimeout(preview, tpl()?.format === 'docx' ? 500 : 120); };
+    const calc = () => { if (!('basic_increment' in vals) && !keys().includes('basic_increment')) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
+      if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
+        ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
+    const drawFields = () => {
+      const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; return; }
+      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation';
+        const kind = p.kind || (LONG_KEYS.test(k) ? 'paragraph' : 'text'); const v = esc(vals[k] ?? '');
+        const inp = kind === 'paragraph' || LONG_KEYS.test(k) ? `<textarea data-k="${k}" rows="3" ${ro ? 'readonly' : ''}>${v}</textarea>`
+          : kind === 'date' ? `<span class="lw-dt"><input data-k="${k}" value="${v}" placeholder="e.g. 14 November 2026" ${ro ? 'readonly' : ''}>${ro ? '' : `<input type="date" data-pick="${k}" aria-label="Pick a date for ${esc(p.label || k)}">`}</span>`
+          : `<input data-k="${k}" value="${v}" ${kind === 'money' ? 'data-money inputmode="decimal"' : kind === 'number' || kind === 'percentage' ? 'inputmode="decimal"' : ''} ${ro ? 'readonly' : ''}>`;
+        return `<label class="fld ${ro ? 'ro' : ''}"><span>${esc(p.label || k.replace(/_/g, ' '))}${p.source === 'employee' || p.protected ? ' <small class="muted">from records</small>' : p.source === 'calculation' ? ' <small class="muted">calculated</small>' : p.required === false ? ' <small class="muted">optional</small>' : ''}</span>${inp}</label>`; }).join('')
+        || '<p class="muted small">This letter has no fields to fill.</p>'}
+        ${editable && ctx?._home_address ? '<button type="button" class="lnk small" data-addr>Use the saved home address again</button>' : ''}`;
+      $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); }); });
+      $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; later(); }));
+      $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
+    };
+    const loadCtx = async (fresh) => {
+      if (!personId) { ctx = null; drawFields(); preview(); return; }
+      try { ctx = await API.rpc('cms_letter_context', { p_person: personId }); } catch (e) { toast(e.message, 'err'); return; }
+      co = ctx._company || null; coCode = person()?.company || co?.code || null;
+      if (editable) {
+        const auto = { ...ctx, ...splitAddress(ctx._home_address) };
+        Object.entries(auto).forEach(([k, v]) => { if (!k.startsWith('_') && v != null && v !== '' && (fresh || vals[k] == null || vals[k] === '' || ph.get(k)?.protected)) vals[k] = v; });
+        L.placeholders.forEach((p) => { if (p.default && (vals[p.key] == null || vals[p.key] === '')) vals[p.key] = p.default; });
+        calc();
+      }
+      drawFields(); preview();
+    };
+    // actions
+    const acts = [];
+    if (editable) acts.push('<button type="button" class="btn" data-a="save">Save draft</button>', '<button type="button" class="btn primary" data-a="submit">Send for approval</button>');
+    if (status === 'pending_approval' && L.can_approve && rec.created_by !== L.me) acts.push('<button type="button" class="btn danger" data-a="back">Send back…</button>', '<button type="button" class="btn primary" data-a="approve">Approve</button>');
+    if (status === 'approved' && L.can_issue) acts.push('<button type="button" class="btn primary" data-a="issue">Issue letter…</button>');
+    if (status === 'issued') { acts.push(`<button type="button" class="btn primary" data-a="print">${icon('download')}Print / PDF</button>`); if (rec.docx_path) acts.push('<button type="button" class="btn" data-a="word">Download Word</button>'); }
+    if (rec && ['draft', 'pending_approval', 'approved', 'issued'].includes(status) && L.can_change) acts.push('<button type="button" class="btn ghost" data-a="void">Cancel letter…</button>');
+    $('#lw-acts', el).innerHTML = acts.join('');
+    const payload = (submit) => { const t = tpl(); return { id: rec?.id || null, person_id: personId, template: t.code, fields: vals, text: fillTpl(t.body, vals), company: co ? { ...co, logo: undefined } : null, appraisal_id: appraisal, submit }; };
+    const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
+    const doIssue = async () => {
+      const t = tpl(); let path = null;
+      if (t.format === 'docx') { const src = await getDocx(t.source_path); const bytes = await W.fill(src, rec.fields || vals, labelOf); path = await putDocx('issued', bytes, rec.id); }
+      await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
+    };
+    $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
+      const a = b.dataset.a;
+      try {
+        if (a === 'save') { need(); const nid = await API.rpc('cms_letter_save', { p: payload(false) }); toast('Draft saved'); state.lettersData = null; if (!rec) location.hash = `#/letters?ws=${nid}`; return; }
+        if (a === 'submit') { need(); const m = missing(); if (m.length) throw new Error(`Fill in: ${m.map(labelOf).join(', ')}.`);
+          if (!(await ask('Send this letter for approval? Admin, Super Admin or a Director approves it; you cannot change it while it waits.', 'Send for approval'))) return;
+          const nid = await API.rpc('cms_letter_save', { p: payload(true) }); toast('Sent for approval'); state.lettersData = null; loadLettersPending(); location.hash = `#/letters?ws=${nid}`; return; }
+        if (a === 'approve') { if (!(await ask('Approve this letter exactly as shown? It can then be issued.', 'Approve'))) return; await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: true, p_reason: null }); toast('Approved'); loadLettersPending(); render(); return; }
+        if (a === 'back') { const ok = await modal({ title: 'Send back to the drafter', ok: 'Send back', danger: true, body: '<label class="fld"><span>What should be changed</span><input name="r" required maxlength="300"></label>',
+          onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Say what should be changed.'); await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: false, p_reason: f.r.value.trim() }); } });
+          if (ok) { toast('Sent back'); loadLettersPending(); render(); } return; }
+        if (a === 'issue') { if (!(await ask(`Issue this letter to ${rec.name}? It is then locked and kept in their records.`, 'Issue'))) return;
+          b.disabled = true; await doIssue(); toast('Letter issued'); state.lettersData = null; loadLettersPending(); render(); return; }
+        if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(); return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf)], () => render()); return; }
+        if (a === 'word') { saveBytes(await getDocx(rec.docx_path), `${fileSafe(rec.title)}-${fileSafe(rec.name)}.docx`); return; }
+        if (a === 'void') { const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: `<p class="muted small">${status === 'issued' ? 'The issued letter stays on record, marked as cancelled.' : 'The draft is closed.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
+          onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_letter_void', { p_id: rec.id, p_reason: f.r.value.trim() }); } });
+          if (ok) { toast('Letter cancelled'); state.lettersData = null; location.hash = '#/letters'; } }
+      } catch (e) { b.disabled = false; toast(API.friendly ? API.friendly(e) : e.message, 'err'); }
+    }));
+    const pq = $('#lw-pq', el); const psel = $('#lw-p', el);
+    pq?.addEventListener('input', () => { const t = pq.value.trim().toLowerCase(); let first = null; $$('option', psel).forEach((o) => { const hit = !o.value || !t || o.textContent.toLowerCase().includes(t); o.hidden = !hit; if (hit && o.value && !first) first = o; }); if (t && first && psel.value !== first.value) { psel.value = first.value; psel.dispatchEvent(new Event('change')); } });
+    psel.addEventListener('change', () => { personId = psel.value; Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(true); });
+    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; drawFields(); later(); });
+    $('#lw-zoom', el).addEventListener('change', (e) => { zoom = e.target.value; applyZoom(); });
+    $('#lw-full', el).addEventListener('click', () => { const c = $('#lw-pv-card', el); c.classList.toggle('lw-fullscreen'); $('#lw-full', el).lastChild.textContent = c.classList.contains('lw-fullscreen') ? 'Close full screen' : 'Full screen'; requestAnimationFrame(applyZoom); });
+    window.addEventListener('resize', () => { if (zoom === 'fit') applyZoom(); });
+    loadCtx(false);
+  }
+
+  // ---------------------------------------------------------------- text template editor
+  async function templateEditor(item, el, q) {
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = loading();
+    let L; try { L = await lettersData(true); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const code = q.get('tpl'); const t = code === 'new' ? null : L.templates.find((x) => x.code === code);
+    if (code !== 'new' && !t) { el.innerHTML = errorCard('Template not found.'); return; }
+    if (t?.format === 'docx') { location.replace(`#/letters?import=${encodeURIComponent(t.code)}`); return; }
+    const fromWord = q.get('from') === 'word' ? state.wordText : null; state.wordText = null;
+    const pend = t?.pending && !t.pending.submitted_at ? t.pending : null;
+    const body0 = fromWord?.body ?? pend?.body ?? t?.body ?? 'Date: {{letter_date}}\nPRIVATE & CONFIDENTIAL\n\nTo:\n{{employee_name}}\n{{address_line1}}\n{{address_line2}}\n{{postcode_town}}\n{{state}}\n\nDear {{employee_name}},\n\nSubject: \n\n\n\nYours faithfully,\nFor and on behalf of\n{{company_name}}\n\n\n{{authorized_signatory}}\n{{authorized_designation}}';
+    const pub = t?.status === 'published';
+    el.innerHTML = `<div class="lw">
+      <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit · ${esc(t.title)}` : 'New text template'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
+        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_approve ? 'Publish' : 'Send for approval'}</button></div></div>
+      ${pub ? `<div class="note">${icon('help')}<div>This template is published${t.active ? ' and in use' : ''}. Your change ${L.can_approve ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current wording stays in use.${t.pending?.rejected ? `<br><b class="bad-t">Last change sent back:</b> ${esc(t.pending.rejected)}` : ''}</div></div>` : t?.status === 'rejected' && t.review_note ? `<div class="note bad">${icon('help')}<div><b>Sent back:</b> ${esc(t.review_note)}</div></div>` : ''}
+      <form class="lw-grid" id="te-f" onsubmit="return false">
+        <section class="card lw-form">
+          <div class="grid-2 tight"><label class="fld fld-2"><span>Template title</span><input name="title" required value="${esc(fromWord?.title || pend?.title || t?.title || '')}" placeholder="e.g. Letter of Confirmation (teachers)"></label>
+            ${t ? `<div class="fld"><span>Letter type</span><input disabled value="${esc(t.type_title)} (${esc(t.letter_type)})"></div>` : typeField(L, fromWord?.letter_type || q.get('type') || '')}
+            ${companyField(fromWord?.company ?? t?.company ?? '')}</div>
+          <div class="te-tools"><button type="button" class="btn sm" data-wrap="b" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="i" title="Italic"><i>I</i></button><button type="button" class="btn sm" data-wrap="u" title="Underline"><u>U</u></button>
+            <span class="sp"></span><select id="te-ph" aria-label="Placeholder to insert">${phOptions(L, '', 'Insert a placeholder…')}</select><button type="button" class="btn sm primary" data-ins>Insert</button></div>
+          <textarea name="body" id="te-body" class="te-body" rows="26" spellcheck="true">${esc(body0)}</textarea>
+          <p class="muted small">Put the cursor where a detail goes, pick the placeholder and press Insert — it is written as {{name}} and filled for each letter. Select words and press B, I or U for bold, italic or underline. A line starting “Subject:” is printed bold and underlined.</p>
+          ${pub ? '<label class="fld"><span>Reason for the change</span><input name="why" maxlength="300" required></label>' : ''}
+          <p class="small" id="te-unk"></p>
+        </section>
+        <section class="card lw-pv-card"><div class="lw-pv-bar"><b>Preview</b><span class="sp"></span><select id="te-person" aria-label="Preview for a person"><option value="">Preview with field names</option>${L.people.filter((p) => p.status !== 'former').map((p) => `<option value="${esc(p.person_id)}">${esc(p.name)}</option>`).join('')}</select></div><div class="lw-pv" id="te-pv"></div></section>
+      </form></div>`;
+    const f = $('#te-f', el); const ta = $('#te-body', el); wireTypeField(el);
+    const labelOf = (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k.replace(/_/g, ' ');
+    let pv = {}; let pco = null; let pcode = null;
+    const draw = () => { const unk = tplKeys(ta.value).filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
+      $('#te-unk', el).innerHTML = unk.length ? `<span class="bad-t">Not in the placeholder list:</span> ${unk.map((k) => `<code>{{${esc(k)}}}</code> <button type="button" class="lnk" data-mk="${esc(k)}">create</button>`).join(' ')}` : '';
+      $$('[data-mk]', el).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, null, b.dataset.mk)) { $('#te-ph', el).innerHTML = phOptions(L, '', 'Insert a placeholder…'); draw(); } }));
+      $('#te-pv', el).innerHTML = letterSheet(fillTpl(ta.value, pv), pco, pcode || f.co.value || t?.company || 'MEG', labelOf); };
+    ta.addEventListener('input', draw);
+    $$('[data-wrap]', el).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.wrap; const s = ta.selectionStart; const e = ta.selectionEnd; ta.setRangeText(`[${g}]${ta.value.slice(s, e)}[/${g}]`, s, e, 'select'); ta.focus(); draw(); }));
+    $('[data-ins]', el).addEventListener('click', async () => { let k = $('#te-ph', el).value; if (!k) { toast('Choose the placeholder first.', 'err'); return; }
+      const s = ta.selectionStart; const e = ta.selectionEnd;
+      if (k === '__new') { k = await placeholderWindow(L, null); $('#te-ph', el).innerHTML = phOptions(L, '', 'Insert a placeholder…'); if (!k) return; }
+      ta.focus(); ta.setRangeText(`{{${k}}}`, s, e, 'end'); draw(); });
+    $('#te-person', el).addEventListener('change', async (e) => { pv = {}; pco = null; pcode = null; const pid = e.target.value;
+      if (pid) { try { const c = await API.rpc('cms_letter_context', { p_person: pid }); pv = { ...c, ...splitAddress(c._home_address) }; pco = c._company; pcode = (L.people.find((p) => p.person_id === pid) || {}).company; } catch (er) { toast(er.message, 'err'); } }
+      draw(); });
+    f.co.addEventListener('change', draw);
+    $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
+      const submit = b.dataset.a === 'submit';
+      try {
+        if (!f.title.value.trim()) throw new Error('Give the template a title.');
+        if (!t && !f.ltype.value) throw new Error('Choose the letter type.');
+        if (pub && !f.why.value.trim()) throw new Error('Give the reason for the change.');
+        const unk = tplKeys(ta.value).filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
+        if (submit && !(await ask(L.can_approve ? 'Publish this template? Switch it on afterwards to use it for letters.' : 'Send this template for approval?', L.can_approve ? 'Publish' : 'Send'))) return;
+        const c = await API.rpc('cms_letter_template_save', { p: { code: t?.code || null, ...(t ? {} : readType(f)), title: f.title.value.trim(), format: 'text', body: ta.value, company: f.co.value, reason: pub ? f.why.value.trim() : (fromWord ? 'Converted from a Word file' : null), submit } });
+        toast(submit ? (L.can_approve ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
+        location.hash = '#/letters?tab=templates';
+      } catch (e) { toast(e.message, 'err'); }
+    }));
+    draw();
+  }
+
+  // ---------------------------------------------------------------- Word import / Word template editor
+  async function wordImport(item, el, q) {
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = loading();
+    let L; try { L = await lettersData(true); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const code = q.get('import'); const t = code === 'new' ? null : L.templates.find((x) => x.code === code);
+    if (code !== 'new' && !t) { el.innerHTML = errorCard('Template not found.'); return; }
+    const pub = t?.status === 'published';
+    const labelOf = (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k.replace(/_/g, ' ');
+    let bytes = null; let info = null; let fileName = t?.pending?.file_name || t?.file_name || ''; let view = null; let rows = []; let who = null; let changed = false;
+    el.innerHTML = `<div class="lw">
+      <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit Word template · ${esc(t.title)}` : 'Import a letter from Word'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
+        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_approve ? 'Publish' : 'Send for approval'}</button></div></div>
+      ${pub ? `<div class="note">${icon('help')}<div>This template is published. Your change ${L.can_approve ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current file stays in use.</div></div>` : ''}
+      <form class="lw-grid" id="wi-f" onsubmit="return false">
+        <section class="card lw-form">
+          <h4 class="sec-h">1 · The Word file</h4>
+          <label class="fld"><span>${t ? 'Replace with another Word file (optional)' : 'Word file (.docx, 10 MB at most)'}</span><input type="file" name="file" accept=".docx,${DOCX_MIME}" ${t ? '' : 'required'}></label>
+          <div class="grid-2 tight"><label class="fld fld-2"><span>Template title</span><input name="title" required value="${esc(t?.pending?.title || t?.title || '')}" placeholder="e.g. Letter of Confirmation (Happy Dino)"></label>
+            ${t ? `<div class="fld"><span>Letter type</span><input disabled value="${esc(t.type_title)} (${esc(t.letter_type)})"></div>` : typeField(L, q.get('type') || '')}${companyField(t?.company || '')}</div>
+          <div id="wi-scan"></div>
+          <div id="wi-manual"></div>
+          ${pub ? '<label class="fld"><span>Reason for the change</span><input name="why" maxlength="300" required></label>' : ''}
+          <fieldset class="fld"><legend>Save as</legend><label class="radio"><input type="radio" name="keep" value="word" checked> Keep the Word layout (recommended) — letters are filled inside this Word file</label>
+            ${t ? '' : '<label class="radio"><input type="radio" name="keep" value="text"> Convert to a text template — bold, italic, underline and line breaks are kept; tables, pictures and page layout are not</label>'}</fieldset>
+        </section>
+        <section class="card lw-pv-card"><div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="wi-st">blue = placeholder</span></div><div class="lw-pv" id="wi-pv"><div class="empty small"><p>${t ? 'Loading…' : 'Choose the Word file.'}</p></div></div></section>
+      </form></div>`;
+    const f = $('#wi-f', el); wireTypeField(el); const pv = $('#wi-pv', el);
+    const show = async () => { try { view = await W.render(bytes, pv); } catch (e) { pv.innerHTML = errorCard(e.message); } };
+    const drawManual = () => {
+      const unk = info.fields.filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
+      $('#wi-manual', el).innerHTML = `<h4 class="sec-h">3 · Make a placeholder yourself</h4>
+        <p class="muted small">Type (or select in the preview and press “Use selected text”) a word or phrase in the letter, then choose the placeholder it becomes. Every place it appears is changed.</p>
+        <div class="wi-mk"><input id="wi-find" placeholder="Text in the letter, e.g. 1 November 2026"><button type="button" class="btn sm ghost" data-sel>Use selected text</button>
+          <select id="wi-key">${phOptions(L, '')}</select><button type="button" class="btn sm primary" data-mkph>Make placeholder</button></div>
+        <p class="small">Placeholders in this file: ${info.fields.length ? info.fields.map((k) => `<code class="${unk.includes(k) ? 'bad-t' : ''}">{{${esc(k)}}}</code>`).join(' ') : '<span class="muted">none yet</span>'}</p>
+        ${unk.length ? `<p class="small bad-t">Not in the placeholder list: ${unk.map((k) => `<code>{{${esc(k)}}}</code> <button type="button" class="lnk" data-mk="${esc(k)}">create</button>`).join(' ')}</p>` : ''}
+        ${info.broken.length ? `<p class="small bad-t">Placeholders written wrongly (use lower-case letters, numbers and _): ${info.broken.map(esc).join(', ')}</p>` : ''}`;
+      $('[data-sel]', el).addEventListener('click', () => { const s = view?.selection(); if (!s) { toast('Select some words in the preview first.', 'err'); return; } $('#wi-find', el).value = s; });
+      $('#wi-key', el).addEventListener('change', async (e) => { if (e.target.value === '__new') { const k = await placeholderWindow(L, null); drawManual(); if (k) $('#wi-key', el).value = k; } });
+      $('[data-mkph]', el).addEventListener('click', async () => { const find = $('#wi-find', el).value.trim(); const key = $('#wi-key', el).value;
+        if (!find || !key || key === '__new') { toast('Type the text and choose the placeholder.', 'err'); return; }
+        try { const r = await W.replace(bytes, [{ find, key }]); if (!r.count) { toast('That text was not found in the letter (check spelling and spaces).', 'err'); return; }
+          bytes = r.bytes; info = await W.read(bytes); changed = true; toast(`${r.count} place${r.count === 1 ? '' : 's'} changed to {{${key}}}`); $('#wi-find', el).value = ''; drawScan(); drawManual(); show(); } catch (e) { toast(e.message, 'err'); } });
+      $$('[data-mk]', el).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, null, b.dataset.mk)) drawManual(); }));
+    };
+    // scan: who is it for, then their details and common patterns
+    const findAll = (text, needle) => { const out = []; if (!needle || String(needle).trim().length < 2) return out; const h = text.toLowerCase(); const n = String(needle).toLowerCase(); let i = 0; while ((i = h.indexOf(n, i)) >= 0) { out.push(text.slice(i, i + n.length)); i += n.length; } return out; };
+    const scan = (text, c) => {
+      const out = new Map(); const add = (find, key, why) => { if (!find || out.has(find.toLowerCase()) || /^\{\{/.test(find)) return; out.set(find.toLowerCase(), { find, key, why, n: findAll(text, find).length, on: !!key }); };
+      if (c) {
+        const v = { ...c, ...splitAddress(c._home_address) };
+        const money = (x) => { const n = mval(x); if (!n) return []; const s = m2(n); return [`RM ${s}`, `RM${s}`, s, n.toFixed(2), String(Math.round(n) === n ? n : n.toFixed(2))]; };
+        const order = ['employee_name', 'employee_id', 'company_name', 'current_position', 'position', 'current_department', 'department', 'confirmation_date', 'current_probation_end_date', 'revised_probation_end_date', 'last_working_day', 'resignation_date',
+          'current_manager', 'authorized_signatory', 'authorized_designation', 'address_line1', 'address_line2', 'postcode_town', 'state'];
+        if (v._home_address && findAll(text, v._home_address).length) add(findAll(text, v._home_address)[0], 'address_line1', 'their home address');
+        order.forEach((k) => { if (!v[k] || !L.placeholders.some((p) => p.key === k && p.active)) return; const hit = findAll(text, v[k])[0]; if (hit) add(hit, k, `their ${labelOf(k).toLowerCase()}`); });
+        if (v.current_basic) { const hit = money(v.current_basic).map((s) => findAll(text, s)[0]).find(Boolean); if (hit) add(hit, 'current_basic', 'their basic salary'); }
+      }
+      window.CMS_COMPANIES.forEach((x) => { [x.name, x.name.replace('MyEden', 'Myeden')].forEach((nm) => { const hit = findAll(text, nm)[0]; if (hit) add(hit, 'company_name', 'a company name'); }); });
+      const dates = [...text.matchAll(new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTHS.join('|')})\\s+\\d{4}\\b|\\b\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{4}\\b`, 'gi'))].map((m) => m[0]);
+      dates.forEach((d, i) => add(d, i === 0 && /^\s*(date\s*:?)?\s*$/i.test(text.slice(Math.max(0, text.indexOf(d) - 12), text.indexOf(d)).split('\n').pop()) ? 'letter_date' : '', i === 0 ? 'a date (the first one is often the letter date)' : 'a date'));
+      [...text.matchAll(/RM\s?\d[\d,]*(?:\.\d{2})?/g)].forEach((m) => add(m[0], '', 'an amount of money'));
+      return [...out.values()];
+    };
+    const drawScan = () => {
+      const people = L.people.map((p) => ({ p, s: (findAll(info.text, p.name).length ? 2 : 0) + (p.employee_id && findAll(info.text, p.employee_id).length ? 2 : 0) })).filter((x) => x.s).sort((a, b) => b.s - a.s).slice(0, 4);
+      $('#wi-scan', el).innerHTML = `<h4 class="sec-h">2 · Turn the filled-in details into placeholders</h4>
+        <div class="fld"><span>Who was this letter written for?</span>
+          ${people.length ? people.map(({ p, s }) => `<label class="radio"><input type="radio" name="who" value="${esc(p.person_id)}" ${who === p.person_id ? 'checked' : ''}> ${esc(p.name)} · ${esc(p.employee_id || '')} <small class="muted">${s >= 4 ? 'name and ID found' : 'found in the letter'}</small></label>`).join('') : '<p class="muted small">No staff name or Employee ID was found in the letter.</p>'}
+          <label class="radio"><input type="radio" name="who" value="__other" ${who && !people.some((x) => x.p.person_id === who) ? 'checked' : ''}> Someone else: <select id="wi-other"><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === who ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="radio"><input type="radio" name="who" value="" ${who ? '' : 'checked'}> Nobody — only look for company names, dates and amounts</label></div>
+        <div id="wi-rows">${rows.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th></th><th>Found in the letter</th><th>Becomes</th></tr></thead><tbody>
+          ${rows.map((r, i) => `<tr><td><input type="checkbox" data-on="${i}" ${r.on ? 'checked' : ''} aria-label="Convert"></td><td><b>${esc(r.find)}</b>${r.n > 1 ? ` <small class="muted">×${r.n}</small>` : ''}<small class="sub">${esc(r.why)}</small></td><td><select data-key="${i}">${phOptions(L, r.key)}</select></td></tr>`).join('')}</tbody></table></div>
+          <div class="btn-row"><button type="button" class="btn primary sm" data-conv>Convert the ticked items</button></div>` : '<p class="muted small">Nothing left to convert automatically. Use “Make a placeholder yourself” for anything else.</p>'}</div>`;
+      const pick = async () => { const v = $('input[name=who]:checked', el)?.value; who = v === '__other' ? $('#wi-other', el).value || null : v || null; let c = null;
+        if (who) { try { c = await API.rpc('cms_letter_context', { p_person: who }); } catch (e) { toast(e.message, 'err'); } }
+        rows = scan(info.text, c); drawScan(); };
+      $$('input[name=who]', el).forEach((r) => r.addEventListener('change', pick)); $('#wi-other', el).addEventListener('change', () => { $('input[name=who][value="__other"]', el).checked = true; pick(); });
+      $$('[data-on]', el).forEach((c) => c.addEventListener('change', () => { rows[c.dataset.on].on = c.checked; }));
+      $$('[data-key]', el).forEach((s) => s.addEventListener('change', async () => { const i = s.dataset.key; if (s.value === '__new') { const k = await placeholderWindow(L, null); rows[i].key = k || ''; drawScan(); drawManual(); return; } rows[i].key = s.value; rows[i].on = !!s.value; $(`[data-on="${i}"]`, el).checked = rows[i].on; }));
+      $('[data-conv]', el)?.addEventListener('click', async () => { const sel = rows.filter((r) => r.on); if (sel.some((r) => !r.key)) { toast('Choose the placeholder for every ticked item.', 'err'); return; } if (!sel.length) { toast('Tick at least one item.', 'err'); return; }
+        try { const r = await W.replace(bytes, sel); bytes = r.bytes; info = await W.read(bytes); changed = true; toast(`${r.count} place${r.count === 1 ? '' : 's'} converted`); rows = rows.filter((x) => !x.on); drawScan(); drawManual(); show(); } catch (e) { toast(e.message, 'err'); } });
+    };
+    const loadBytes = async (b, name) => { bytes = b; info = await W.read(bytes); fileName = name || fileName;
+      if (!f.title.value.trim() && name) f.title.value = name.replace(/\.docx$/i, '').replace(/[_-]+/g, ' ');
+      who = null; rows = scan(info.text, null); const ppl = L.people.map((p) => ({ p, s: (findAll(info.text, p.name).length ? 2 : 0) + (p.employee_id && findAll(info.text, p.employee_id).length ? 2 : 0) })).filter((x) => x.s).sort((a, b2) => b2.s - a.s);
+      drawScan(); drawManual(); await show();
+      if (ppl.length) { $(`input[name=who][value="${ppl[0].p.person_id}"]`, el).checked = true; $(`input[name=who][value="${ppl[0].p.person_id}"]`, el).dispatchEvent(new Event('change')); } };
+    f.file.addEventListener('change', async () => { const file = f.file.files[0]; if (!file) return;
+      try { if (!/\.docx$/i.test(file.name)) throw new Error('Choose a Word .docx file (old .doc files: open in Word and “Save as” .docx).'); await loadBytes(new Uint8Array(await file.arrayBuffer()), file.name); changed = true; }
+      catch (e) { f.file.value = ''; toast(e.message, 'err'); } });
+    if (t) { try { await loadBytes(await getDocx(t.pending?.source_path || t.source_path), t.pending?.file_name || t.file_name); } catch (e) { pv.innerHTML = errorCard(e.message); } }
+    $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
+      const submit = b.dataset.a === 'submit';
+      try {
+        if (!bytes) throw new Error('Choose the Word file first.');
+        if (!f.title.value.trim()) throw new Error('Give the template a title.');
+        if (!t && !f.ltype.value) throw new Error('Choose the letter type.');
+        if (pub && !f.why.value.trim()) throw new Error('Give the reason for the change.');
+        if (info.broken.length) throw new Error(`Fix the placeholders written wrongly: ${info.broken.join(', ')}.`);
+        const unk = info.fields.filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
+        if ($('input[name=keep]:checked', el)?.value === 'text') { state.wordText = { body: await W.toText(bytes), title: f.title.value.trim(), letter_type: f.ltype.value === '__new' ? '' : f.ltype.value, company: f.co.value }; location.hash = '#/letters?tpl=new&from=word'; return; }
+        if (!info.fields.length && !(await ask('This letter has no placeholders yet, so every letter would be identical. Save anyway?', 'Save anyway'))) return;
+        if (submit && !(await ask(L.can_approve ? 'Publish this Word template? Switch it on afterwards to use it for letters.' : 'Send this Word template for approval?', L.can_approve ? 'Publish' : 'Send'))) return;
+        b.disabled = true;
+        const path = !t || changed ? await putDocx('templates', bytes) : (t.pending?.source_path || t.source_path);
+        const c = await API.rpc('cms_letter_template_save', { p: { code: t?.code || null, ...(t ? {} : readType(f)), title: f.title.value.trim(), format: 'docx', body: info.text, company: f.co.value,
+          source_path: path, file_name: fileName, reason: pub ? f.why.value.trim() : 'Imported from Word', submit } });
+        toast(submit ? (L.can_approve ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
+        location.hash = '#/letters?tab=templates';
+      } catch (e) { b.disabled = false; toast(e.message, 'err'); }
+    }));
   }
 
   // ================================================================ module placeholder pages
@@ -3520,7 +4048,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

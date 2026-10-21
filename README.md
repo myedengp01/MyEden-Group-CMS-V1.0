@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-18:30 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.21-22:35 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -53,6 +53,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 25. `20261021_cms_probation_rules.sql` — probation end date = confirmation date; probation length from the record, else the offer's probation months, else assumed 3 months; extension letter tracking and an automatic follow-up review
 26. `20261021_cms_training_certs.sql` — Phase 5c certificate types (validity, required for all, reminder days), certificates per person with copy and verification, training sessions with attendance that issues the certificate, My Certificates (self-service part "certs")
 27. `20261021_cms_documents_letters.sql` — Phase 5d employee documents (storage bucket `employee-documents` policies, register, remove with reason), HR letters from templates (context filled from records, drafts, issue, void; probation extension letter marks the appraisal letter issued), off-boarding hand-over checklist (approval needs every step done or a note)
+28. `20261021_cms_permissions_hr.sql` — "Who can do what" editable by Admin and Super Admin with a reason; locked sections (Companies & Settings, Users & Roles, Export All Data, Purchase & Funding) only a Super Admin can change; new "Set MyEden salary caps" permission (Admin by default, HR view only); HR access widened (Payroll and Payroll Settings, overtime, organisation structure, claims view, documents and training export, audit log view); Directors approve HR letters; MyPayroll access follows the CMS Payroll "edit" permission
+29. `20261021_cms_letters_v2.sql` — HR Letters centre: letter steps draft → approval (never the drafter) → issue; template lifecycle (draft, pending, published, sent back, retired; on/off; changes to a published template wait for approval; retirement approval); Word templates in the private `hr-letter-sources` bucket; placeholder register editing; issued letters can be voided; MEG-EAF V2 letter write functions retired (they now point to the CMS)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -102,6 +104,15 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-22:35** — **HR Letters centre** (moved in from MEG-EAF V2) and **permissions for HR**. HR drafts a letter on a full-page workspace (fields left,
+  large A4 preview right with zoom and full screen, missing fields in red, DRAFT stamp) and sends it for approval; Admin, Super Admin or a Director approves
+  (never the drafter) or sends it back with a reason; HR, Admin, Super Admin or a Director issues it, and it is kept in the person's records. Templates: text
+  (placeholder picker inserts {{name}} at the cursor; B / I / U) or Word (the .docx keeps its layout and is filled inside). Import a filled Word letter: the
+  CMS finds who it was written for and their details (name, ID, salary, company, dates, address) and turns the ticked ones into placeholders; anything else by
+  "Make placeholder". New and changed templates need approval unless made by someone who can approve; old templates stay until a retirement is approved;
+  on/off per template. Placeholder register (create, edit, protected ones locked). Company letterheads from the four company images. Bell reminders.
+  Permissions: "Who can do what" editable by Admin and Super Admin with a reason, locked sections, HR payroll access (MyPayroll follows), MyEden caps set only
+  with the new caps permission. MEG-EAF V2 letter pages now point to the CMS. Database: `20261021_cms_permissions_hr.sql`, `20261021_cms_letters_v2.sql`.
 - **v2026.10.21-18:30** — Phase 5d · **Documents, HR Letters, off-boarding checklist**: Employee Documents (upload to each person's folder, type, date,
   expiry, open, remove with reason). HR Letters: pick a person and template, the letter is filled from records (name, address, position, dates, salary)
   with a live preview on the company letterhead, missing fields must be filled before issue; drafts, issued register, void, print. Appraisal window can
