@@ -760,3 +760,13 @@ label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px
   body.doc-mode .sheet { box-shadow: none; margin: 0; break-after: page; page-break-after: always; }
   body.doc-mode .sheet:last-child { break-after: auto; page-break-after: auto; }
 }
+
+/* ---------- Phase 4b · items & hand-over ---------- */
+.me-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.me-item:first-of-type { border-top: 0; }
+.me-item .btn-row { margin: 0; align-items: center; }
+.it-head { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+details.card > summary { cursor: pointer; padding: 2px 0 8px; }
+table.data.click tbody tr { cursor: pointer; }
+.warn-box:has(> svg) { display: flex; gap: 10px; align-items: flex-start; }
+.warn-box > svg { flex: none; width: 18px; height: 18px; margin-top: 2px; }

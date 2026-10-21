@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-14:00 · **Phase 4 · Staff self-service** (Phases 0–3 live)
+**Current version:** v2026.10.21-14:20 · **Phase 4 · Staff self-service** (Phases 0–3 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -45,6 +45,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 17. `20261021_cms_auto_employee_id.sql` — Employee ID number reserved automatically when a person reaches onboarding (first come, first served), ID completed once gender and start date are known, rebuilt with the same number until the first payslip, never reused; "Did not join"; Employee ID incomplete list. One-off: `db/payroll/012_remove_test_employee.sql` (run in the SQL editor) removes the TEST EMPLOYEE record
 18. `20261021_cms_existing_employee_match.sql` — approved applications matched to existing employees (email or name): shown with "Link" instead of "Hire", Hire refuses duplicates, workflow-test applications hidden; one-off link of applications that already had an employee record
 19. `20261021_cms_self_service.sql` — Phase 4a staff self-service: per-person switches (all off by default), payslip / EA releases (finalised months only), Reports to (pre-filled from the offer's "reporting to" where the name matched), My Profile change requests approved by HR, salary history
+20. `20261021_cms_items_handover.sql` — Phase 4b items register and hand-over (PRI-006): item types, items with confirmation by the person, every change as an event (passwords never stored), hand-over opened automatically when a leaving date is confirmed, approval by the reports-to line or HR / Admin, clearance status
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -94,6 +95,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-14:20** — Phase 4b · Items & Hand-over (PRI-006). **Items & Hand-over** (menu, was "Assets & Equipment") for HR / Admin: issue items
+  per person with photo; staff confirm receipt in **My Items** (time stamp, optional phone photo); returned, replaced, renewed, moved to
+  another person, lost / damaged, written off and password changed / reset (the password itself is never stored) are each recorded in the
+  item's history. A hand-over opens by itself when the leaving date is confirmed (deadline = last day, approver = reports-to), staff see
+  what to return, the manager or HR / Admin approves (no self-approval) and clearance becomes "cleared". Item types editable by Admin.
+  Bell reminders for staff, managers and HR. SOP: `docs/SOP-items-handover.md`. Database: `20261021_cms_items_handover.sql`.
 - **v2026.10.21-14:00** — Phase 4a · Staff self-service. New **My Self-service** menu (My Home, My Profile, My Payslips & EA, My Salary History)
   that shows only the parts HR / Admin switched on for that person; staff with no CMS role can now sign in to it.
   New **People & Employment › Self-service Access**: switch parts on/off per person or in bulk; release payslips per month and EA

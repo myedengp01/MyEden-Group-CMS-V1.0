@@ -10,7 +10,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-003 | 2026-10-19 | Payroll items from the payroll line: allowances for a fixed period that expire (e.g. 1 Jan–30 Jun 2026); Add / Edit / Delete items; every item type carries its EPF / SOCSO / EIS / PCB treatment with Malaysian-law presets and remarks | Built in MyPayroll v2026.10.20-10:50 |
 | PRI-004 | 2026-10-20 | KPI-based annual leave carry forward: KPI record per employee (E, S, A, I, U), KPI cut-off month (default October, editable), eligible carry-forward shown on leave balances (editable), automatic year-end carry forward of the 31 Dec balance up to the eligible days; negative balance treated as unpaid leave | Built in MyPayroll v2026.10.20-10:50 |
 | PRI-005 | 2026-10-21 | Money shown with thousands separator and 2 decimals everywhere in the CMS (0,000.00) | **Built in v2026.10.21-14:00** |
-| PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | Recorded · design proposed |
+| PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | **Built in v2026.10.21-14:20** (staff confirmation in My Items) |
 | PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | Recorded |
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | Recorded |
 
@@ -119,7 +119,12 @@ into that release and this entry is updated with the version and how it was impl
 - Plan: one `money2()` helper used everywhere (no "RM" duplication where the column header already says RM);
   amount inputs get the same formatting on blur. Exports keep plain numbers so Excel can calculate.
 
-## PRI-006 · Employee items register (hand-on / hand-over) — recorded 2026-10-21, design proposed
+## PRI-006 · Employee items register (hand-on / hand-over) — built in v2026.10.21-14:20
+- **How it was built:** Items & Hand-over page (HR / Admin) and My Items (staff, switched on per person). Item types table (Admin);
+  each item has its own history of events (issued, confirmed, returned, replaced, renewed, moved, lost, damaged, written off,
+  password changed, notes, reports by the person), photos compressed on the phone. Hand-over opens from a trigger on the payroll
+  leaving date or the Employee Master last working day; approver defaults to Reports-to; approval stores name + time and sets
+  clearance "cleared". Passwords are refused in text fields. SOP in docs/SOP-items-handover.md.
 **Items covered:** company email / system accounts, keys and access cards, thumb drives and laptops / phones, uniforms,
 handbook and printed manuals, name tags, anything else HR/Admin adds (item types are a list Admin can extend).
 

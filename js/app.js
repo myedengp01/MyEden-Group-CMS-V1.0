@@ -159,7 +159,7 @@
   }
 
   function tasksFromDash(d) {
-    const t = selfTasks();
+    const t = [...selfTasks(), ...itemTasks()];
     if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -1863,10 +1863,10 @@
     ['payslips', 'Payslips', 'Payslips HR releases month by month (finalised months only)'],
     ['ea', 'EA forms', 'EA forms HR releases year by year'],
     ['salary', 'Salary history', 'Their salary and each change'],
-    ['items', 'Items', 'Company items issued to them (arrives in Phase 4b)', '4b'],
+    ['items', 'Items', 'My Items: confirm items received, hand them over when leaving'],
     ['claims', 'Claims', 'Their SCF / OTCF / MTCF claims (arrives in Phase 4c)', '4c'],
     ['leave', 'Leave', 'Apply for leave (built in Phase 4d, not in use yet)', '4d'],
-    ['handbook', 'Handbook', 'Their handbook (arrives with Phase 4b)', '4b'],
+    ['handbook', 'Handbook', 'Their handbook (arrives in Phase 4c)', '4c'],
   ];
   const PART_READY = (p) => !(PARTS.find((x) => x[0] === p) || [])[3];
   const PROFILE_FIELDS = [['contact', 'Phone'], ['email', 'Email'], ['home_address', 'Home address'], ['emergency_name', 'Emergency contact'],
@@ -1895,6 +1895,7 @@
       ['me/profile', 'users', 'My Profile', 'Your details; send changes to HR', selfOn('profile')],
       ['me/payslips', 'wallet', 'My Payslips & EA', s.payslips ? `${s.payslips} payslip${s.payslips === 1 ? '' : 's'} released${(s.new_payslips || []).length ? ` · ${s.new_payslips.length} new` : ''}` : 'Released by HR month by month', selfOn('payslips') || selfOn('ea')],
       ['me/salary', 'trend', 'My Salary History', 'Your salary and each change', selfOn('salary')],
+      ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
       <section class="card me-hero"><div class="avatar lg">${esc(initials(s.name))}</div><div><h3>${esc(s.name || '')}</h3>
@@ -2194,7 +2195,7 @@
           ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>` : '<span class="tag warn xs">No login</span>'}</td>
             ${PARTS.map(([k, , , ph]) => `<td class="ctr"><input type="checkbox" class="sw" data-part="${k}" data-p="${esc(r.person_id)}" ${r.parts.includes(k) ? 'checked' : ''} ${!edit || ph ? 'disabled' : ''} aria-label="${esc(k)} for ${esc(r.name)}"></td>`).join('')}</tr>`).join('')
           || `<tr><td colspan="${PARTS.length + 3}"><div class="empty small"><p>No one here</p></div></td></tr>`}</tbody></table></div>
-          <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Items, Claims and Handbook arrive in Phase 4b–4c; Leave is built in 4d and stays off while leave runs in the other system.</p>`;
+          <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Claims and Handbook arrive in Phase 4c; Leave is built in 4d and stays off while leave runs in the other system.</p>`;
         wireSel(box, list, () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-bulk]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
         $$('.sw', box).forEach((c) => c.addEventListener('change', async () => {
           try { await API.rpc('cms_self_set', { p_people: [c.dataset.p], p_part: c.dataset.part, p_enabled: c.checked });
@@ -2277,6 +2278,259 @@
     shell();
   }
 
+  // ================================================================ 4b · ITEMS & HAND-OVER (PRI-006)
+  const ITEM_ST = { issued: ['Waiting for the person to confirm', 'warn'], held: ['With the person', 'ok'], returned: ['Returned', ''], lost: ['Lost', 'bad'],
+    damaged: ['Damaged', 'bad'], transferred: ['Moved to someone else', ''], written_off: ['Written off', ''] };
+  const EV_LABEL = { issued: 'Issued', confirmed: 'Received (confirmed by the person)', returned: 'Returned', return_confirmed: 'Return confirmed by the person', replaced: 'Replaced',
+    renewed: 'Renewed', lost: 'Lost', damaged: 'Damaged', transferred: 'Moved to another person', credential_changed: 'Password changed / reset', note: 'Note', edited: 'Details changed',
+    written_off: 'Written off', reported: 'Reported by the person' };
+  const itemTag = (i) => { const [l, c] = ITEM_ST[i.status] || [i.status, '']; return `<span class="tag ${c} xs">${esc(l)}</span>${i.status === 'returned' && !i.return_confirmed_at ? '<small class="sub">return not yet confirmed by the person</small>' : ''}`; };
+  const itemName = (i) => `<b>${esc(i.type_label)}</b>${i.quantity > 1 ? ` × ${i.quantity}` : ''}${i.description ? `<small class="sub">${esc(i.description)}</small>` : ''}${i.asset_tag ? `<small class="sub">Tag / serial ${esc(i.asset_tag)}</small>` : ''}`;
+  const photoField = (label = 'Photo (optional)') => `<label class="fld fld-2"><span>${esc(label)}</span><input name="photo" type="file" accept="image/*" capture="environment"></label>`;
+  const wirePhoto = (w, holder) => { $('input[name=photo]', w)?.addEventListener('change', async (e) => { holder.v = e.target.files[0] ? await shrinkImage(e.target.files[0]) : null; }); };
+  function itemHistoryHtml(i) {
+    return `<ol class="timeline">${i.history.map((h) => `<li><b>${esc(EV_LABEL[h.event] || h.event)}</b> · ${dShort(h.at)}${h.by ? ` · ${esc(h.by)}` : ''}${h.note ? `<br><span class="muted">${esc(h.note)}</span>` : ''}
+      ${h.photo ? ` <button type="button" class="lnk" data-evphoto="${esc(h.id)}" data-item="${esc(i.id)}">photo</button>` : ''}</li>`).join('')}</ol>`;
+  }
+  async function showItemPhoto(item, ev) {
+    try { const src = await API.rpc('cms_item_photo', { p_item: item, p_kind: 'issue', p_event: Number(ev) }); if (!src) throw new Error('No photo.');
+      await modal({ title: 'Photo', ok: null, cancel: 'Close', wide: true, body: `<img class="att-img" src="${esc(src)}" alt="Item photo">` }); }
+    catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ---------------------------------------------------------------- HR / Admin page
+  async function itemsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="it-body">${loading()}</div>`;
+    let D;
+    const load = async () => { D = await API.rpc('cms_items_admin'); D.people.forEach((r) => upKeys(r, 'name')); D.handovers.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#it-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { tab: 'people', q: '', type: 'all', st: 'out' };
+    const edit = D.can_edit;
+    const byPerson = (pid) => D.items.filter((i) => i.person_id === pid);
+    const pName = (pid) => (D.people.find((p) => p.person_id === pid) || {}).name || '';
+    const openH = (pid) => D.handovers.find((h) => h.person_id === pid && h.status === 'open');
+    const reload = async () => { try { await load(); loadItemsPending(); } catch (e) { toast(e.message, 'err'); } draw(); };
+    const draw = () => {
+      const T = [['people', 'By person'], ['items', 'All items'], ['handovers', `Hand-overs${D.handovers.filter((h) => h.status === 'open').length ? ` <span>${D.handovers.filter((h) => h.status === 'open').length}</span>` : ''}`], ['types', 'Item types']];
+      $('#it-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="it-tab"></div></section>`;
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      const box = $('#it-tab', el); const t = f.q.trim().toLowerCase();
+      if (f.tab === 'people') {
+        const list = D.people.filter((p) => !t || `${p.name} ${p.employee_id || ''} ${p.title || ''}`.toLowerCase().includes(t));
+        box.innerHTML = `<div class="toolbar"><label class="search-in">${icon('search')}<input id="iq" type="search" placeholder="Name or Employee ID" value="${esc(f.q)}" aria-label="Search"></label></div>
+          <div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Name</th><th class="num">With the person</th><th class="num">To confirm</th><th>Leaving</th><th>Hand-over</th><th>Self-service</th></tr></thead><tbody>
+          ${list.map((p) => { const its = byPerson(p.person_id); const h = openH(p.person_id);
+            return `<tr data-person="${esc(p.person_id)}"><td><b>${esc(p.name)}</b><small class="sub">${esc([p.employee_id, p.title].filter(Boolean).join(' · '))}</small></td>
+              <td class="num">${its.filter((i) => ['issued', 'held'].includes(i.status)).length || '—'}</td><td class="num">${its.filter((i) => i.status === 'issued').length || '—'}</td>
+              <td class="nowrap">${p.leaving ? dShort(p.leaving) : '—'}</td><td>${h ? `<span class="tag warn xs">Open · due ${dShort(h.deadline)}</span>` : '—'}</td>
+              <td>${p.items_on ? '<span class="tag ok xs">My Items on</span>' : '<span class="muted small">off</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+          <p class="muted small">Click a person to issue items, record returns and changes, and run their hand-over. Staff confirm items in My Items once it is switched on for them (Self-service Access).</p>`;
+        $('#iq', box).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#iq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+        $$('[data-person]', box).forEach((r) => r.addEventListener('click', () => personItems(r.dataset.person)));
+      } else if (f.tab === 'items') {
+        const ST = [['out', 'With staff'], ['issued', 'Not yet confirmed'], ['back', 'Returned / closed'], ['all', 'All']];
+        const okSt = (i) => f.st === 'all' || (f.st === 'out' ? ['issued', 'held'].includes(i.status) : f.st === 'issued' ? i.status === 'issued' : !['issued', 'held'].includes(i.status));
+        const list = D.items.filter((i) => okSt(i) && (f.type === 'all' || i.type === f.type) && (!t || `${pName(i.person_id)} ${i.description || ''} ${i.asset_tag || ''} ${i.type_label}`.toLowerCase().includes(t)));
+        box.innerHTML = `<div class="toolbar"><label class="search-in">${icon('search')}<input id="iq" type="search" placeholder="Person, description or tag" value="${esc(f.q)}" aria-label="Search"></label>
+            <select id="ity" aria-label="Type"><option value="all">All types</option>${D.types.map((x) => `<option value="${esc(x.code)}" ${f.type === x.code ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
+            <div class="seg">${ST.map(([k, l]) => `<button type="button" data-st="${k}" class="${f.st === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+          <div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Item</th><th>Person</th><th>Issued</th><th>Status</th></tr></thead><tbody>
+          ${list.map((i) => `<tr data-person="${esc(i.person_id)}"><td>${itemName(i)}</td><td>${esc(pName(i.person_id))}</td><td class="nowrap">${dShort(i.issued_on)}</td><td>${itemTag(i)}</td></tr>`).join('')
+            || '<tr><td colspan="4"><div class="empty small"><p>No items here</p></div></td></tr>'}</tbody></table></div>`;
+        $('#iq', box).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#iq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+        $('#ity', box).addEventListener('change', (e) => { f.type = e.target.value; draw(); });
+        $$('[data-st]', box).forEach((b) => b.addEventListener('click', () => { f.st = b.dataset.st; draw(); }));
+        $$('[data-person]', box).forEach((r) => r.addEventListener('click', () => personItems(r.dataset.person)));
+      } else if (f.tab === 'handovers') {
+        box.innerHTML = D.handovers.length ? `<div class="table-wrap"><table class="data click"><thead><tr><th>Person</th><th>Deadline</th><th class="num">Still with the person</th><th>Approver</th><th>Status</th></tr></thead><tbody>
+          ${D.handovers.map((h) => `<tr data-person="${esc(h.person_id)}"><td><b>${esc(h.name)}</b><small class="sub">${esc(h.opened_reason || '')}</small></td>
+            <td class="nowrap">${h.deadline ? `${dShort(h.deadline)}${h.status === 'open' && daysTo(h.deadline) < 0 ? ' <span class="tag bad xs">overdue</span>' : ''}` : '—'}</td>
+            <td class="num">${h.outstanding || (h.status === 'open' ? '<span class="tag ok xs">all back</span>' : '—')}</td><td>${esc(h.approver || 'HR / Admin')}</td>
+            <td>${h.status === 'open' ? '<span class="tag warn xs">Open</span>' : `<span class="tag ok xs">Approved</span><small class="sub">${dShort(h.approved_at)} · ${esc(h.approved_by || '')}</small>`}</td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No hand-overs</p><span>A hand-over opens by itself when a leaving date is confirmed for someone who holds items, or start one from the person.</span></div>';
+        $$('[data-person]', box).forEach((r) => r.addEventListener('click', () => personItems(r.dataset.person)));
+      } else {
+        box.innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Item type</th><th>Kind</th><th>Must be returned</th><th>Account (password changes)</th><th>Looked after by</th><th class="num">Replacement (RM)</th><th></th></tr></thead><tbody>
+          ${D.types.map((x) => `<tr class="${x.is_active ? '' : 'muted'}"><td><b>${esc(x.label)}</b>${x.is_active ? '' : ' <span class="tag xs">not used</span>'}</td><td>${esc(x.category)}</td><td>${x.must_return ? 'Yes' : 'No'}</td>
+            <td>${x.is_credential ? 'Yes' : '—'}</td><td>${esc(x.custodian || '—')}</td><td class="num">${x.replacement_cost != null ? m2(x.replacement_cost) : '—'}</td>
+            <td>${D.can_types ? `<button type="button" class="btn sm ghost" data-type="${esc(x.code)}">Edit</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+          ${D.can_types ? '<div class="btn-row"><button type="button" class="btn" data-type="">+ Add item type</button></div>' : ''}`;
+        $$('[data-type]', box).forEach((b) => b.addEventListener('click', async () => {
+          const x = D.types.find((y) => y.code === b.dataset.type) || { must_return: true, is_active: true, category: 'other' };
+          const ok = await modal({ title: x.code ? `Item type · ${x.label}` : 'New item type', ok: 'Save',
+            body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Name</span><input name="label" required value="${esc(x.label || '')}"></label>
+              <label class="fld"><span>Kind</span><select name="category">${['account', 'key', 'device', 'uniform', 'document', 'other'].map((c) => `<option ${x.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+              <label class="fld"><span>Looked after by</span><input name="custodian" value="${esc(x.custodian || '')}" placeholder="HR, Admin, IT, centre head"></label>
+              <label class="fld"><span>Replacement cost (RM)</span><input name="cost" data-money inputmode="decimal" value="${x.replacement_cost != null ? m2(x.replacement_cost) : ''}"></label>
+              <div class="fld"><label class="chk"><input type="checkbox" name="ret" ${x.must_return ? 'checked' : ''}> Must be returned when leaving</label>
+                <label class="chk"><input type="checkbox" name="cred" ${x.is_credential ? 'checked' : ''}> Account with a password (record changes, never the password)</label>
+                <label class="chk"><input type="checkbox" name="act" ${x.is_active ? 'checked' : ''}> In use</label></div></div>`,
+            onOk: async (fm) => { await API.rpc('cms_item_type_save', { p: { code: x.code || null, label: fm.label.value, category: fm.category.value, custodian: fm.custodian.value,
+              replacement_cost: fm.cost.value ? mval(fm.cost.value) : null, must_return: fm.ret.checked, is_credential: fm.cred.checked, is_active: fm.act.checked } }); } });
+          if (ok) { toast('Item type saved'); reload(); }
+        }));
+      }
+      fitTables();
+    };
+
+    // one person: their items, actions and hand-over
+    const personItems = async (pid) => {
+      const p = D.people.find((x) => x.person_id === pid) || { person_id: pid, name: pName(pid) };
+      const its = byPerson(pid); const h = openH(pid); const out = its.filter((i) => ['issued', 'held'].includes(i.status));
+      const others = D.people.filter((x) => x.person_id !== pid && x.status !== 'former');
+      const done = await modal({ title: `Items · ${p.name}`, ok: null, cancel: 'Close', wide: true,
+        body: `<div class="it-head">${p.leaving ? `<span class="tag warn">Leaving ${dShort(p.leaving)}</span>` : ''}${p.items_on ? '' : '<span class="tag xs">My Items is off for this person: they cannot confirm yet</span>'}</div>
+          ${h ? `<div class="warn-box"><b>Hand-over open</b> · deadline ${h.deadline ? dShort(h.deadline) : 'not set'} · approver ${esc(h.approver || 'HR / Admin')} · ${h.outstanding} still with the person
+              ${h.notes ? `<br><span class="muted">${esc(h.notes)}</span>` : ''}
+              ${edit ? `<div class="btn-row"><button type="button" class="btn sm" data-ho="edit">Deadline, approver, notes…</button><button type="button" class="btn sm primary" data-ho="approve">Approve hand-over…</button><button type="button" class="btn sm ghost" data-ho="cancel">Cancel hand-over…</button></div>` : ''}</div>`
+            : (edit && out.length ? '<div class="btn-row"><button type="button" class="btn sm" data-ho="start">Start hand-over…</button></div>' : '')}
+          <div class="table-wrap"><table class="data compact"><thead><tr><th>Item</th><th>Issued</th><th>Status</th><th></th></tr></thead><tbody>
+          ${its.map((i) => `<tr><td>${itemName(i)}${i.credential_changed_at ? `<small class="sub">password last changed ${dShort(i.credential_changed_at)}</small>` : ''}</td><td class="nowrap">${dShort(i.issued_on)}</td><td>${itemTag(i)}</td>
+            <td class="nowrap">${edit && ['issued', 'held'].includes(i.status) ? `<select data-act="${esc(i.id)}" aria-label="Action"><option value="">Action…</option><option value="return">Returned</option><option value="replace">Replace / renew with a new one</option>
+              <option value="renew">Renewed (same item)</option><option value="transfer">Move to another person</option>${i.is_credential ? '<option value="credential">Password changed / reset</option>' : ''}
+              <option value="lost">Lost</option><option value="damaged">Damaged</option><option value="write_off">Write off</option><option value="note">Add a note</option></select>` : ''}
+              <button type="button" class="btn sm ghost" data-hist="${esc(i.id)}">History</button></td></tr>`).join('') || '<tr><td colspan="4"><div class="empty small"><p>No items yet</p></div></td></tr>'}</tbody></table></div>
+          ${edit ? '<div class="btn-row"><button type="button" class="btn primary" data-issue>+ Issue item…</button></div>' : ''}`,
+        onOpen: (w) => {
+          const close = () => $('[data-x]', w)?.click();
+          $('[data-issue]', w)?.addEventListener('click', async () => { close(); await issueWindow(pid); });
+          $$('[data-hist]', w).forEach((b) => b.addEventListener('click', async () => { const i = its.find((x) => x.id === b.dataset.hist); close();
+            await modal({ title: `${i.type_label}${i.description ? ` · ${i.description}` : ''}`, ok: null, cancel: 'Close', body: itemHistoryHtml(i),
+              onOpen: (w2) => $$('[data-evphoto]', w2).forEach((x) => x.addEventListener('click', () => showItemPhoto(x.dataset.item, x.dataset.evphoto))) });
+            personItems(pid); }));
+          $$('[data-act]', w).forEach((s) => s.addEventListener('change', async () => { const a = s.value; if (!a) return; const i = its.find((x) => x.id === s.dataset.act); close(); await itemAction(i, a, others); }));
+          $$('[data-ho]', w).forEach((b) => b.addEventListener('click', async () => { close(); await handoverAction(p, h, b.dataset.ho); }));
+        } });
+      return done;
+    };
+    const issueWindow = async (pid) => {
+      const ph = { v: null };
+      const ok = await modal({ title: `Issue item · ${pName(pid)}`, ok: 'Issue', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld"><span>Item type</span><select name="type" required><option value="">Choose…</option>${D.types.filter((x) => x.is_active).map((x) => `<option value="${esc(x.code)}">${esc(x.label)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Quantity</span><input name="qty" type="number" min="1" value="1"></label>
+          <label class="fld fld-2"><span>Description (e.g. the email address, which key, size)</span><input name="desc" maxlength="200"></label>
+          <label class="fld"><span>Tag / serial / key no. (optional)</span><input name="tag" maxlength="80"></label>
+          <label class="fld"><span>Date issued</span><input name="on" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+          <label class="fld"><span>Condition</span><input name="cond" value="Good"></label>
+          <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>${photoField()}</div>
+          <p class="muted small">For an email or system account, record the account only. Never type a password here: give it to the person directly.</p>`,
+        onOpen: (w) => wirePhoto(w, ph),
+        onOk: async (fm) => { if (!fm.type.value) throw new Error('Choose the item type.');
+          if (/(password|pwd|pass)\s*[:=]/i.test(`${fm.desc.value} ${fm.note.value}`)) throw new Error('Do not type a password here.');
+          await API.rpc('cms_item_issue', { p: { person_id: pid, type: fm.type.value, quantity: fm.qty.value, description: fm.desc.value, asset_tag: fm.tag.value, issued_on: fm.on.value, condition: fm.cond.value, note: fm.note.value, photo: ph.v } }); } });
+      if (ok) { toast('Item issued: the person confirms it in My Items'); await reload(); personItems(pid); }
+    };
+    const itemAction = async (i, a, others) => {
+      const ph = { v: null }; const today = new Date().toISOString().slice(0, 10);
+      const T = { return: 'Returned', replace: 'Replace with a new one', renew: 'Renewed', transfer: 'Move to another person', credential: 'Password changed / reset', lost: 'Lost', damaged: 'Damaged', write_off: 'Write off', note: 'Add a note' };
+      const body = {
+        return: `<label class="fld"><span>Date received back</span><input name="date" type="date" value="${today}"></label><label class="fld"><span>Condition</span><input name="cond" value="Good"></label>
+          <label class="fld"><span>Received by</span><input name="by" placeholder="${esc(state.access?.name || '')}"></label><label class="fld"><span>Note</span><input name="note"></label>${photoField()}`,
+        replace: `<label class="fld"><span>Old item</span><select name="old"><option value="returned">Returned</option><option value="lost">Lost</option><option value="damaged">Damaged</option></select></label>
+          <label class="fld"><span>Date</span><input name="date" type="date" value="${today}"></label><label class="fld fld-2"><span>New item description</span><input name="desc" value="${esc(i.description || '')}"></label>
+          <label class="fld"><span>New tag / serial</span><input name="tag"></label><label class="fld"><span>Note</span><input name="note"></label>${photoField('Photo of the new item (optional)')}`,
+        renew: `<label class="fld"><span>Condition</span><input name="cond" value="${esc(i.condition || 'Good')}"></label><label class="fld"><span>Note</span><input name="note" placeholder="e.g. uniform renewed for 2027"></label>${photoField()}`,
+        transfer: `<label class="fld fld-2"><span>Move to</span><select name="to" required><option value="">Choose…</option>${others.map((x) => `<option value="${esc(x.person_id)}">${esc(x.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Date</span><input name="date" type="date" value="${today}"></label><label class="fld"><span>Note</span><input name="note"></label>`,
+        credential: `<p class="muted small">Record only that the password was changed or reset, and by whom. <b>Never type the password.</b></p><label class="fld fld-2"><span>Changed by / note</span><input name="note" placeholder="e.g. reset by IT after leaving"></label>`,
+        lost: `<label class="fld"><span>Date</span><input name="date" type="date" value="${today}"></label><label class="fld fld-2"><span>What happened</span><input name="note" required></label><label class="fld"><span>Deduction reference (optional)</span><input name="ded"></label>${photoField()}`,
+        damaged: `<label class="fld"><span>Date</span><input name="date" type="date" value="${today}"></label><label class="fld fld-2"><span>What happened</span><input name="note" required></label><label class="fld"><span>Deduction reference (optional)</span><input name="ded"></label>${photoField()}`,
+        write_off: `<label class="fld fld-2"><span>Reason</span><input name="note" required></label>`,
+        note: `<label class="fld fld-2"><span>Note</span><input name="note" required></label>${photoField()}`,
+      }[a];
+      const ok = await modal({ title: `${T[a]} · ${i.type_label}${i.description ? ` · ${i.description}` : ''}`, ok: 'Save', danger: ['lost', 'damaged', 'write_off'].includes(a), body: `<div class="grid-2 tight">${body}</div>`,
+        onOpen: (w) => wirePhoto(w, ph),
+        onOk: async (fm) => { const v = (n) => (fm[n] ? fm[n].value : undefined);
+          if (a === 'transfer' && !v('to')) throw new Error('Choose who receives the item.');
+          if (['lost', 'damaged', 'write_off', 'note'].includes(a) && !String(v('note') || '').trim()) throw new Error('Write what happened.');
+          if (/(password|pwd|pass)\s*[:=]/i.test(v('note') || '')) throw new Error('Do not type a password here.');
+          await API.rpc('cms_item_action', { p_item: i.id, p_action: a, p: { date: v('date'), condition: v('cond'), received_by: v('by'), note: v('note'), photo: ph.v, old_status: v('old'),
+            description: v('desc'), asset_tag: v('tag'), to_person: v('to'), deduction_ref: v('ded') } }); } });
+      if (ok) { toast(`${i.type_label}: ${T[a].toLowerCase()} recorded`); await reload(); }
+      personItems(i.person_id);
+    };
+    const handoverAction = async (p, h, a) => {
+      if (a === 'start' || a === 'edit') {
+        const approvers = D.people.filter((x) => x.person_id !== p.person_id && x.status !== 'former');
+        const ok = await modal({ title: `${a === 'start' ? 'Start hand-over' : 'Hand-over'} · ${p.name}`, ok: 'Save',
+          body: `<div class="grid-2 tight"><label class="fld"><span>Deadline</span><input name="deadline" type="date" value="${esc((h && h.deadline) || p.leaving || '')}"></label>
+            <label class="fld"><span>Approved by</span><select name="ap"><option value="">HR / Admin</option>${approvers.map((x) => `<option value="${esc(x.person_id)}" ${h && h.approver_id === x.person_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+            <label class="fld fld-2"><span>Notes</span><textarea name="notes" rows="2">${esc((h && h.notes) || '')}</textarea></label></div>
+            <p class="muted small">Every item still with the person is on the hand-over. The person they report to, anyone above them, the approver and HR / Admin can approve. Approving sets their clearance to “cleared”.</p>`,
+          onOk: async (fm) => { await API.rpc('cms_handover_save', { p_person: p.person_id, p: { deadline: fm.deadline.value || null, approver_id: fm.ap.value || '', notes: fm.notes.value, reason: a === 'start' ? 'Started by HR' : undefined } }); } });
+        if (ok) { toast('Hand-over saved'); await reload(); }
+      } else {
+        const approve = a === 'approve';
+        const ok = await modal({ title: `${approve ? 'Approve' : 'Cancel'} hand-over · ${p.name}`, ok: approve ? 'Approve' : 'Cancel hand-over', danger: !approve,
+          body: `${approve && h.outstanding ? `<div class="warn-box">${h.outstanding} item(s) are still with ${esc(p.name)}. Record them first, or give the reason for approving anyway.</div>` : ''}
+            <label class="fld"><span>${approve ? 'Note' : 'Reason'}${approve && !h.outstanding ? ' (optional)' : ''}</span><input name="note"></label>`,
+          onOk: async (fm) => { await API.rpc('cms_handover_approve', { p_id: h.id, p_note: fm.note.value || null, p_cancel: !approve }); } });
+        if (ok) { toast(approve ? 'Hand-over approved: clearance done' : 'Hand-over cancelled'); await reload(); }
+      }
+      personItems(p.person_id);
+    };
+    draw();
+  }
+
+  // ---------------------------------------------------------------- staff: My Items
+  async function meItemsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mi-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_my_items'); } catch (e) { $('#mi-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const toConfirm = D.items.filter((i) => i.status === 'issued' || (['returned', 'transferred'].includes(i.status) && !i.return_confirmed_at));
+    const held = D.items.filter((i) => i.status === 'held'); const past = D.items.filter((i) => !['issued', 'held'].includes(i.status) && !toConfirm.includes(i));
+    const H = D.handover;
+    const row = (i, btns) => `<div class="me-item"><div>${itemName(i)}<small class="sub">Issued ${dShort(i.issued_on)}${i.confirmed_at ? ` · received ${dShort(i.confirmed_at)}` : ''}${i.returned_on ? ` · returned ${dShort(i.returned_on)}` : ''}</small></div><div class="btn-row">${btns}</div></div>`;
+    $('#mi-body', el).innerHTML = `
+      ${H ? `<div class="warn-box">${icon('clock')}<div><b>Hand-over before you leave</b> · return every item below by <b>${H.deadline ? dShort(H.deadline) : 'your last day'}</b>${H.approver ? ` · approved by ${esc(H.approver)}` : ''}${H.notes ? `<br>${esc(H.notes)}` : ''}</div></div>` : ''}
+      ${toConfirm.length ? `<section class="card"><div class="card-head"><h3>Please confirm</h3><span class="muted small">Your confirmation is saved with the date and time and cannot be changed</span></div>
+        ${toConfirm.map((i) => row(i, i.status === 'issued' ? `<button type="button" class="btn sm primary" data-conf="${esc(i.id)}">${icon('check-circle')}I received this</button><button type="button" class="btn sm ghost" data-rep="${esc(i.id)}">Report a problem</button>`
+          : `<span class="muted small">HR recorded this as ${i.status === 'transferred' ? 'moved on' : 'returned'}${i.received_by_name ? ` to ${esc(i.received_by_name)}` : ''}</span><button type="button" class="btn sm primary" data-conf="${esc(i.id)}">${icon('check-circle')}Confirm</button><button type="button" class="btn sm ghost" data-rep="${esc(i.id)}">Report a problem</button>`)).join('')}</section>` : ''}
+      <section class="card"><div class="card-head"><h3>${H ? 'To hand over' : 'With you now'}</h3></div>
+        ${held.length ? held.map((i) => row(i, `<span class="tag ok xs">Received</span>${i.is_credential && i.credential_changed_at ? `<small class="muted">password last changed ${dShort(i.credential_changed_at)}</small>` : ''}<button type="button" class="btn sm ghost" data-rep="${esc(i.id)}">Report a problem</button>`)).join('')
+          : '<div class="empty small"><p>No items with you</p></div>'}</section>
+      ${D.to_approve.length ? `<section class="card"><div class="card-head"><h3>Hand-overs for you to approve</h3><span class="muted small">People who report to you</span></div>
+        ${D.to_approve.map((h) => `<div class="me-item"><div><b>${esc(h.name)}</b><small class="sub">${esc(h.employee_id || '')}${h.deadline ? ` · deadline ${dShort(h.deadline)}` : ''}</small>
+          <ul class="chg">${h.items.map((x) => `<li>${esc(x.label)}${x.description ? ` · ${esc(x.description)}` : ''}: ${esc((ITEM_ST[x.status] || [x.status])[0])}</li>`).join('')}</ul></div>
+          <div class="btn-row">${h.outstanding ? `<span class="tag warn xs">${h.outstanding} not back yet</span>` : `<button type="button" class="btn sm primary" data-appr="${esc(h.id)}" data-name="${esc(h.name)}">Approve</button>`}</div></div>`).join('')}</section>` : ''}
+      ${past.length ? `<details class="card"><summary><b>Earlier items</b> <span class="muted small">${past.length}</span></summary>${past.map((i) => row(i, itemTag(i))).join('')}</details>` : ''}`;
+    $$('[data-conf]', el).forEach((b) => b.addEventListener('click', async () => {
+      const i = D.items.find((x) => x.id === b.dataset.conf); const ph = { v: null };
+      const ok = await modal({ title: `${i.status === 'issued' ? 'I received' : 'Confirm return'} · ${i.type_label}`, ok: 'Confirm',
+        body: `<p>${itemName(i)}</p><label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>${i.status === 'issued' ? photoField('Photo of the item (optional)') : ''}
+          <p class="muted small">Once confirmed, it is saved with today's date and time.</p>`,
+        onOpen: (w) => wirePhoto(w, ph),
+        onOk: async (fm) => { await API.rpc('cms_my_item_confirm', { p_item: i.id, p_note: fm.note.value || null, p_photo: ph.v }); } });
+      if (ok) { toast('Confirmed'); loadItemsPending(); render(); }
+    }));
+    $$('[data-rep]', el).forEach((b) => b.addEventListener('click', async () => {
+      const i = D.items.find((x) => x.id === b.dataset.rep); const ph = { v: null };
+      const ok = await modal({ title: `Report a problem · ${i.type_label}`, ok: 'Send to HR',
+        body: `<label class="fld"><span>What happened? (not received, lost, damaged, wrong size …)</span><input name="note" required maxlength="300"></label>${photoField()}`,
+        onOpen: (w) => wirePhoto(w, ph),
+        onOk: async (fm) => { if (!fm.note.value.trim()) throw new Error('Say what happened.'); await API.rpc('cms_my_item_report', { p_item: i.id, p_note: fm.note.value, p_photo: ph.v }); } });
+      if (ok) toast('Sent to HR');
+    }));
+    $$('[data-appr]', el).forEach((b) => b.addEventListener('click', async () => {
+      const ok = await confirmBox(`Approve hand-over · ${b.dataset.name}`, 'Every item is back. Approving completes the hand-over and their clearance.', 'Approve', false,
+        () => API.rpc('cms_handover_approve', { p_id: b.dataset.appr, p_note: null, p_cancel: false }));
+      if (ok) { toast('Hand-over approved'); loadItemsPending(); render(); }
+    }));
+  }
+
+  async function loadItemsPending() {
+    try { state.itemsPending = await API.rpc('cms_items_pending'); drawBell(); } catch (e) { /* reminders only */ }
+  }
+  function itemTasks() {
+    const x = state.itemsPending; const t = []; if (!x) return t;
+    if (x.mine_to_confirm && selfOn('items')) t.push({ ic: 'box', tone: 'green', title: `${num(x.mine_to_confirm)} item${x.mine_to_confirm === 1 ? '' : 's'} for you to confirm`, sub: 'My Items', href: '#/me/items' });
+    if (x.my_handover && selfOn('items')) t.push({ ic: 'box', tone: 'orange', title: 'Hand over your items', sub: `By ${dShort(x.my_handover)}`, href: '#/me/items' });
+    if (x.to_approve) t.push({ ic: 'check-circle', tone: 'violet', title: `${num(x.to_approve)} hand-over${x.to_approve === 1 ? '' : 's'} for you to approve`, sub: 'Everything is back', href: selfOn('items') ? '#/me/items' : '#/assets' });
+    if (x.hr_handover_due && can('assets', 'E')) t.push({ ic: 'box', tone: 'rose', title: `${num(x.hr_handover_due)} hand-over${x.hr_handover_due === 1 ? '' : 's'} due within 7 days`, sub: 'Items & Hand-over', href: '#/assets' });
+    if (x.hr_handover_ready && can('assets', 'E')) t.push({ ic: 'check-circle', tone: 'green', title: `${num(x.hr_handover_ready)} hand-over${x.hr_handover_ready === 1 ? '' : 's'} ready to approve`, sub: 'All items are back', href: '#/assets' });
+    if (x.hr_unconfirmed && can('assets', 'E')) t.push({ ic: 'box', tone: 'orange', title: `${num(x.hr_unconfirmed)} items not confirmed by staff`, sub: 'Issued more than 3 days ago', href: '#/assets' });
+    return t;
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -2297,7 +2551,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    me: meHomePage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    me: meHomePage, 'me/items': meItemsPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -2464,7 +2718,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

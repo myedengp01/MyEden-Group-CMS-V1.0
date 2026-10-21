@@ -18,6 +18,7 @@ window.CMS_MENU = [
     { route: 'me/profile', label: 'My Profile', icon: 'users', phase: 4, live: true, self: 'profile', desc: 'Your employment and personal details. Changes are sent to HR for approval.' },
     { route: 'me/payslips', label: 'My Payslips & EA', icon: 'wallet', phase: 4, live: true, self: ['payslips', 'ea'], desc: 'Payslips and EA forms HR has released to you, from finalised payroll months. View, print or save as PDF.' },
     { route: 'me/salary', label: 'My Salary History', icon: 'trend', phase: 4, live: true, self: 'salary', desc: 'Your salary and each change, by month.' },
+    { route: 'me/items', label: 'My Items', icon: 'box', phase: 4, live: true, self: 'items', desc: 'Company items issued to you: confirm what you received, and hand them over when you leave.' },
   ] },
   { section: 'Workspace', items: [
     { route: 'dashboard', label: 'Dashboard', icon: 'home', phase: 0, desc: 'Today across MyEden Group: people, positions, applications, approvals and your tasks.' },
@@ -68,7 +69,7 @@ window.CMS_MENU = [
       { route: 'performance', label: 'KPI & Appraisal', phase: 5, desc: 'Appraisals and probation confirmation. KPI grades for annual leave carry forward are already live in MyPayroll (Time & leave › KPI grades & carry forward).' },
       { route: 'training', label: 'Training & Certificates', phase: 5, desc: 'First aid, SKM, ECCE and other certificates, with expiry reminders.' },
     ] },
-    { route: 'assets', label: 'Assets & Equipment', icon: 'box', phase: 5, desc: 'Laptops, keys, uniforms and devices issued to staff, returned at offboarding.' },
+    { route: 'assets', label: 'Items & Hand-over', icon: 'box', phase: 4, live: true, desc: 'Every company item issued to staff — email and system accounts, keys, cards, thumb drives, devices, uniforms, handbook — confirmed by the person, changed or returned during employment, and handed over at offboarding with a deadline and approval.' },
     { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, source: 'MEG-EAF V2', desc: 'Appointment, confirmation, service and other letters on company letterheads.' },
     { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators (in MEG-EAF V2).' },
     { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Every claim waiting for approval, processing or payment, across all MEG-FORMS forms.' },
