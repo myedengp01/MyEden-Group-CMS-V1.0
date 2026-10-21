@@ -845,3 +845,36 @@ table.data tr.grp td { background: var(--soft); font-weight: 800; font-size: 12p
 .switch input:checked + span { background: var(--green); } .switch input:checked + span::after { transform: translateX(16px); }
 .switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media print { body.doc-mode .sheet.letter .lt-head { margin-top: 0; } body.doc-mode mark.lt-miss { background: none; color: inherit; } }
+
+/* ---------------------------------------------------------------- 5e · Reports & Analytics */
+.viz-root { --vz-1: #2a78d6; --vz-2: #eb6834; --vz-3: #1baf7a; --vz-4: #eda100; --vz-grid: #e6e9ef; --vz-axis: #c9ced8; --vz-ink: #52514e; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .viz-root { --vz-1: #3987e5; --vz-2: #d95926; --vz-3: #199e70; --vz-4: #c98500; --vz-grid: #1e2a42; --vz-axis: #33415c; --vz-ink: #c3c2b7; } }
+:root[data-theme="dark"] .viz-root { --vz-1: #3987e5; --vz-2: #d95926; --vz-3: #199e70; --vz-4: #c98500; --vz-grid: #1e2a42; --vz-axis: #33415c; --vz-ink: #c3c2b7; }
+.rp-filters { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.rp-f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 700; color: var(--mute); } .rp-f select { width: auto; min-width: 160px; }
+.rp-tab { display: flex; flex-direction: column; gap: 12px; }
+.rp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.rp-kpi { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow); }
+.rp-kpi span { font-size: 12px; font-weight: 700; color: var(--mute); } .rp-kpi b { font-size: 24px; letter-spacing: -.01em; } .rp-kpi small { font-size: 12px; color: var(--mute); }
+.rp-kpi.warn { border-color: color-mix(in srgb, var(--orange) 45%, var(--line)); }
+.rp-2 > .card { margin: 0; }
+.rp-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.rp-list summary { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.vz-wrap { position: relative; }
+.vz-scroll { overflow-x: auto; }
+.vz-svg { display: block; width: 100%; min-width: 560px; height: auto; }
+.vz-grid { stroke: var(--vz-grid); stroke-width: 1; } .vz-axis { stroke: var(--vz-axis); stroke-width: 1; }
+.vz-tick { fill: var(--vz-ink); font-size: 11px; }
+.vz-mark { stroke: none; outline: none; cursor: default; transition: opacity .1s; } .vz-mark:hover, .vz-mark:focus { opacity: .8; }
+.vz-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--mute); margin: 0 0 6px; }
+.vz-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.vz-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 6px 9px; font-size: 12px; display: flex; flex-direction: column; min-width: 90px; white-space: nowrap; }
+.vz-tip[hidden] { display: none; }
+.vz-tip b { font-size: 14px; } .vz-tip span, .vz-tip small { color: var(--mute); }
+.vz-table summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--blue); margin-top: 6px; }
+.vz-hbars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.vz-hbars li { display: grid; grid-template-columns: minmax(90px, 38%) 1fr; gap: 10px; align-items: center; font-size: 13px; outline: none; }
+.vz-hbars li:focus .vz-hl, .vz-hbars li:hover .vz-hl { color: var(--ink); }
+.vz-hl { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vz-ht { display: flex; align-items: center; gap: 8px; min-width: 0; } .vz-ht i { display: block; height: 12px; border-radius: 0 4px 4px 0; min-width: 2px; } .vz-ht b { font-size: 13px; white-space: nowrap; } .vz-ht small { color: var(--mute); }
+table.data tr.tot td { border-top: 2px solid var(--line); background: var(--soft); }

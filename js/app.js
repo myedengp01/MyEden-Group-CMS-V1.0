@@ -3861,6 +3861,203 @@
     }));
   }
 
+  // ================================================================ 5e · REPORTS & ANALYTICS
+  // Charts are inline SVG: one y-axis, thin bars with a 2px gap, rounded data ends, a legend for 2+ series, hover tooltips,
+  // and a table view under every chart. Company colours follow the company (never its rank).
+  const VZ_CO = ['MEG', 'MEH', 'HD', 'ABP'];
+  const vzColor = (key, keys) => { const i = VZ_CO.indexOf(key); return i >= 0 ? `var(--vz-${i + 1})` : `var(--vz-${Math.min(4, keys.indexOf(key) + 1)})`; };
+  const niceMax = (v) => { if (!(v > 0)) return 1; const p = 10 ** Math.floor(Math.log10(v)); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
+  const ymLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${MONTHS[m - 1].slice(0, 3)} ${String(y).slice(2)}`; };
+  const compact = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(1)}m` : Math.abs(v) >= 1e4 ? `${Math.round(v / 1e3)}k` : Math.abs(v) >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : String(Math.round(v * 10) / 10));
+  // stacked / single vertical bars: cats = labels, series = [{key, label, values[]}]
+  function vzBars({ cats, series, fmt = num, h = 240, colors }) {
+    const W = Math.max(900, cats.length * 46 + 60); const L = 48; const B = 26; const T = 10; const ih = h - B - T; const iw = W - L - 8;
+    const tot = cats.map((_, i) => series.reduce((a, s) => a + (s.values[i] || 0), 0)); const int = fmt === num;
+    const max = int ? Math.max(4, Math.ceil(niceMax(Math.max(...tot, 0)) / 4) * 4) : niceMax(Math.max(...tot, 0));
+    const bw = Math.min(34, iw / cats.length - 8); const step = iw / cats.length; const every = Math.ceil(cats.length / 14);
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
+    let svg = `<svg class="vz-svg" viewBox="0 0 ${W} ${h}" role="img" preserveAspectRatio="xMinYMin meet">`;
+    ticks.forEach((t) => { const y = T + ih - (t / max) * ih; svg += `<line class="vz-grid" x1="${L}" x2="${W - 8}" y1="${y}" y2="${y}"/><text class="vz-tick" x="${L - 6}" y="${y + 4}" text-anchor="end">${esc(compact(t))}</text>`; });
+    cats.forEach((c, i) => {
+      const x = L + i * step + (step - bw) / 2; let y0 = T + ih; const segs = series.map((s) => ({ s, v: s.values[i] || 0 })).filter((z) => z.v > 0);
+      segs.forEach(({ s, v }, k) => { const hh = (v / max) * ih; const top = k === segs.length - 1; const y = y0 - hh; const gap = k ? 2 : 0;
+        const rh = Math.max(0, hh - gap); const r = top ? Math.min(4, rh / 2, bw / 2) : 0;
+        const d = r ? `M${x},${y0 - gap} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${y0 - gap} Z` : `M${x},${y0 - gap} V${y} H${x + bw} V${y0 - gap} Z`;
+        svg += `<path class="vz-mark" d="${d}" fill="${colors ? colors(s.key) : 'var(--vz-1)'}" data-tip="${esc(`${c}|${s.label}|${fmt(v)}|${series.length > 1 ? fmt(tot[i]) : ''}`)}" tabindex="0"/>`; y0 = y; });
+      if (i % every === 0 || i === cats.length - 1) svg += `<text class="vz-tick" x="${L + i * step + step / 2}" y="${h - 8}" text-anchor="middle">${esc(c)}</text>`;
+    });
+    svg += `<line class="vz-axis" x1="${L}" x2="${W - 8}" y1="${T + ih}" y2="${T + ih}"/></svg>`;
+    const legend = series.length > 1 ? `<div class="vz-legend">${series.map((s) => `<span><i style="background:${colors ? colors(s.key) : 'var(--vz-1)'}"></i>${esc(s.label)}</span>`).join('')}</div>` : '';
+    const table = `<details class="vz-table"><summary>Table</summary><div class="table-wrap"><table class="data compact"><thead><tr><th></th>${series.map((s) => `<th class="num">${esc(s.label)}</th>`).join('')}${series.length > 1 ? '<th class="num">Total</th>' : ''}</tr></thead><tbody>
+      ${cats.map((c, i) => `<tr><td>${esc(c)}</td>${series.map((s) => `<td class="num">${fmt(s.values[i] || 0)}</td>`).join('')}${series.length > 1 ? `<td class="num"><b>${fmt(tot[i])}</b></td>` : ''}</tr>`).join('')}</tbody></table></div></details>`;
+    return `${legend}<div class="vz-wrap"><div class="vz-scroll">${svg}</div><div class="vz-tip" hidden></div></div>${table}`;
+  }
+  // horizontal bars with the value written at the end of each bar
+  function vzHBars(rows, fmt = num, color = 'var(--vz-1)') {
+    if (!rows.length) return '<div class="empty small"><p>No data</p></div>';
+    const max = Math.max(...rows.map((r) => r.value), 1);
+    return `<ul class="vz-hbars">${rows.map((r) => `<li data-tip="${esc(`${r.label}||${fmt(r.value)}${r.note ? ` · ${r.note}` : ''}|`)}" tabindex="0"><span class="vz-hl">${esc(r.label)}</span><span class="vz-ht"><i style="width:${r.value > 0 ? Math.max(1.5, (r.value / max) * 100) : 0}%;background:${r.color || color}"></i><b>${fmt(r.value)}</b>${r.note ? `<small>${esc(r.note)}</small>` : ''}</span></li>`).join('')}</ul>`;
+  }
+  function wireTips(root) {
+    $$('.vz-wrap, .vz-hbars', root).forEach((wrap) => {
+      const host = wrap.classList.contains('vz-wrap') ? wrap : wrap.parentElement; let tip = $('.vz-tip', host);
+      if (!tip) { tip = document.createElement('div'); tip.className = 'vz-tip'; tip.hidden = true; host.style.position = 'relative'; host.appendChild(tip); }
+      const show = (el, ev) => { const [cat, ser, val, tot] = el.dataset.tip.split('|'); tip.replaceChildren();
+        const b = document.createElement('b'); b.textContent = val; const s1 = document.createElement('span'); s1.textContent = ser ? `${ser} · ${cat}` : cat; tip.append(b, s1);
+        if (tot) { const s2 = document.createElement('small'); s2.textContent = `Total ${tot}`; tip.append(s2); }
+        tip.hidden = false; const hr = host.getBoundingClientRect(); const r = el.getBoundingClientRect();
+        const x = (ev && ev.clientX ? ev.clientX : r.left + r.width / 2) - hr.left; const y = r.top - hr.top;
+        tip.style.left = `${Math.min(Math.max(8, x - tip.offsetWidth / 2), hr.width - tip.offsetWidth - 8)}px`; tip.style.top = `${Math.max(0, y - tip.offsetHeight - 8)}px`; };
+      $$('[data-tip]', wrap).forEach((el) => { el.addEventListener('pointermove', (e) => show(el, e)); el.addEventListener('focus', () => show(el)); el.addEventListener('pointerleave', () => { tip.hidden = true; }); el.addEventListener('blur', () => { tip.hidden = true; }); });
+    });
+  }
+
+  async function reportsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="rp-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_reports'); } catch (e) { $('#rp-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const today = D.today; const curY = Number(today.slice(0, 4));
+    const coName = (c) => coShort(c) || (D.companies.find((x) => x.code === c) || {}).name || c || 'Not set';
+    const used = [...new Set([...D.people.map((p) => p.co), ...D.payroll.map((p) => p.co), ...D.claims.map((c) => c.co)].filter(Boolean))].sort((a, b) => (VZ_CO.indexOf(a) + 1 || 99) - (VZ_CO.indexOf(b) + 1 || 99));
+    const colors = (k) => vzColor(k, used);
+    const years = []; for (let y = Math.min(...D.people.map((p) => Number(String(p.s || today).slice(0, 4))), curY); y <= curY; y += 1) years.push(y);
+    const f = { tab: new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'people', co: 'all', range: '12m' };
+    const lastDay = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
+    const monthsIn = () => {
+      let a; let b;
+      if (f.range === '12m') { const [y, m] = today.split('-').map(Number); b = `${y}-${String(m).padStart(2, '0')}`; const d = new Date(Date.UTC(y, m - 12, 1)); a = d.toISOString().slice(0, 7); }
+      else { a = `${f.range}-01`; b = Number(f.range) === curY ? today.slice(0, 7) : `${f.range}-12`; }
+      const out = []; let [y, m] = a.split('-').map(Number); const [by, bm] = b.split('-').map(Number);
+      while (y < by || (y === by && m <= bm)) { out.push(`${y}-${String(m).padStart(2, '0')}`); m += 1; if (m > 12) { m = 1; y += 1; } }
+      return out;
+    };
+    const coOk = (c) => f.co === 'all' || c === f.co;
+    const activeAt = (p, d) => p.s && p.s <= d && (!p.e || p.e >= d);
+    const monthsBetween = (a, b) => { const x = new Date(a); const y = new Date(b); return (y.getUTCFullYear() - x.getUTCFullYear()) * 12 + (y.getUTCMonth() - x.getUTCMonth()) + (y.getUTCDate() >= x.getUTCDate() ? 0 : -1); };
+    const BANDS = [['Under 3 months', 0, 3], ['3–6 months', 3, 6], ['6–12 months', 6, 12], ['1–2 years', 12, 24], ['2–5 years', 24, 60], ['5 years or more', 60, 9999]];
+    const band = (mo) => (BANDS.find(([, a, b]) => mo >= a && mo < b) || BANDS[0])[0];
+    const pct = (v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`;
+    const kpi = (lbl, val, sub, tone = '') => `<div class="rp-kpi ${tone}"><span>${esc(lbl)}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    const csvBtn = (name) => (D.can_export ? `<button type="button" class="btn sm ghost" data-csv="${esc(name)}">${icon('download')}CSV</button>` : '');
+    const CSV = {};
+    const toCsv = (rows) => rows.map((r) => r.map((v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(',')).join('\n');
+    const rangeTxt = () => (f.range === '12m' ? 'last 12 months' : String(f.range));
+
+    function peopleTab(box) {
+      const P = D.people.filter((p) => coOk(p.co)); const M = monthsIn(); const ends = M.map((m) => (m === today.slice(0, 7) ? today : lastDay(m)));
+      const from = `${M[0]}-01`; const to = ends[ends.length - 1];
+      const cos = used.filter((c) => f.co === 'all' || c === f.co);
+      const series = cos.map((c) => ({ key: c, label: coName(c), values: ends.map((d) => P.filter((p) => p.co === c && activeAt(p, d)).length) }));
+      const hc = ends.map((d) => P.filter((p) => activeAt(p, d)).length); const avg = hc.reduce((a, b) => a + b, 0) / (hc.length || 1);
+      const joined = P.filter((p) => p.s && p.s >= from && p.s <= to); const left = P.filter((p) => p.e && p.e >= from && p.e <= to);
+      const now = P.filter((p) => activeAt(p, today)); const ten = now.map((p) => monthsBetween(p.s, today)); const avgTen = ten.length ? ten.reduce((a, b) => a + b, 0) / ten.length : 0;
+      const dept = {}; now.forEach((p) => { const k = p.dept || 'Not set'; dept[k] = (dept[k] || 0) + 1; });
+      const gender = { M: 0, F: 0, '?': 0 }; now.forEach((p) => { gender[p.g === 'M' || p.g === 'F' ? p.g : '?'] += 1; });
+      const tb = {}; now.forEach((p) => { const b = band(monthsBetween(p.s, today)); tb[b] = (tb[b] || 0) + 1; });
+      CSV.headcount = [['Month', ...series.map((s) => s.label), 'Total'], ...M.map((m, i) => [m, ...series.map((s) => s.values[i]), hc[i]])];
+      CSV.staff = [['Name', 'Employee ID', 'Company', 'Department', 'Position', 'Started', 'Months in service'], ...now.map((p) => [p.name || '', p.eid || '', coName(p.co), p.dept || '', p.pos || '', p.s, monthsBetween(p.s, today)])];
+      box.innerHTML = `<div class="rp-kpis">${kpi('Staff now', num(now.length), f.co === 'all' ? cos.map((c) => `${esc(coName(c))} ${now.filter((p) => p.co === c).length}`).join(' · ') : '')}
+          ${kpi(`Joined · ${rangeTxt()}`, num(joined.length))}${kpi(`Left · ${rangeTxt()}`, num(left.length))}
+          ${kpi('Turnover', pct(avg ? (left.length / avg) * 100 : 0), `${left.length} left ÷ ${avg.toFixed(1)} average staff`)}${kpi('Average service (staff now)', `${(avgTen / 12).toFixed(1)} yrs`, `${Math.round(avgTen)} months`)}</div>
+        <section class="card"><div class="card-head"><h3>${icon('users')}Headcount at the end of each month</h3>${csvBtn('headcount')}</div>${vzBars({ cats: M.map(ymLabel), series, colors })}
+          <p class="muted small">Counted from each person's start date and last working day (Employee Master and payroll). The current month counts today.</p></section>
+        <div class="rp-2"><section class="card"><div class="card-head"><h3>${icon('building')}Staff now by department</h3></div>${vzHBars(Object.entries(dept).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v })))}</section>
+          <section class="card"><div class="card-head"><h3>${icon('clock')}Staff now by length of service</h3></div>${vzHBars(BANDS.map(([b]) => ({ label: b, value: tb[b] || 0 })))}
+            <h4 class="sec-h">Gender</h4>${vzHBars([{ label: 'Female', value: gender.F }, { label: 'Male', value: gender.M }, ...(gender['?'] ? [{ label: 'Not recorded', value: gender['?'] }] : [])])}</section></div>
+        ${D.can_names ? `<details class="card rp-list"><summary><b>Staff now (${now.length})</b> ${csvBtn('staff')}</summary><div class="table-wrap"><table class="data compact"><thead><tr><th>Name</th><th>Company</th><th>Department</th><th>Started</th><th class="num">Service</th></tr></thead><tbody>
+          ${now.sort((a, b) => a.s.localeCompare(b.s)).map((p) => `<tr><td><b>${esc(p.name || '')}</b><small class="sub">${esc(p.eid || '')}</small></td><td>${esc(coName(p.co))}</td><td>${esc(p.dept || '—')}</td><td class="nowrap">${dShort(p.s)}</td><td class="num">${(monthsBetween(p.s, today) / 12).toFixed(1)} yrs</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
+    }
+
+    function turnoverTab(box) {
+      const P = D.people.filter((p) => coOk(p.co)); const M = monthsIn(); const from = `${M[0]}-01`; const to = M[M.length - 1] === today.slice(0, 7) ? today : lastDay(M[M.length - 1]);
+      const cos = used.filter((c) => f.co === 'all' || c === f.co);
+      const left = P.filter((p) => p.e && p.e >= from && p.e <= to);
+      const series = cos.map((c) => ({ key: c, label: coName(c), values: M.map((m) => left.filter((p) => p.co === c && p.e.slice(0, 7) === m).length) }));
+      const tb = {}; left.forEach((p) => { const b = band(monthsBetween(p.s, p.e)); tb[b] = (tb[b] || 0) + 1; });
+      const rs = {}; left.forEach((p) => { const k = p.r ? p.r.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : 'Not recorded'; rs[k] = (rs[k] || 0) + 1; });
+      const yrs = years.map((y) => { const a = `${y}-01-01`; const b = y === curY ? today : `${y}-12-31`;
+        const ms = []; for (let m = 1; m <= (y === curY ? Number(today.slice(5, 7)) : 12); m += 1) ms.push(m === Number(today.slice(5, 7)) && y === curY ? today : lastDay(`${y}-${String(m).padStart(2, '0')}`));
+        const avg = ms.reduce((s, d) => s + P.filter((p) => activeAt(p, d)).length, 0) / (ms.length || 1);
+        const j = P.filter((p) => p.s >= a && p.s <= b).length; const l = P.filter((p) => p.e && p.e >= a && p.e <= b).length; const early = P.filter((p) => p.e && p.e >= a && p.e <= b && monthsBetween(p.s, p.e) < 3).length;
+        return { y, start: P.filter((p) => activeAt(p, `${y - 1}-12-31`)).length, j, l, end: P.filter((p) => activeAt(p, b)).length, avg, rate: avg ? (l / avg) * 100 : 0, early }; });
+      const noReason = left.filter((p) => !p.r).length;
+      CSV.leavers = [['Name', 'Employee ID', 'Company', 'Department', 'Position', 'Started', 'Last day', 'Months in service', 'Reason'], ...left.map((p) => [p.name || '', p.eid || '', coName(p.co), p.dept || '', p.pos || '', p.s, p.e, monthsBetween(p.s, p.e), p.r || ''])];
+      CSV.years = [['Year', 'Staff at start', 'Joined', 'Left', 'Staff at end', 'Average staff', 'Turnover %', 'Left within 3 months'], ...yrs.map((r) => [r.y, r.start, r.j, r.l, r.end, r.avg.toFixed(1), r.rate.toFixed(1), r.early])];
+      box.innerHTML = `<section class="card"><div class="card-head"><h3>${icon('trend')}People who left, by month</h3>${csvBtn('leavers')}</div>${vzBars({ cats: M.map(ymLabel), series, colors })}</section>
+        <div class="rp-2"><section class="card"><div class="card-head"><h3>${icon('clock')}How long leavers stayed · ${esc(rangeTxt())}</h3></div>${vzHBars(BANDS.map(([b]) => ({ label: b, value: tb[b] || 0 })))}</section>
+          <section class="card"><div class="card-head"><h3>${icon('list')}Why they left · ${esc(rangeTxt())}</h3></div>${vzHBars(Object.entries(rs).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, color: k === 'Not recorded' ? 'var(--line)' : undefined })))}
+            ${noReason ? `<p class="muted small">${noReason} leaver${noReason === 1 ? ' has' : 's have'} no leaving reason yet — add it on <a class="link" href="#/people/former">Former Staff</a>.</p>` : ''}</section></div>
+        <section class="card"><div class="card-head"><h3>${icon('chart')}Turnover by year</h3>${csvBtn('years')}</div><div class="table-wrap"><table class="data"><thead><tr><th>Year</th><th class="num">Staff at start</th><th class="num">Joined</th><th class="num">Left</th><th class="num">Staff at end</th><th class="num">Turnover</th><th class="num">Left within 3 months</th></tr></thead><tbody>
+          ${yrs.map((r) => `<tr><td><b>${r.y}</b>${r.y === curY ? ' <small class="muted">so far</small>' : ''}</td><td class="num">${r.start}</td><td class="num">${r.j}</td><td class="num">${r.l}</td><td class="num">${r.end}</td><td class="num"><b>${pct(r.rate)}</b></td><td class="num">${r.early}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Turnover = people who left in the year ÷ the average number of staff at the end of each month.</p></section>
+        ${D.can_names && left.length ? `<details class="card rp-list"><summary><b>Leavers · ${esc(rangeTxt())} (${left.length})</b></summary><div class="table-wrap"><table class="data compact"><thead><tr><th>Name</th><th>Company</th><th>Position</th><th>Last day</th><th class="num">Stayed</th><th>Reason</th></tr></thead><tbody>
+          ${left.sort((a, b) => b.e.localeCompare(a.e)).map((p) => `<tr><td><b>${esc(p.name || '')}</b><small class="sub">${esc(p.eid || '')}</small></td><td>${esc(coName(p.co))}</td><td>${esc(p.pos || '—')}</td><td class="nowrap">${dShort(p.e)}</td><td class="num">${monthsBetween(p.s, p.e)} mo</td><td>${esc(p.r || '—')}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
+    }
+
+    function payrollTab(box) {
+      const M = monthsIn(); const R = D.payroll.filter((r) => coOk(r.co) && M.includes(String(r.period).slice(0, 7)));
+      const months = M.filter((m) => R.some((r) => String(r.period).slice(0, 7) === m));
+      if (!months.length) { box.innerHTML = `<section class="card"><div class="empty"><p>No payroll months in ${esc(rangeTxt())}</p><small class="muted">Payroll in the CMS starts from the months imported into MyPayroll.</small></div></section>`; return; }
+      const cost = (r) => Number(r.gross) + Number(r.epf) + Number(r.socso) + Number(r.eis);
+      const cos = used.filter((c) => R.some((r) => r.co === c));
+      const at = (m, c) => R.filter((r) => String(r.period).slice(0, 7) === m && (!c || r.co === c));
+      const series = cos.map((c) => ({ key: c, label: coName(c), values: months.map((m) => at(m, c).reduce((a, r) => a + cost(r), 0)) }));
+      const rows = months.map((m) => { const xs = at(m); const s = (k) => xs.reduce((a, r) => a + Number(r[k]), 0);
+        return { m, n: s('n'), gross: s('gross'), epf: s('epf'), socso: s('socso'), eis: s('eis'), reimb: s('reimb'), cost: xs.reduce((a, r) => a + cost(r), 0), draft: xs.some((r) => r.status !== 'finalised') }; });
+      const fin = rows.filter((r) => !r.draft); const T = (k, list = rows) => list.reduce((a, r) => a + r[k], 0);
+      CSV.payroll = [['Month', 'Status', 'People paid', 'Gross (RM)', 'EPF employer', 'SOCSO employer', 'EIS employer', 'Employer cost (RM)', 'Reimbursements'], ...rows.map((r) => [r.m, r.draft ? 'draft' : 'finalised', r.n, r.gross.toFixed(2), r.epf.toFixed(2), r.socso.toFixed(2), r.eis.toFixed(2), r.cost.toFixed(2), r.reimb.toFixed(2)])];
+      box.innerHTML = `<div class="rp-kpis">${kpi('Employer cost · finalised months', `${money(T('cost', fin))}`, `${fin.length} month${fin.length === 1 ? '' : 's'}${rows.length > fin.length ? ` · ${rows.length - fin.length} draft not counted` : ''}`)}
+          ${kpi('Average per month', `${money(fin.length ? T('cost', fin) / fin.length : 0)}`)}${kpi('Average cost per person paid', `${money(T('n', fin) ? T('cost', fin) / T('n', fin) : 0)}`, 'per month')}
+          ${kpi('Employer EPF + SOCSO + EIS', `${money(T('epf', fin) + T('socso', fin) + T('eis', fin))}`, 'finalised months')}</div>
+        <section class="card"><div class="card-head"><h3>${icon('wallet')}Employer cost by month (RM)</h3>${csvBtn('payroll')}</div>${vzBars({ cats: months.map((m) => `${ymLabel(m)}${rows.find((r) => r.m === m).draft ? '*' : ''}`), series, colors, fmt: (v) => money(v) })}
+          <p class="muted small">Employer cost = gross pay + employer EPF, SOCSO and EIS, by the company that pays. * = month still in draft. Claims reimbursed through payroll are listed separately below and are not in the cost.</p></section>
+        <section class="card"><div class="card-head"><h3>${icon('list')}Payroll by month</h3></div><div class="table-wrap"><table class="data"><thead><tr><th>Month</th><th class="num">People paid</th><th class="num">Gross</th><th class="num">EPF (employer)</th><th class="num">SOCSO (employer)</th><th class="num">EIS (employer)</th><th class="num">Employer cost</th><th class="num">Reimbursed</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr class="${r.draft ? 'dim' : ''}"><td><b>${esc(ymLabel(r.m))}</b>${r.draft ? ' <span class="tag warn xs">draft</span>' : ''}</td><td class="num">${r.n}</td><td class="num">${m2(r.gross)}</td><td class="num">${m2(r.epf)}</td><td class="num">${m2(r.socso)}</td><td class="num">${m2(r.eis)}</td><td class="num"><b>${m2(r.cost)}</b></td><td class="num">${m2(r.reimb)}</td></tr>`).join('')}
+          <tr class="tot"><td><b>Finalised total</b></td><td class="num">${T('n', fin)}</td><td class="num">${m2(T('gross', fin))}</td><td class="num">${m2(T('epf', fin))}</td><td class="num">${m2(T('socso', fin))}</td><td class="num">${m2(T('eis', fin))}</td><td class="num"><b>${m2(T('cost', fin))}</b></td><td class="num">${m2(T('reimb', fin))}</td></tr></tbody></table></div></section>`;
+    }
+
+    function claimsTab(box) {
+      const M = monthsIn(); const from = `${M[0]}-01`; const to = lastDay(M[M.length - 1]);
+      const C = D.claims.filter((c) => coOk(c.co) && c.sub && c.sub >= from && c.sub <= to);
+      if (!D.claims.length) { box.innerHTML = '<section class="card"><div class="empty"><p>No claims you can view</p></div></section>'; return; }
+      const FORM = (c) => (c.form === 'tec' || c.form === 'tec-v2' ? 'tec' : c.form); const FL = { scf: 'Staff claims (SCF)', mtcf: 'Mileage (MTCF)', tec: 'Teacher tuition (TEC)', prfaf: 'Purchase & funding (PRFAF)' };
+      const rm = C.filter((c) => c.unit === 'RM' && c.stage !== 'disapproved'); const ot = C.filter((c) => c.form === 'otcf' && c.stage !== 'disapproved');
+      const forms = Object.keys(FL).filter((k) => rm.some((c) => FORM(c) === k));
+      const formColor = (k) => `var(--vz-${forms.indexOf(k) + 1})`;
+      const series = forms.map((k) => ({ key: k, label: FL[k], values: M.map((m) => rm.filter((c) => FORM(c) === k && c.sub.slice(0, 7) === m).reduce((a, c) => a + Number(c.amt || 0), 0)) }));
+      const sum = (xs) => xs.reduce((a, c) => a + Number(c.amt || 0), 0);
+      const ST = [['approval', 'Waiting for approval'], ['processing', 'Ready to process'], ['payment', 'Waiting for payment'], ['paid', 'Paid'], ['closed', 'Closed'], ['disapproved', 'Disapproved']];
+      const all = C.filter((c) => c.unit === 'RM'); const waiting = rm.filter((c) => ['approval', 'processing', 'payment'].includes(c.stage));
+      const byCo = used.filter((c) => f.co === 'all' || c === f.co).map((c) => ({ label: coName(c), value: sum(rm.filter((x) => x.co === c)), color: colors(c) })).filter((r) => r.value > 0);
+      CSV.claims = [['Form', 'Company', 'Submitted', 'Amount', 'Unit', 'Stage', 'Paid on'], ...C.map((c) => [c.label, c.co ? coName(c.co) : '', c.sub, c.amt, c.unit, c.stage, c.paid || ''])];
+      box.innerHTML = `<div class="rp-kpis">${kpi(`Claimed · ${rangeTxt()}`, `${money(sum(rm))}`, `${rm.length} claim${rm.length === 1 ? '' : 's'} (not counting disapproved)`)}${kpi('Paid', `${money(sum(rm.filter((c) => c.stage === 'paid')))}`)}
+          ${kpi('Still open', `${money(sum(waiting))}`, `${waiting.length} waiting for approval, processing or payment`, waiting.length ? 'warn' : '')}${ot.length ? kpi('Overtime claimed', `${num(Math.round(ot.reduce((a, c) => a + Number(c.amt || 0), 0) * 10) / 10)} hrs`, `${ot.length} OTCF claim${ot.length === 1 ? '' : 's'}`) : ''}</div>
+        <section class="card"><div class="card-head"><h3>${icon('file-check')}Claims by month submitted (RM)</h3>${csvBtn('claims')}</div>${forms.length ? vzBars({ cats: M.map(ymLabel), series, colors: formColor, fmt: (v) => money(v) }) : '<div class="empty small"><p>No RM claims in this period</p></div>'}
+          <p class="muted small">Only the claim forms you are allowed to see are counted. Overtime is in hours, so it is shown on its own.</p></section>
+        <div class="rp-2"><section class="card"><div class="card-head"><h3>${icon('building')}Claimed by company (RM)</h3></div>${vzHBars(byCo, (v) => money(v))}</section>
+          <section class="card"><div class="card-head"><h3>${icon('list')}Where the claims are</h3></div><div class="table-wrap"><table class="data compact"><thead><tr><th>Stage</th><th class="num">Claims</th><th class="num">RM</th>${ot.length ? '<th class="num">OT hours</th>' : ''}</tr></thead><tbody>
+            ${ST.map(([k, l]) => { const xs = all.filter((c) => c.stage === k); const os = C.filter((c) => c.form === 'otcf' && c.stage === k); return xs.length || os.length ? `<tr><td>${esc(l)}</td><td class="num">${xs.length + os.length}</td><td class="num">${m2(sum(xs))}</td>${ot.length ? `<td class="num">${num(Math.round(os.reduce((a, c) => a + Number(c.amt || 0), 0) * 10) / 10)}</td>` : ''}</tr>` : ''; }).join('')}</tbody></table></div>
+            <p class="muted small">Open: <a class="link" href="#/forms/scf">Staff Claims</a> · <a class="link" href="#/forms/mtcf">Mileage</a> · <a class="link" href="#/forms/tec">Tuition</a> · <a class="link" href="#/overtime">Overtime</a></p></section></div>`;
+    }
+
+    const draw = () => {
+      const TABS = [['people', 'Headcount'], ['turnover', 'Turnover'], ...(D.can_pay ? [['payroll', 'Payroll cost']] : []), ['claims', 'Claims']];
+      if (!TABS.some(([k]) => k === f.tab)) f.tab = 'people';
+      $('#rp-body', el).innerHTML = `<div class="rp-filters card"><div class="seg ss-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <span class="sp"></span><label class="rp-f"><span>Company</span><select id="rp-co"><option value="all">All companies</option>${used.map((c) => `<option value="${esc(c)}" ${f.co === c ? 'selected' : ''}>${esc(coName(c))}</option>`).join('')}</select></label>
+          <label class="rp-f"><span>Period</span><select id="rp-range"><option value="12m">Last 12 months</option>${years.slice().reverse().map((y) => `<option value="${y}" ${String(f.range) === String(y) ? 'selected' : ''}>${y}${y === curY ? ' (so far)' : ''}</option>`).join('')}</select></label></div>
+        <div id="rp-tab" class="rp-tab viz-root"></div>`;
+      const box = $('#rp-tab', el);
+      ({ people: peopleTab, turnover: turnoverTab, payroll: payrollTab, claims: claimsTab })[f.tab](box);
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#rp-co', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+      $('#rp-range', el).addEventListener('change', (e) => { f.range = e.target.value; draw(); });
+      $$('[data-csv]', el).forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const k = b.dataset.csv;
+        download(`MyEden-${k}-${f.co === 'all' ? 'all' : f.co}-${f.range}.csv`, new Blob([`﻿${toCsv(CSV[k] || [])}`], { type: 'text/csv;charset=utf-8' })); }));
+      wireTips(box); fitTables();
+    };
+    draw();
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -3881,7 +4078,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
