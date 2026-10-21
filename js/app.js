@@ -2191,6 +2191,9 @@
     const who = (r) => `<td><b>${esc(r.name)}</b>${r.director ? ' <span class="tag blue xs">Director</span>' : ''}<small class="sub">${esc([r.employee_id, r.title].filter(Boolean).join(' · '))}</small></td>`;
     const tab = () => {
       const box = $('#ss-tab', el); const list = people();
+      // keep the reader where they were after a change (list box and page)
+      const keep = { list: $('.table-wrap', box)?.scrollTop || 0, page: pageScroller().scrollTop };
+      requestAnimationFrame(() => { const w = $('.table-wrap', box); if (w) w.scrollTop = keep.list; pageScroller().scrollTop = keep.page; });
       if (f.tab === 'access') {
         box.innerHTML = `${edit ? `<div class="bulk-bar"><span id="ssn">${f.sel.size} selected</span><select id="bpart" aria-label="Part">${PARTS.filter((p) => PART_READY(p[0])).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
             <button type="button" class="btn sm primary" data-bulk="1" ${f.sel.size ? '' : 'disabled'}>Switch on</button><button type="button" class="btn sm" data-bulk="0" ${f.sel.size ? '' : 'disabled'}>Switch off</button></div>` : ''}

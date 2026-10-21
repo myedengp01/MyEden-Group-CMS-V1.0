@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-14:35 · **Phase 4 · Staff self-service** (Phases 0–4 live)
+**Current version:** v2026.10.21-15:00 · **Phase 4 · Staff self-service** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -97,6 +97,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-15:00** — Self-service Access: after a change (Reports to, a switch, a release) the list and the page stay where you were instead of jumping to the top.
 - **v2026.10.21-14:35** — Phase 4c · **My Claims** (own SCF / OTCF / MTCF claims and where each is: waiting, approved, paid, not approved; buttons to the
   forms for a new claim) and **My Handbook** (assignment, opened / read / acknowledged, opens the handbook in MEG-EAF V2).
   Phase 4d · **My Leave** built but switched off per person: apply (MC photo for sick / hospitalisation leave), cancel, approvers shown;
