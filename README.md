@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.21-16:10 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.21-16:25 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -50,6 +50,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 22. `20261021_cms_self_leave.sql` — Phase 4d My Leave (built, switched off): leave requests, approval along Reports to (directors approve anyone below; a director by the other director or HR; none set → HR), HR tick for "entered in payroll"
 23. `20261021_cms_careers.sql` — Phase 5a MyEden salary caps beside each JD band (with history), JD position per person (matched by title or set by HR), Career Paths and the staff timeline
 24. `20261021_cms_appraisals.sql` — Phase 5b probation reviews and annual appraisals (JD KPI scores, KPI grade, recommendation), approval applies confirmation / probation extension / KPI grade to payroll / promotion; My Appraisal for self-assessment and reviewers
+25. `20261021_cms_probation_rules.sql` — probation end date = confirmation date; probation length from the record, else the offer's probation months, else assumed 3 months; extension letter tracking and an automatic follow-up review
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -99,6 +100,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.21-16:25** — Probation rules: the probation end date is the confirmation date (confirming sets the confirmation date to the probation end,
+  not the approval day). Probation length varies (3–6 months or longer): taken from the record, else the offer's probation months in
+  MEG-EAF V2, else assumed 3 months and marked "assumed"; HR sets the exact end date when starting the review. An approved extension
+  saves the new end date, opens a follow-up probation review due on it, and asks for the **probation extension letter** (bell reminder
+  until HR marks it issued, with a link to HR Letters in MEG-EAF V2).
 - **v2026.10.21-16:10** — Phase 5b · **KPI & Appraisal** (Performance & Growth). Tabs: In progress, Probation due (on probation in payroll, ending within
   30 days or overdue), Annual {year} (start one or all), Approved. HR starts an appraisal; the reviewer (the person they report to, or HR)
   scores each JD KPI + conduct, attendance and child safety (1–5), gives the KPI grade E/S/A/I/U, strengths, improvements, goals and a

@@ -2813,8 +2813,9 @@
   const REC_LBL = { confirm: 'Confirm', extend: 'Extend probation', end: 'Do not confirm (end employment)', increment: 'Salary increment', promote: 'Promote to the next level',
     no_change: 'No change', pip: 'Performance improvement plan' };
   const AP_ST = { open: ['In progress', 'warn'], reviewed: ['Reviewed · waiting for approval', 'blue'], approved: ['Approved', 'ok'], cancelled: ['Cancelled', ''] };
+  const PROB_SRC = { recorded: 'set on the record', offer: 'from the offer (probation months)', assumed: 'assumed 3 months — set it when starting the review' };
   const SELF_Q = [['achievements', 'What went well / what you achieved'], ['challenges', 'What was difficult'], ['goals', 'Your goals for the next period'], ['support', 'Support or training you need'], ['comment', 'Anything else']];
-  const apTag = (a) => `<span class="tag ${AP_ST[a.status][1]} xs">${AP_ST[a.status][0]}</span>${a.self_requested ? (a.self_done ? ' <span class="tag ok xs">self-assessment in</span>' : ' <span class="tag xs">self-assessment pending</span>') : ''}`;
+  const apTag = (a) => `<span class="tag ${AP_ST[a.status][1]} xs">${AP_ST[a.status][0]}</span>${a.status === 'approved' && a.recommendation === 'extend' && !a.letter_issued_at ? ' <span class="tag bad xs">extension letter to issue</span>' : ''}${a.follow_up ? ' <span class="tag xs">after extension</span>' : ''}${a.self_requested ? (a.self_done ? ' <span class="tag ok xs">self-assessment in</span>' : ' <span class="tag xs">self-assessment pending</span>') : ''}`;
   const apName = (a) => (a.kind === 'annual' ? `Annual appraisal ${a.year}` : 'Probation review');
   const gradeTag = (g, L = GRADE_LBL) => (g ? `<span class="tag ${g === 'E' || g === 'S' ? 'ok' : g === 'A' ? 'blue' : 'bad'} xs">${esc(g)} · ${esc(L[g] || '')}</span>` : '—');
 
@@ -2841,6 +2842,7 @@
     const ok = await modal({ title: `${apName(A)} · ${A.name}`, ok: edit ? (A.status === 'reviewed' ? 'Save changes' : 'Save review') : null, cancel: 'Close', wide: true,
       body: `<p class="muted small">${esc([A.employee_id, A.title, coShort(A.company)].filter(Boolean).join(' · '))}${A.position ? ` · JD ${esc(A.position.level)} ${esc(A.position.title)}` : ' · not placed on a JD position (Career Paths)'}
           · reviewer ${esc(A.reviewer || 'HR')} ${apTag(A)}</p>
+        ${prob ? `<p class="small">Probation ends (= confirmation date): <b>${A.probation_end ? dShort(A.probation_end) : '—'}</b> <span class="muted">${esc(PROB_SRC[A.probation_source] || '')}</span></p>` : ''}
         ${A.self_requested ? `<details class="card" ${A.self_done ? 'open' : ''}><summary><b>Self-assessment</b> ${A.self_done ? `<small class="muted">${dShort(A.self_at)}</small>` : '<small class="muted">not sent yet</small>'}</summary>
           ${A.self_answers ? SELF_Q.map(([k, l]) => (A.self_answers[k] ? `<p><b>${l}:</b> ${esc(A.self_answers[k])}</p>` : '')).join('') : ''}</details>` : ''}
         <div class="table-wrap"><table class="data compact ap-scores"><thead><tr><th>KPI area</th><th>Score (1–5)</th><th>Comment</th></tr></thead><tbody>
@@ -2856,6 +2858,8 @@
           <label class="fld fld-2"><span>Strengths</span><textarea name="str" rows="2" ${edit ? '' : 'disabled'}>${esc(A.strengths || '')}</textarea></label>
           <label class="fld fld-2"><span>To improve</span><textarea name="imp" rows="2" ${edit ? '' : 'disabled'}>${esc(A.improvements || '')}</textarea></label>
           <label class="fld fld-2"><span>Goals for the next period</span><textarea name="goals" rows="2" ${edit ? '' : 'disabled'}>${esc(A.goals || '')}</textarea></label></div>
+        ${A.status === 'approved' && A.recommendation === 'extend' ? (A.letter_issued_at ? `<p class="small">Extension letter issued ${dShort(A.letter_issued_at)}${A.letter_ref ? ` · ${esc(A.letter_ref)}` : ''}</p>`
+          : `<div class="err-box"><b>Issue the probation extension letter</b> (new end date ${dShort(A.rec_extend_to)}).<div class="btn-row">${eafBtn('letters', 'Open HR Letters in MEG-EAF V2', 'sm')}${A.role === 'hr' ? '<button type="button" class="btn sm primary" data-letter>Mark letter as issued…</button>' : ''}</div></div>`) : ''}
         ${A.status === 'approved' ? `<div class="warn-box"><b>Approved</b> by ${esc(A.approved_by || '')} · ${dShort(A.approved_at)}${A.outcome ? `<br>${esc(Object.entries(A.outcome).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · '))}` : ''}</div>` : ''}
         ${A.can_approve ? `<div class="btn-row"><button type="button" class="btn primary" data-appr>Approve and apply…</button><button type="button" class="btn" data-ret>Return to reviewer…</button></div>
           <p class="muted small">Approving applies the outcome: ${prob ? 'confirmation in payroll and the Employee Master, or the new probation end date' : 'the KPI grade goes to payroll (annual-leave carry forward); a promotion moves them to the new JD level; a salary increment is then recorded in Increments &amp; Reviews'}.</p>` : ''}`,
@@ -2872,6 +2876,10 @@
           if (done) { if (ret) toast('Returned to the reviewer'); after?.(); }
         };
         $('[data-appr]', w)?.addEventListener('click', () => act(false));
+        $('[data-letter]', w)?.addEventListener('click', async () => { $('[data-x]', w).click();
+          const done = await modal({ title: `Extension letter · ${A.name}`, ok: 'Mark as issued', body: '<label class="fld"><span>Letter reference (optional)</span><input name="ref" maxlength="80"></label>',
+            onOk: async (f) => { await API.rpc('cms_appraisal_letter', { p_id: id, p_ref: f.ref.value || null }); } });
+          if (done) { toast('Extension letter recorded'); after?.(); } });
         $('[data-ret]', w)?.addEventListener('click', () => act(true));
       },
       onOk: async (f) => {
@@ -2913,7 +2921,7 @@
         const list = (f.tab === 'probation' ? probDue : annualTodo).filter(match);
         box.innerHTML = list.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Started</th><th>${f.tab === 'probation' ? 'Probation ends' : `KPI grade ${D.year}`}</th><th></th></tr></thead><tbody>
           ${list.map((p) => `<tr><td><b>${esc(p.name)}</b><small class="sub">${esc([p.employee_id, p.title].filter(Boolean).join(' · '))}</small></td><td class="nowrap">${p.start ? dShort(p.start) : '—'}</td>
-            <td class="nowrap">${f.tab === 'probation' ? `${p.probation_end ? dShort(p.probation_end) : '—'}${p.probation_end && daysTo(p.probation_end) < 0 ? ' <span class="tag bad xs">overdue</span>' : p.probation_end && daysTo(p.probation_end) <= 30 ? ' <span class="tag warn xs">within 30 days</span>' : ''}` : gradeTag(p.grade, L)}</td>
+            <td class="nowrap">${f.tab === 'probation' ? `${p.probation_end ? dShort(p.probation_end) : '—'}${p.probation_source === 'assumed' ? ' <small class="muted">assumed</small>' : p.probation_source === 'offer' ? ' <small class="muted">from offer</small>' : ''}${p.probation_end && daysTo(p.probation_end) < 0 ? ' <span class="tag bad xs">overdue</span>' : p.probation_end && daysTo(p.probation_end) <= 30 ? ' <span class="tag warn xs">within 30 days</span>' : ''}` : gradeTag(p.grade, L)}</td>
             <td>${D.can_edit ? `<button type="button" class="btn sm primary" data-start="${esc(p.person_id)}" data-kind="${f.tab}">Start…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
           : '<div class="empty small"><p>No one due</p></div>';
       }
@@ -2928,11 +2936,12 @@
       const one = ids.length === 1 ? D.people.find((p) => p.person_id === ids[0]) : null;
       const reviewers = D.people.slice().sort((a, b) => a.name.localeCompare(b.name));
       const ok = await modal({ title: `${kind === 'annual' ? `Annual appraisal ${D.year}` : 'Probation review'} · ${one ? one.name : `${ids.length} people`}`, ok: 'Start',
-        body: `<div class="grid-2 tight"><label class="fld"><span>Due date</span><input name="due" type="date" value="${esc(one?.probation_end || '')}"></label>
+        body: `<div class="grid-2 tight">${kind === 'probation' && one ? `<label class="fld"><span>Probation ends (= confirmation date)</span><input name="pend" type="date" value="${esc(one.probation_end || '')}"><small class="muted">${esc(PROB_SRC[one.probation_source] || '')}. 3–6 months or longer.</small></label>` : ''}
+          <label class="fld"><span>Review due by</span><input name="due" type="date" value="${esc(one?.probation_end || '')}"></label>
           ${one ? `<label class="fld"><span>Reviewer</span><select name="rev"><option value="">Reports to (default) / HR</option>${reviewers.filter((r) => r.person_id !== one.person_id).map((r) => `<option value="${esc(r.person_id)}" ${r.person_id === one.reports_to_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>` : '<p class="muted small fld">Each person is reviewed by the person they report to (or HR where none is set).</p>'}
           <label class="fld fld-2"><span>&nbsp;</span><label class="chk"><input type="checkbox" name="self" checked> Ask for a self-assessment (in My Appraisal; the person needs a linked login)</label></label></div>`,
         onOk: async (fm) => { let n = 0; const errs = [];
-          for (const id of ids) { try { await API.rpc('cms_appraisal_start', { p: { person_id: id, kind, year: D.year, due: fm.due.value || null, reviewer_id: fm.rev ? fm.rev.value || null : null, self_requested: fm.self.checked } }); n += 1; } catch (e) { errs.push(e.message); } }
+          for (const id of ids) { try { await API.rpc('cms_appraisal_start', { p: { person_id: id, kind, year: D.year, due: fm.due.value || null, probation_end: fm.pend ? fm.pend.value || null : null, reviewer_id: fm.rev ? fm.rev.value || null : null, self_requested: fm.self.checked } }); n += 1; } catch (e) { errs.push(e.message); } }
           if (!n && errs.length) throw new Error(errs[0]);
           toast(`${n} appraisal${n === 1 ? '' : 's'} started${errs.length ? ` (${errs.length} skipped)` : ''}`); } });
       if (ok) { f.tab = 'progress'; reload(); }
@@ -2955,6 +2964,7 @@
     if (x.self_to_do) t.push({ ic: 'trend', tone: 'blue', title: 'Your self-assessment is waiting', sub: 'My Appraisal', href: '#/me/appraisal' });
     if (x.to_review) t.push({ ic: 'trend', tone: 'violet', title: `${num(x.to_review)} appraisal${x.to_review === 1 ? '' : 's'} for you to review`, sub: 'People who report to you', href: selfOn('appraisal') ? '#/me/appraisal' : '#/performance' });
     if (x.to_approve) t.push({ ic: 'check-circle', tone: 'green', title: `${num(x.to_approve)} appraisal${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'KPI & Appraisal', href: '#/performance' });
+    if (x.letters_due) t.push({ ic: 'mail', tone: 'rose', title: `${num(x.letters_due)} probation extension letter${x.letters_due === 1 ? '' : 's'} to issue`, sub: 'KPI & Appraisal › Approved', href: '#/performance' });
     if (x.probation_due) t.push({ ic: 'trend', tone: 'orange', title: `${num(x.probation_due)} probation review${x.probation_due === 1 ? '' : 's'} due`, sub: 'Ending within 30 days or overdue', href: '#/performance' });
     return t;
   }
