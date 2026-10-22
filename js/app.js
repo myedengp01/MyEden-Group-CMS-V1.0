@@ -4159,6 +4159,15 @@
     'settings/policies': { file: 'modules/policies.js', edit: () => can('payroll.settings', 'E') },
     'people/ids': { file: 'modules/eid.js', edit: () => can('people.eid') },
     'people/import': { file: 'modules/import.js', edit: () => isSuper() },
+    leave: { file: 'modules/leave.js', edit: () => can('leave', 'E') },
+    'leave/balances': { file: 'modules/balances.js', edit: () => can('leave', 'E') },
+    'leave/audit': { file: 'modules/leaveaudit.js', edit: () => can('leave', 'E') },
+    'leave/al-calculator': { file: 'modules/alcalc.js', edit: () => can('leave', 'E') },
+    'leave/kpi': { file: 'modules/kpi.js', edit: () => can('leave', 'E') },
+    'leave/year-end': { file: 'modules/yearclose.js', edit: () => can('leave', 'E') },
+    'leave/import': { file: 'modules/leaveimportpage.js', edit: () => isSuper() },
+    time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
+    'time/part-time': { file: 'modules/parttime.js', edit: () => can('payroll', 'E') },
   };
   let mypCss = null;
   const mypStyles = () => mypCss || (mypCss = new Promise((ok) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = asset(`payroll/payroll.css?v=${encodeURIComponent(window.CMS_VERSION || '')}`); l.onload = ok; l.onerror = ok; document.head.appendChild(l); }));

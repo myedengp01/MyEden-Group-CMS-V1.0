@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.22-10:10 · **Phase 6 · Payroll in the CMS** (Phases 0–4 live)
+**Current version:** v2026.10.22-10:40 · **Phase 6 · Payroll in the CMS** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -58,6 +58,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 30. `20261022_cms_reports.sql` — Phase 5e Reports & Analytics: one read-only call with people (start / last day, company, department, gender, leaving reason; names only for People viewers), payroll cost per month and company (Payroll viewers only) and claims (only forms the user may see)
 31. `20261022_cms_permission_catalogue.sql` — the complete permission list (descriptions, only the actions that apply, special permissions incl. Phase 6 ones), today's settings saved as each role's default with reset, per-person extra permissions, roles created / renamed / removed by Admin, Admin and Super Admin grant roles (Super Admin only for Super Admin, locked items and the Admin role; nobody changes their own access), Account Viewer and Payroll Viewer as separate roles; letters, claim payment, payslip release, self-service, hand-over and login linking checked against their own special permissions
 32. `20261022_cms_phase6a_settings.sql` — Phase 6a: extra row-level rules so CMS users reach the MyPayroll settings tables by their CMS permissions (read: Payroll or Payroll settings view; change: Payroll settings edit), Employee IDs by "Change Employee ID", the workbook import by Super Admin
+33. `20261022_cms_phase6b_leave_time.sql` — Phase 6b: row-level rules for leave records, adjustments, year closes and KPI grades (Leave view / edit), hours and OTCF links (Payroll view / edit), payroll months (Payroll view) and approved OTCF claims (Overtime claims view); year close, OTCF pull and leave import accept the CMS permissions
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -107,6 +108,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-10:40** — Phase 6b · **leave & time inside the CMS**: Leave Records, Leave Balances, Leave by Month (audit), AL Calculator, KPI Grades &
+  Carry Forward, Year-end Close, Import Leave, Overtime & Hours and Part-time Hours now open inside the CMS (the last three pages were only in MyPayroll
+  before). Leave pages follow the Leave permission, hours follow Payroll; imports are Super Admin. Database: `20261022_cms_phase6b_leave_time.sql`.
 - **v2026.10.22-10:10** — Phase 6a · **payroll settings inside the CMS**: Departments & Job Titles, Pick-lists, Payment Types, Statutory Tables, Public
   Holidays, HR Policies, Employee IDs and Import from Workbook now open inside the CMS. They run MyPayroll V2.0's own page code (copied into `payroll/js`,
   unchanged except the connection, messages and dialogs) on the same tables, with the CMS sign-in, look (`payroll/payroll.css`, generated from MyPayroll's
