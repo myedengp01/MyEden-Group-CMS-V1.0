@@ -30,7 +30,7 @@ export async function render(el, ctx, params, query) {
   const go = (patch) => {
     const q = new URLSearchParams({ view, month: month.slice(0, 7), year: String(year), company, ...patch });
     for (const [k, v] of [...q]) if (v === '' || v === undefined || v === 'undefined') q.delete(k);
-    location.hash = `#/reports?${q}`;
+    location.hash = `#/payroll/reports?${q}`;  // CMS route
   };
 
   // ---- data
@@ -149,7 +149,7 @@ export async function render(el, ctx, params, query) {
           h('tbody', {}, [['Gross pay', m.ytd.gross], ['EPF', m.ytd.epf_ee], ['SOCSO – Invalidity', statVal(m.ytd, 'socso_ee_inv')], ['SOCSO – NEI', m.ytd.socso_ee_nei], ['EIS', m.ytd.eis_ee], ['PCB', m.ytd.pcb], ['Net paid', m.ytd.net_paid]]
             .map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', { class: 'num' }, money(v))))))),
       leaveTable(leave),
-      h('div', { class: 'doc-foot' }, h('span', {}, `Paid to: ${[P.bank(p.priv.bank_code), p.priv.bank_account_no].filter(Boolean).join(' ') || 'bank details not recorded'}`),
+      h('div', { class: 'doc-foot' }, h('span', {}, `Paid to: ${[P.bank(p.priv.bank_code), p.priv.bank_account_no].filter(Boolean).join(' ') || (ctx.hidden?.bank ? 'bank details hidden (no permission)' : 'bank details not recorded')}`),
         h('span', {}, 'This is a computer-generated payslip; no signature is required.')));
   }
 
@@ -198,7 +198,7 @@ export async function render(el, ctx, params, query) {
       header: ['No.', 'Employee ID', 'Name', 'NRIC / Passport', 'Bank', 'Account no.', 'Net pay (RM)'],
       rowFor: (l, i) => [i, l.emp_code || '', l.emp_name, nric(l), P.bank(person(l.employee_id).priv.bank_code) || '', person(l.employee_id).priv.bank_account_no || '', l.net_paid],
       totalsFor: (ls) => ['', '', `Total (${ls.length})`, '', '', '', sumK(ls, 'net_paid')],
-      check: (l) => (!person(l.employee_id).priv.bank_account_no ? `${l.emp_name}: no bank account` : null) });
+      check: (l) => (ctx.hidden?.bank ? null : !person(l.employee_id).priv.bank_account_no ? `${l.emp_name}: no bank account` : null) });
   }
   if (view === 'epf') {
     return listView({ title: 'EPF (KWSP) contributions', file: 'epf', numCols: [4, 5, 6, 7],

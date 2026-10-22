@@ -904,3 +904,7 @@ table.data tr.tot td { border-top: 2px solid var(--line); background: var(--soft
 .pl-modal { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px 8px; margin-bottom: 10px; }
 .role-chip.r-extra { background: color-mix(in srgb, var(--orange) 12%, transparent); color: #a8540a; border-color: transparent; }
 .perm-grid tr.sp td:first-child { padding-left: 18px; font-size: 12.5px; color: var(--mute); } .sp-ind { margin-right: 4px; color: var(--mute); }
+
+/* ---------- Phase 6d · payroll print views ---------- */
+@page land { size: A4 landscape; margin: 0; }
+@media print { body.doc-mode .myp .sheet.list-sheet { page: land; } body.doc-mode .crumbs { display: none !important; } }

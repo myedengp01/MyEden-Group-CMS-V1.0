@@ -68,7 +68,7 @@ window.CMS_MENU = [
     ] },
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
       { route: 'payroll', label: 'Monthly Payroll', phase: 6, live: true, desc: 'Each month\'s payroll: hours, overtime, allowances and deductions, EPF / SOCSO / EIS and PCB, then save, finalise and (with permission) reopen.' },
-      { route: 'payroll/reports', label: 'Payslips & Reports', phase: 6, source: 'MyPayroll V2.0', myp: 'reports', desc: 'Payslips, statutory lists, year to date and EA forms.' },
+      { route: 'payroll/reports', label: 'Payslips & Reports', phase: 6, live: true, desc: 'From finalised months: payslips, monthly summary, payment list, EPF, SOCSO & EIS and PCB lists, year to date and EA forms. Print, save as PDF or download Excel.' },
       { route: 'payroll/companies', label: 'Paying Companies', phase: 2, live: true, desc: 'Which company pays each person: transfers from a payroll month, joint payment by two companies, ending one, the main company and corrections.' },
       { route: 'payroll/increments', label: 'Increments & Reviews', phase: 2, live: true, desc: 'Each person\'s last increment and when their next salary review is due, by review interval (6, 9, 12 months or your own); record increments from a payroll month.' },
       { route: 'payroll/loans', label: 'Company Loans', phase: 6, source: 'MyPayroll V2.0', myp: 'loans', desc: 'Company loans to staff and their monthly deductions.' },

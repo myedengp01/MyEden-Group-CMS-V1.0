@@ -60,6 +60,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 32. `20261022_cms_phase6a_settings.sql` — Phase 6a: extra row-level rules so CMS users reach the MyPayroll settings tables by their CMS permissions (read: Payroll or Payroll settings view; change: Payroll settings edit), Employee IDs by "Change Employee ID", the workbook import by Super Admin
 33. `20261022_cms_phase6b_leave_time.sql` — Phase 6b: row-level rules for leave records, adjustments, year closes and KPI grades (Leave view / edit), hours and OTCF links (Payroll view / edit), payroll months (Payroll view) and approved OTCF claims (Overtime claims view); year close, OTCF pull and leave import accept the CMS permissions
 34. `20261022_cms_phase6c_payroll.sql` — Phase 6c: Payroll "view" may read pay lines, claims, date of birth, salary history, tax profiles, loans and settlements; "Prepare payroll" may change allowances and delete a draft month; save / finalise / reopen accept Prepare / Finalise / Reopen payroll
+35. `20261022_cms_phase6d_payslips_reports.sql` — Phase 6d: `cms_eppd_private` view (via `cms_payroll_private()`): date of birth with Payroll view, IC / passport / EPF / SOCSO / tax numbers only with "See IC", bank only with "See bank"; the Phase 6c read rule on the private table is switched off (`using (false)`)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -109,6 +110,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-13:00** — Phase 6d · **payslips & reports inside the CMS**: Payslips & Reports (payslips, monthly summary, payment list, EPF,
+  SOCSO & EIS and PCB lists, year to date, EA forms) now open inside the CMS, from finalised months only; print / save as PDF hides the CMS frame,
+  lists print landscape, Excel downloads as before. Needs Payroll "view"; saving the default EA signatory needs Payroll settings "edit".
+  Privacy fix: payroll pages in the CMS now read identity & bank details through a view that follows "See IC and passport numbers" (IC, passport,
+  EPF / SOCSO / tax numbers) and "See bank account details" column by column; home address, spouse and emergency contacts are never read by payroll
+  pages. Releasing payslips and EA forms to staff stays in People › Self-service Access. Database: `20261022_cms_phase6d_payslips_reports.sql`.
 - **v2026.10.22-10:55** — Phase 6c · **monthly payroll inside the CMS**: Monthly Payroll (the list of months and each month's pay lines — hours,
   overtime, allowances, deductions, EPF / SOCSO / EIS and PCB) now runs inside the CMS on the same tables and the same calculation as MyPayroll.
   Save draft / recalculate / delete draft follow "Prepare payroll", Finalise follows "Finalise payroll", Reopen follows "Reopen a finalised month";

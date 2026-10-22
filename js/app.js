@@ -4167,6 +4167,8 @@
     'leave/year-end': { file: 'modules/yearclose.js', edit: () => can('leave', 'E') },
     'leave/import': { file: 'modules/leaveimportpage.js', edit: () => isSuper() },
     time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
+    'payroll/reports': { file: 'modules/reports.js', edit: () => can('payroll.settings', 'E'),
+      can: (roles) => (roles?.length === 1 && roles[0] === 'admin' ? can('payroll.settings', 'E') : can('payroll', 'V')) },
     payroll: { file: 'modules/payroll.js', edit: () => can('payroll.prepare'),
       can: (roles) => (String(roles?.[0] || '').startsWith('payroll.') ? can(roles[0]) : roles?.length === 1 && roles[0] === 'admin' ? can('payroll.settings', 'E') : can('payroll.prepare')) },
     'time/part-time': { file: 'modules/parttime.js', edit: () => can('payroll', 'E') },
@@ -4175,19 +4177,27 @@
   const mypStyles = () => mypCss || (mypCss = new Promise((ok) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = asset(`payroll/payroll.css?v=${encodeURIComponent(window.CMS_VERSION || '')}`); l.onload = ok; l.onerror = ok; document.head.appendChild(l); }));
   async function mypPage(item, el) {
     const P = MYP_PAGES[item.route];
-    el.innerHTML = `${pageHead(item)}<div class="myp" id="myp-root">${loading()}</div>`;
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `<div class="no-print">${pageHead(item)}</div><div class="myp" id="myp-root">${loading()}</div>`;
     const root = $('#myp-root', el);
     let mod; try { await mypStyles(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
     catch (e) { root.innerHTML = errorCard(`This page could not be loaded (${e.message}). Check the connection and reload.`); return; }
     const me = { user_id: state.access?.user_id, email: state.access?.email, display_name: state.access?.name, role: P.edit() ? 'admin' : 'viewer', status: 'active' };
-    const ctx = { sb: API.sb(), can: (roles) => (P.can ? P.can(roles) : P.edit()), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
+    // identity & bank details come from the CMS view that follows "See IC" / "See bank" (Phase 6d); writes still go to the table
+    const real = API.sb();
+    const sb = new Proxy(real, { get: (c, k) => (k === 'from' ? (t) => { const b = c.from(t); if (t === 'eppd_employee_private') b.select = (...a) => c.from('cms_eppd_private').select(...a); return b; }
+      : (typeof c[k] === 'function' ? c[k].bind(c) : c[k])) });
+    const ctx = { sb, hidden: { ic: !can('people.ic'), bank: !can('people.bank') }, can: (roles) => (P.can ? P.can(roles) : P.edit()), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
     try { ctx.session = await API.session(); const { data } = await API.sb().from('eppd_policies').select('value').eq('key', 'modules').maybeSingle(); ctx.modules = data?.value || {}; } catch (e) { /* optional modules stay off */ }
     root.innerHTML = '';
     // links inside MyPayroll pages that point at its own employee pages go to the CMS people pages
     root.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#/employees"]'); if (!a) return; e.preventDefault(); location.hash = '#/people'; });
     const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
     const pm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})(?:-\d{2})?(?:[?]|$)/);
-    try { await mod.render(root, ctx, pm ? { period: pm[1] } : {}, q); }
+    // print views (payslips, EA forms, lists): hide the CMS frame while printing
+    const docMode = () => { if (!root.isConnected) { mo.disconnect(); return; } document.body.classList.toggle('doc-mode', !!root.querySelector('.print-doc')); };
+    const mo = new MutationObserver(docMode); mo.observe(root, { childList: true, subtree: false });
+    try { await mod.render(root, ctx, pm ? { period: pm[1] } : {}, q); docMode(); }
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
