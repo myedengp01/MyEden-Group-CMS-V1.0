@@ -56,6 +56,8 @@ async function renderRun(el, ctx, param) {
   const run = D.run;
   const locked = run?.status === 'finalised';
   const isAdmin = ctx.can(['admin']);
+  // CMS: prepare / finalise / reopen follow the CMS special permissions (MyPayroll itself passes 'admin' / 'hr' roles)
+  const canPrep = ctx.can(['payroll.prepare']); const canFin = ctx.can(['payroll.finalise']); const canReopen = ctx.can(['payroll.reopen']);
   let lines; let dirty = false; let refreshed = false; let notices = [];
   if (locked) lines = run.lines;
   else {
@@ -94,12 +96,12 @@ async function renderRun(el, ctx, param) {
     const actions = [];
     actions.push(h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'Export CSV'));
     if (!locked) {
-      actions.push(h('button', { class: 'btn', type: 'button', onclick: recalc }, 'Recalculate'));
-      if (run) actions.push(h('button', { class: 'btn danger', type: 'button', onclick: deleteDraft }, 'Delete draft'));
-    } else if (isAdmin) actions.push(h('button', { class: 'btn', type: 'button', onclick: reopen }, 'Reopen'));
+      if (canPrep) actions.push(h('button', { class: 'btn', type: 'button', onclick: recalc }, 'Recalculate'));
+      if (run && canPrep) actions.push(h('button', { class: 'btn danger', type: 'button', onclick: deleteDraft }, 'Delete draft'));
+    } else if (canReopen) actions.push(h('button', { class: 'btn', type: 'button', onclick: reopen }, 'Reopen'));
     clear(head).append(h('p', { class: 'crumbs' }, h('a', { href: '#/payroll' }, 'Monthly payroll'), ` / ${monthLabel(D.period)}`),
       pageHead(`Payroll · ${monthLabel(D.period)}`, locked
-        ? `Finalised${run.finalised_at ? ` on ${fmtDateTime(run.finalised_at)}` : ''}. This month is locked${isAdmin ? '; an admin can reopen it with a reason' : ''}.`
+        ? `Finalised${run.finalised_at ? ` on ${fmtDateTime(run.finalised_at)}` : ''}. This month is locked${canReopen ? '; you can reopen it with a reason' : ''}.`
         : 'Figures come from salary history, recurring items, unpaid leave and overtime & hours. Click a line to add items (this month only or recurring), type PCB or adjust an amount.',
       statusTag(run), ...actions));
     const n = [];
@@ -153,8 +155,9 @@ async function renderRun(el, ctx, param) {
 
   function drawBar() {
     if (locked) { clear(bar).append(h('p', { class: 'small muted' }, 'Finalised months cannot be changed. Corrections go into the next month.')); return; }
-    const save = h('button', { class: 'btn', type: 'button', onclick: () => saveRun() }, run ? 'Save draft' : 'Save as draft');
-    const fin = h('button', { class: 'btn primary', type: 'button', onclick: finalise }, `Finalise ${monthLabel(D.period)}`);
+    if (!canPrep && !canFin) { clear(bar).append(h('p', { class: 'small muted' }, 'View only: you can see this month but not prepare or finalise it.')); return; }
+    const save = canPrep ? h('button', { class: 'btn', type: 'button', onclick: () => saveRun() }, run ? 'Save draft' : 'Save as draft') : null;
+    const fin = canFin ? h('button', { class: 'btn primary', type: 'button', onclick: finalise }, `Finalise ${monthLabel(D.period)}`) : null;
     clear(bar).append(h('p', { class: `small ${dirty ? 'strong' : 'muted'}` }, dirty ? 'Unsaved changes.' : 'All changes saved.'), h('div', { class: 'side-actions' }, save, fin));
   }
   const drawAll = () => { drawHead(); drawTotals(); drawLines(); drawBar(); };

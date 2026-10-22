@@ -4167,6 +4167,8 @@
     'leave/year-end': { file: 'modules/yearclose.js', edit: () => can('leave', 'E') },
     'leave/import': { file: 'modules/leaveimportpage.js', edit: () => isSuper() },
     time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
+    payroll: { file: 'modules/payroll.js', edit: () => can('payroll.prepare'),
+      can: (roles) => (String(roles?.[0] || '').startsWith('payroll.') ? can(roles[0]) : roles?.length === 1 && roles[0] === 'admin' ? can('payroll.settings', 'E') : can('payroll.prepare')) },
     'time/part-time': { file: 'modules/parttime.js', edit: () => can('payroll', 'E') },
   };
   let mypCss = null;
@@ -4178,13 +4180,14 @@
     let mod; try { await mypStyles(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
     catch (e) { root.innerHTML = errorCard(`This page could not be loaded (${e.message}). Check the connection and reload.`); return; }
     const me = { user_id: state.access?.user_id, email: state.access?.email, display_name: state.access?.name, role: P.edit() ? 'admin' : 'viewer', status: 'active' };
-    const ctx = { sb: API.sb(), can: () => P.edit(), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
+    const ctx = { sb: API.sb(), can: (roles) => (P.can ? P.can(roles) : P.edit()), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
     try { ctx.session = await API.session(); const { data } = await API.sb().from('eppd_policies').select('value').eq('key', 'modules').maybeSingle(); ctx.modules = data?.value || {}; } catch (e) { /* optional modules stay off */ }
     root.innerHTML = '';
     // links inside MyPayroll pages that point at its own employee pages go to the CMS people pages
     root.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#/employees"]'); if (!a) return; e.preventDefault(); location.hash = '#/people'; });
     const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
-    try { await mod.render(root, ctx, {}, q); }
+    const pm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})(?:-\d{2})?(?:[?]|$)/);
+    try { await mod.render(root, ctx, pm ? { period: pm[1] } : {}, q); }
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
@@ -4244,7 +4247,8 @@
   async function render() {
     if (!state.access || !$('#page')) return;
     const id = ++state.renderId;
-    const r = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
+    let r = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
+    if (/^payroll\/\d{4}-\d{2}(-\d{2})?$/.test(r)) r = 'payroll';   // a payroll month opens inside Monthly Payroll
     const item = PAGES.get(r === 'dashboard' && !canRoute('dashboard') ? homeRoute() : r) || PAGES.get(homeRoute());
     state.route = item.route;
     const g = groupOf(item.route); if (g && !state.open.has(g)) { state.open.add(g); store.set('openGroups', [...state.open]); }

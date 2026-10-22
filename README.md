@@ -59,6 +59,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 31. `20261022_cms_permission_catalogue.sql` — the complete permission list (descriptions, only the actions that apply, special permissions incl. Phase 6 ones), today's settings saved as each role's default with reset, per-person extra permissions, roles created / renamed / removed by Admin, Admin and Super Admin grant roles (Super Admin only for Super Admin, locked items and the Admin role; nobody changes their own access), Account Viewer and Payroll Viewer as separate roles; letters, claim payment, payslip release, self-service, hand-over and login linking checked against their own special permissions
 32. `20261022_cms_phase6a_settings.sql` — Phase 6a: extra row-level rules so CMS users reach the MyPayroll settings tables by their CMS permissions (read: Payroll or Payroll settings view; change: Payroll settings edit), Employee IDs by "Change Employee ID", the workbook import by Super Admin
 33. `20261022_cms_phase6b_leave_time.sql` — Phase 6b: row-level rules for leave records, adjustments, year closes and KPI grades (Leave view / edit), hours and OTCF links (Payroll view / edit), payroll months (Payroll view) and approved OTCF claims (Overtime claims view); year close, OTCF pull and leave import accept the CMS permissions
+34. `20261022_cms_phase6c_payroll.sql` — Phase 6c: Payroll "view" may read pay lines, claims, date of birth, salary history, tax profiles, loans and settlements; "Prepare payroll" may change allowances and delete a draft month; save / finalise / reopen accept Prepare / Finalise / Reopen payroll
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -108,6 +109,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-10:55** — Phase 6c · **monthly payroll inside the CMS**: Monthly Payroll (the list of months and each month's pay lines — hours,
+  overtime, allowances, deductions, EPF / SOCSO / EIS and PCB) now runs inside the CMS on the same tables and the same calculation as MyPayroll.
+  Save draft / recalculate / delete draft follow "Prepare payroll", Finalise follows "Finalise payroll", Reopen follows "Reopen a finalised month";
+  anyone with Payroll "view" sees the months read-only. Recalculating January–October with the CMS copy matched MyPayroll's saved lines.
+  Database: `20261022_cms_phase6c_payroll.sql`.
 - **v2026.10.22-10:40** — Phase 6b · **leave & time inside the CMS**: Leave Records, Leave Balances, Leave by Month (audit), AL Calculator, KPI Grades &
   Carry Forward, Year-end Close, Import Leave, Overtime & Hours and Part-time Hours now open inside the CMS (the last three pages were only in MyPayroll
   before). Leave pages follow the Leave permission, hours follow Payroll; imports are Super Admin. Database: `20261022_cms_phase6b_leave_time.sql`.
