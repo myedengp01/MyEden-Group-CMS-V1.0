@@ -30,7 +30,7 @@ window.CMS_MENU = [
     { route: 'dashboard', label: 'Dashboard', icon: 'home', phase: 0, desc: 'Today across MyEden Group: people, positions, applications, approvals and your tasks.' },
     { group: 'People & Employment', icon: 'users', items: [
       { route: 'people', label: 'View People', phase: 0, desc: 'Every person in the Employee Master, from applicant to former staff: employer on the contract, paying company and centre.', plan: ['Full record, salary history and documents arrive with Payroll (Phase 2)'] },
-      { route: 'people/add', label: 'Add Person', phase: 2, source: 'MyPayroll V2.0', desc: 'Create an employee record with the next Employee ID.', plan: ['Department fills in the paying company', 'Employee ID generated on save', 'Or created automatically from an accepted applicant (Phase 3)'] },
+      { route: 'people/add', label: 'Add Person', phase: 2, live: true, desc: 'Add someone who did not come through MEG-EAF V2: the person and their payroll record are created together, with the next Employee ID (or the one they already have).' },
       { route: 'people/former', label: 'Former Staff', phase: 0, desc: 'Everyone who has left: last day and the company they worked for.' },
       { route: 'people/ids', label: 'Employee IDs', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'The Employee ID register: format, next number and who holds which ID.' },
       { route: 'people/import', label: 'Import from Workbook', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'Bring staff in from the MEG-EPPD payroll workbook.' },

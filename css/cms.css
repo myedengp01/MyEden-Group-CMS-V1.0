@@ -971,3 +971,10 @@ table.data tr.tot td { border-top: 2px solid var(--line); background: var(--soft
 .sy-dots i { width: 12px; height: 12px; border-radius: 3px; background: var(--line); }
 .sy-dots i.ok { background: var(--green); } .sy-dots i.bad { background: var(--orange); }
 @media (max-width: 600px) { .sy-row { grid-template-columns: 1fr; } }
+
+/* ---------- People › Add Person ---------- */
+.ap-form { max-width: 920px; }
+.ap-form .sec-h { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--mute); }
+.ap-form .check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; font-size: 14px; }
+.ap-form .check-row input[name=eid] { height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; }
+.ap-form .btn-row { margin-top: 16px; }

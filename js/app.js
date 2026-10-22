@@ -4262,6 +4262,83 @@
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
+  // ================================================================ People › Add Person (person + payroll record together)
+  async function addPersonPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="ap-body">${loading()}</div>`;
+    const box = $('#ap-body', el);
+    if (!(can('people', 'C') && can('people', 'E') && can('payroll.paying', 'E'))) {
+      box.innerHTML = '<div class="card empty">Adding a person needs People "add" and "edit" and Paying Companies "edit". Ask an Admin.</div>'; return; }
+    let P; try { P = await API.rpc('cms_hire_prefill', {}); } catch (e) { box.innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const pay0 = P.companies.find((c) => c.code === 'MEG') || P.companies[0] || {};
+    const nat = P.nationalities?.length ? P.nationalities.map((x) => [x.code, x.label]) : [['MALAYSIAN', 'Malaysian'], ['NON-MALAYSIAN', 'Non-Malaysian']];
+    box.innerHTML = `<form id="ap-f" class="card ap-form" novalidate>
+        <p class="muted small">Creates the person in the Employee Master and their payroll record together, with the next Employee ID. For an applicant from MEG-EAF V2 use <a href="#/onboarding">Offers &amp; Onboarding</a>; for someone coming back use Rehire in <a href="#/people/former">Former Staff</a>.</p>
+        <h3 class="sec-h">Person</h3>
+        <div class="fld-2">
+          <label class="fld fld-2"><span>Full name (as on NRIC)</span><input name="name" required autocomplete="off"></label>
+          <label class="fld"><span>Chinese name <small class="muted">— optional</small></span><input name="cn"></label>
+          <label class="fld"><span>Gender <small class="muted">— used in the Employee ID</small></span><select name="gender" required>${opt([['F', 'Female'], ['M', 'Male']], '', 'Choose…')}</select></label>
+          <label class="fld"><span>NRIC <small class="muted">— payroll only; fills the date of birth</small></span><input name="nric" placeholder="000000-00-0000" autocomplete="off"></label>
+          <label class="fld"><span>Date of birth</span><input type="date" name="dob"></label>
+          <label class="fld"><span>Nationality</span><select name="nat">${opt(nat, nat.find(([c]) => /^MALAYSIAN$/i.test(c))?.[0] || nat[0]?.[0])}</select></label>
+          <label class="fld"><span>Phone</span><input name="phone" placeholder="+6012-3456789"></label>
+          <label class="fld"><span>Email</span><input name="email" type="email"></label>
+        </div>
+        <h3 class="sec-h">Job</h3>
+        <div class="fld-2">
+          <label class="fld"><span>Employer on the contract</span><select name="employer" required>${opt([['MEG', 'MyEden Group'], ['MEH', 'MyEden Edu Hub'], ['HD', 'Happy Dino'], ['ABP', 'Aborne Project']], 'MEG')}</select></label>
+          <label class="fld"><span>Paying company</span><select name="company" required>${opt(P.companies.map((c) => [c.id, c.name]), pay0.id)}</select></label>
+          <label class="fld"><span>Start date</span><input type="date" name="join" required value="${today}"></label>
+          <label class="fld"><span>Centre / department</span><select name="dept">${opt(P.departments.map((d) => [d.id, d.code === d.name ? d.code : `${d.code} · ${d.name}`]), '', 'Choose…')}</select></label>
+          <label class="fld"><span>Job title</span><select name="title">${opt(P.titles.map((t) => [t.id, t.name]), '', 'Not set')}</select></label>
+          <label class="fld"><span>Employment status</span><select name="conf">${opt(P.statuses.map((x) => [x.code, x.label]), 'UP')}</select></label>
+          <label class="fld"><span>Job status</span><select name="job">${opt(P.job_statuses.map((x) => [x.code, x.label]), 'FT', 'Not set')}</select></label>
+          <label class="fld"><span>Working hours</span><span class="hours"><input type="time" name="from"> – <input type="time" name="to"></span></label>
+        </div>
+        <h3 class="sec-h">Pay</h3>
+        <div class="fld-2">
+          <label class="fld"><span>Starting basic salary (RM)</span><input type="text" inputmode="decimal" data-money name="salary" required></label>
+          <label class="fld"><span>Pay basis</span><select name="basis">${opt([['monthly', 'Monthly'], ['hourly', 'Hourly'], ['daily', 'Daily']], 'monthly')}</select></label>
+        </div>
+        <h3 class="sec-h">Employee ID</h3>
+        <label class="check-row"><input type="radio" name="idm" value="auto" checked> Give the next Employee ID: <b id="ap-id"></b></label>
+        <label class="check-row"><input type="radio" name="idm" value="own"> Already has one: <input name="eid" placeholder="e.g. M0325F0118" disabled autocomplete="off"></label>
+        <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>
+        <p class="muted small">After saving: bank, EPF / SOCSO / tax numbers and allowances are added on the person's payroll record; the handbook is assigned automatically.</p>
+        <div class="btn-row"><button type="submit" class="btn primary">${icon('user-plus')}Add person</button><a class="btn ghost" href="#/people">Cancel</a></div>
+      </form>`;
+    const f = $('#ap-f', box);
+    const idPrev = () => { const g = f.gender.value; const j = f.join.value; const n = String(P.next_serial).padStart(4, '0');
+      $('#ap-id', box).textContent = g && j ? `${f.employer.value[0]}${j.slice(5, 7)}${j.slice(2, 4)}${g}${n}` : `next number ${n} (choose gender and start date)`; };
+    ['gender', 'join', 'employer'].forEach((k) => f[k].addEventListener('change', idPrev)); idPrev();
+    $$('input[name=idm]', f).forEach((r) => r.addEventListener('change', () => { f.eid.disabled = f.idm.value !== 'own'; if (!f.eid.disabled) f.eid.focus(); }));
+    f.nric.addEventListener('change', async () => {
+      const d = f.nric.value.replace(/\D/g, ''); if (d.length !== 12) return;
+      f.nric.value = `${d.slice(0, 6)}-${d.slice(6, 8)}-${d.slice(8)}`;
+      if (!f.dob.value) { try { const E = await mypImport('engines/employee.js'); f.dob.value = E.dobFromNric(f.nric.value) || ''; } catch (e) { /* type it */ } }
+    });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); const btn = $('button[type=submit]', f);
+      try {
+        if (!f.name.value.trim()) throw new Error('Enter the full name.');
+        if (!f.gender.value) throw new Error('Choose the gender: the Employee ID is built from it.');
+        if (!f.join.value) throw new Error('Enter the start date.');
+        if (f.salary.value.trim() === '' || !(mval(f.salary.value) >= 0)) throw new Error('Enter the starting salary.');
+        if (f.idm.value === 'own' && !/^[A-Z]{1,4}\d{4}[MF]\d{3,4}$/i.test(f.eid.value.trim())) throw new Error('That Employee ID is not in the usual format (e.g. M0325F0118).');
+        btn.disabled = true;
+        const r = await API.rpc('cms_hire', { p: { manual: true, name: f.name.value.trim(), chinese_name: f.cn.value || null, gender: f.gender.value, nric: f.nric.value || null, dob: f.dob.value || null,
+          nationality: f.nat.value || null, phone: f.phone.value || null, email: f.email.value || null, employer: f.employer.value, company_id: Number(f.company.value),
+          join_date: f.join.value, department_id: f.dept.value || null, job_title_id: f.title.value || null, confirmation_status: f.conf.value, job_status: f.job.value || null,
+          work_from: f.from.value || null, work_to: f.to.value || null, salary: mval(f.salary.value), pay_basis: f.basis.value,
+          employee_id: f.idm.value === 'own' ? f.eid.value.trim().toUpperCase() : null, note: f.note.value || null } });
+        toast(`${f.name.value.trim().toUpperCase()} added as ${r.employee_id}`);
+        location.hash = `#/people?q=${encodeURIComponent(r.employee_id)}`;
+      } catch (er) { btn.disabled = false; toast(API.friendly ? API.friendly(er) : er.message, 'err'); }
+    });
+  }
+
   // ================================================================ PRI-010 · Sync check (forms and MEG-EAF V2 side by side with the CMS)
   async function syncPage(item, el, run = false) {
     if (!run) el.innerHTML = `${pageHead(item)}<div id="sy-body">${loading()}</div>`;
@@ -4392,7 +4469,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

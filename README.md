@@ -64,6 +64,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 36. `20261022_cms_phase6e_directory.sql` — Phase 6e: loans and settlements change with "Prepare payroll"; workbook history import accepts CMS Super Admin; Employee Directory permissions (`directory`, `directory.contacts`, `directory.all`, `directory.chart`, defaults Admin / HR / Director), `cms_directory()` and `cms_directory_exported()`
 37. `20261022_cms_letter_facts.sql` — PRI-009: `cms_letter_facts(person, letter type)` with helpers `private.cms_ldate`, `private.cms_fact`, `private.cms_fact_group`
 38. `20261022_cms_sync_check.sql` — PRI-010: `cms_sync_runs`, `private.cms_sync_compute()`, `private.cms_sync_record()`, `cms_sync_check(p_run)` (Super Admin), nightly pg_cron job `cms-sync-check-nightly` (15:30 UTC)
+39. `20261022_cms_add_person.sql` — People › Add Person: `cms_hire` takes `manual: true` (no application; People "add"), an existing Employee ID, Chinese name and nationality, refuses a duplicate NRIC, records `source_type = manual_entry`; `cms_hire_prefill()` with no arguments gives the lists
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -113,6 +114,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-15:50** — **People › Add Person** inside the CMS (it still pointed to MyPayroll V2.0, whose Add employee creates only the
+  payroll record): one form creates the person in the Employee Master and their payroll record together — identity (NRIC fills the date
+  of birth), employer and paying company, centre, job title, statuses, working hours, starting salary — with the next Employee ID, or an
+  existing ID for someone who already has one. Duplicates are refused (same name / email: use Rehire; same NRIC). Needs People "add" and
+  "edit" and Paying Companies "edit". Database: `20261022_cms_add_person.sql` (extends `cms_hire` and `cms_hire_prefill`).
 - **v2026.10.22-15:05** — PRI-010 step B · **payroll moves to the CMS, Sync check**: MyPayroll V2.0 (v2026.10.22-14:55) shows a banner on
   every page — "Payroll now runs in the MyEden Group CMS" — with a link to the same page here; it keeps working as a fallback until you
   confirm and it is made read-only. New **Admin › Sync Check** (Super Admin): for each form (SCF, OTCF, MTCF, TEC, PRFAF) and MEG-EAF V2,
