@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.22-07:55 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.22-10:00 · **Phase 5 · HR operations** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -56,6 +56,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 28. `20261021_cms_permissions_hr.sql` — "Who can do what" editable by Admin and Super Admin with a reason; locked sections (Companies & Settings, Users & Roles, Export All Data, Purchase & Funding) only a Super Admin can change; new "Set MyEden salary caps" permission (Admin by default, HR view only); HR access widened (Payroll and Payroll Settings, overtime, organisation structure, claims view, documents and training export, audit log view); Directors approve HR letters; MyPayroll access follows the CMS Payroll "edit" permission
 29. `20261021_cms_letters_v2.sql` — HR Letters centre: letter steps draft → approval (never the drafter) → issue; template lifecycle (draft, pending, published, sent back, retired; on/off; changes to a published template wait for approval; retirement approval); Word templates in the private `hr-letter-sources` bucket; placeholder register editing; issued letters can be voided; MEG-EAF V2 letter write functions retired (they now point to the CMS)
 30. `20261022_cms_reports.sql` — Phase 5e Reports & Analytics: one read-only call with people (start / last day, company, department, gender, leaving reason; names only for People viewers), payroll cost per month and company (Payroll viewers only) and claims (only forms the user may see)
+31. `20261022_cms_permission_catalogue.sql` — the complete permission list (descriptions, only the actions that apply, special permissions incl. Phase 6 ones), today's settings saved as each role's default with reset, per-person extra permissions, roles created / renamed / removed by Admin, Admin and Super Admin grant roles (Super Admin only for Super Admin, locked items and the Admin role; nobody changes their own access), Account Viewer and Payroll Viewer as separate roles; letters, claim payment, payslip release, self-service, hand-over and login linking checked against their own special permissions
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -105,6 +106,14 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-10:00** — **Permissions for the whole CMS.** Users, Roles & Access › Roles & permissions: pick a role and see every section with
+  what it covers and only the actions that apply (in the section's own words, e.g. "Add people", "Approve or disapprove"), plus special permissions
+  (approve / issue / publish letters, mark each claim form as paid, release payslips, switch on self-service parts, approve profile changes and
+  hand-overs, link logins, grant roles, change permissions, and — taking effect in Phase 6 — see IC / bank / salary, change Employee ID, prepare /
+  finalise / reopen payroll). Changes are saved together with a reason; "changed from default" is marked and "Reset to default" puts a role back.
+  New roles (copied from another), rename, remove. Logins: Admin can now add and remove roles and give a person extra permissions. Compare roles
+  grid kept. Account Viewer (new) and Payroll Viewer (renamed) are separate. The 19 pages still in MyPayroll now say "Runs in MyPayroll V2.0 until
+  Phase 6". Database: `20261022_cms_permission_catalogue.sql`.
 - **v2026.10.22-07:55** — Phase 5e · **Reports & Analytics**: by company and period (last 12 months or a year). Headcount: staff now, joined, left,
   turnover, average service, headcount at each month end by company, staff by department, length of service and gender, staff list. Turnover: leavers by
   month, how long leavers stayed, why they left (with "not recorded"), turnover by year since 2020 with "left within 3 months", leavers list. Payroll cost:

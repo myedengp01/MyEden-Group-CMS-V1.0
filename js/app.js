@@ -76,7 +76,7 @@
   const phaseTag = (n) => `<span class="tag phase p${n}">${esc(window.CMS_PHASES[n] || '')}</span>`;
   const coShort = (code) => (state.org?.companies || []).find((c) => c.code === code)?.short_name
     || window.CMS_COMPANIES.find((c) => c.code === code)?.short || code || '—';
-  const roleName = (code) => ({ super_admin: 'Super Admin', admin: 'Admin', hr: 'HR', payroll: 'Payroll', finance: 'Finance', approver: 'Approver', director: 'CEO / Director', payroll_viewer: 'Account / Payroll Viewer', staff: 'Staff' }[code] || code);
+  const roleName = (code) => state.roleNames?.[code] || ({ super_admin: 'Super Admin', admin: 'Admin', hr: 'HR', payroll: 'Payroll', finance: 'Finance', approver: 'Approver', director: 'CEO / Director', payroll_viewer: 'Payroll Viewer', account_viewer: 'Account Viewer', staff: 'Staff' }[code] || code);
   const scopeTxt = (cos) => (cos && cos.length ? cos.join(', ') : 'all companies');
   const loading = (t = 'Loading…') => `<div class="loading"><span class="spinner"></span>${esc(t)}</div>`;
   const errorCard = (msg) => `<section class="card err-card">${icon('x')}<div><b>Could not load this page</b><p>${esc(msg)}</p><button type="button" class="btn" data-retry>Try again</button></div></section>`;
@@ -160,7 +160,7 @@
 
   function tasksFromDash(d) {
     const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...letterTasks()];
-    if (state.selfPending && can('selfservice', 'E')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
+    if (state.selfPending && can('selfservice.profile')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
     if (d.claims_pending && can('approvals')) t.push({ ic: 'file-check', tone: 'orange', title: `${num(d.claims_pending)} claims waiting`, sub: [bs.approval && `${bs.approval} to approve`, bs.processing && `${bs.processing} to process`, bs.payment && `${bs.payment} to pay`].filter(Boolean).join(' · ') + ` · ${money(d.claims_pending_amount)}`, href: '#/approvals' });
@@ -1175,8 +1175,8 @@
               </section>
               <section><h4>Payment</h4>
                 ${!row.supports_payment ? '<p class="muted small">This form has no payment step.</p>'
-                  : paid ? `<p><span class="st st-paid">Paid</span> ${row.payment_done_at ? dtShort(row.payment_done_at) : ''}${row.payment_done_by_name ? ` · ${esc(row.payment_done_by_name)}` : ''}</p>${d.can_edit ? '<button type="button" class="btn sm ghost" data-act="unpay">Undo payment</button>' : ''}`
-                  : row.processing_eligible ? (d.can_edit ? `<p class="muted small">${row.fully_processed ? 'Processing is complete.' : 'Tip: finish the processing checklist first.'}</p><button type="button" class="btn sm primary" data-act="pay">Mark as paid</button>` : '<p class="muted small">Waiting for Finance.</p>')
+                  : paid ? `<p><span class="st st-paid">Paid</span> ${row.payment_done_at ? dtShort(row.payment_done_at) : ''}${row.payment_done_by_name ? ` · ${esc(row.payment_done_by_name)}` : ''}</p>${d.can_pay ? '<button type="button" class="btn sm ghost" data-act="unpay">Undo payment</button>' : ''}`
+                  : row.processing_eligible ? (d.can_pay ? `<p class="muted small">${row.fully_processed ? 'Processing is complete.' : 'Tip: finish the processing checklist first.'}</p><button type="button" class="btn sm primary" data-act="pay">Mark as paid</button>` : '<p class="muted small">Waiting for Finance.</p>')
                   : '<p class="muted small">Becomes available once the claim is approved.</p>'}
               </section>
             </div>
@@ -1266,15 +1266,41 @@
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
     let tab = params.get('tab') || 'logins';
     el.innerHTML = `${pageHead(item)}
-      <div class="tabs" role="tablist">${[['logins', 'Logins'], ['grid', 'Roles & permissions'], ['rules', 'Position rules']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${[['logins', 'Logins'], ['roles', 'Roles & permissions'], ['grid', 'Compare roles'], ['rules', 'Position rules']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="roles-body">${loading()}</div>`;
-    let users, matrix;
-    try { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), loadOrg()]); users.forEach(upUser); }
+    let users, matrix, extra = {};
+    const names = () => { state.roleNames = Object.fromEntries(matrix.roles.map((r) => [r.code, r.name])); };
+    try { [users, matrix, extra] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), API.rpc('cms_user_permissions_all').catch(() => ({})), loadOrg()]); users.forEach(upUser); names(); }
     catch (e) { $('#roles-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const body = $('#roles-body', el);
-    const sup = isSuper(); const canLink = can('admin.roles', 'E'); const canPerm = can('admin.roles', 'E');
+    const sup = isSuper(); const canLink = can('people.link'); let canPerm = !!matrix.can_permissions;
+    const grantOn = (u) => !!matrix.can_grant && (sup || u.id !== matrix.me);
     const filter = { q: '', show: 'all' };
-    const reload = async () => { [users, matrix] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix')]); users.forEach(upUser); draw(); };
+    const reload = async () => { [users, matrix, extra] = await Promise.all([API.rpc('cms_users'), API.rpc('cms_roles_matrix'), API.rpc('cms_user_permissions_all').catch(() => ({}))]); users.forEach(upUser); names(); canPerm = !!matrix.can_permissions; draw(); };
+    // ---- the complete permission list
+    const ACT = { V: 'View', C: 'Create', E: 'Edit', A: 'Approve', D: 'Delete', X: 'Export' };
+    const norm = (a) => 'VCEADX'.split('').filter((x) => String(a || '').includes(x)).join('');
+    const byOrder = (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    const orderedMods = () => { const secs = matrix.modules.filter((m) => m.kind !== 'special').sort(byOrder); const sp = matrix.modules.filter((m) => m.kind === 'special').sort(byOrder);
+      return [...secs.flatMap((x) => [x, ...sp.filter((y) => y.parent === x.code)]), ...sp.filter((y) => !secs.some((x) => x.code === y.parent))]; };
+    const actsOf = (m) => (m.kind === 'special' ? 'V' : (m.acts || 'VCEADX'));
+    function permList(cur, dflt, canEdit) {
+      let grp = '';
+      return `<div class="pl">${orderedMods().map((m) => {
+        const head = m.kind !== 'special' && m.grp !== grp ? `<h4 class="pl-grp">${esc((grp = m.grp))}</h4>` : '';
+        const a = norm(cur[m.code]); const d = dflt ? norm(dflt[m.code]) : null; const chg = d != null && a !== d; const ed = canEdit(m);
+        const boxes = m.kind === 'special' ? `<label class="pl-a"><input type="checkbox" data-pm="${esc(m.code)}" data-a="V" ${a.includes('V') ? 'checked' : ''} ${ed ? '' : 'disabled'}> Allowed</label>`
+          : actsOf(m).split('').map((l) => `<label class="pl-a"><input type="checkbox" data-pm="${esc(m.code)}" data-a="${l}" ${a.includes(l) ? 'checked' : ''} ${ed ? '' : 'disabled'}> ${esc(m.act_labels?.[l] || ACT[l])}</label>`).join('');
+        return `${head}<div class="pl-row ${m.kind === 'special' ? 'sp' : ''} ${chg ? 'chg' : ''}" data-row="${esc(m.code)}"><div class="pl-l"><b>${m.locked ? `<span class="lock-ic" title="Locked: only a Super Admin can change this">${icon('lock')}</span>` : ''}${esc(m.label)}</b>${m.from_phase ? ` <span class="tag phase p${m.from_phase} xs">from Phase ${m.from_phase}</span>` : ''}${chg ? ` <span class="tag warn xs" title="Default: ${esc(d || 'none')}">changed from default</span>` : ''}<small>${esc(m.description || '')}</small></div><div class="pl-acts">${boxes}</div></div>`;
+      }).join('')}</div>`;
+    }
+    const readPerm = (box) => { const out = {}; $$('[data-pm]', box).forEach((i) => { if (!(i.dataset.pm in out)) out[i.dataset.pm] = ''; if (i.checked) out[i.dataset.pm] += i.dataset.a; }); return out; };
+    const wirePerm = (box, onChange) => box.addEventListener('change', (e) => { const i = e.target.closest('[data-pm]'); if (!i) return;
+      const row = $$(`[data-pm="${CSS.escape(i.dataset.pm)}"]`, box);
+      if (i.checked && i.dataset.a !== 'V') row.forEach((x) => { if (x.dataset.a === 'V') x.checked = true; });
+      if (!i.checked && i.dataset.a === 'V') row.forEach((x) => { x.checked = false; });
+      onChange?.(); });
+    let selRole = params.get('role') || 'hr';
 
     function companyPicker() {
       const cos = (state.org?.companies || window.CMS_COMPANIES.map((c) => ({ code: c.code, short_name: c.short, is_active: true }))).filter((c) => c.is_active);
@@ -1305,7 +1331,7 @@
             <label class="search-in">${icon('search')}<input id="uq" type="search" placeholder="Name or email" value="${esc(filter.q)}" aria-label="Search logins"></label>
             <div class="seg">${[['all', 'All'], ['role', 'With a role'], ['sugg', 'Has suggestions'], ['none', 'No access']].map(([k, l]) => `<button type="button" data-show="${k}" class="${filter.show === k ? 'on' : ''}">${l} <span>${c[k]}</span></button>`).join('')}</div>
           </div>
-          <p class="muted small">${sup ? 'Accept a suggestion with one click, or add any role. Suggestions come from MEG-EAF V2 and MEG-FORMS permissions and from the person’s JD position; nothing is granted until you accept it.' : 'Only a Super Admin can grant or remove roles.'}</p>
+          <p class="muted small">${matrix.can_grant ? 'Accept a suggestion with one click, add any role, or give one person extra permissions on top of their roles. Suggestions come from MEG-EAF V2 and MEG-FORMS permissions and from the person’s JD position; nothing is granted until you accept it. Only a Super Admin gives the Super Admin role, and nobody changes their own access.' : 'Only Admin and Super Admin can grant or remove roles.'}</p>
           <div class="ulist">${list.map((u) => `
             <article class="urow" data-u="${esc(u.id)}">
               <div class="u-main"><span class="avatar ${u.roles.length ? '' : 'off'}">${esc(initials(u.name))}</span>
@@ -1313,25 +1339,76 @@
                   <div class="u-person">${u.person ? `${icon('users')}<span>${esc(u.person.name)} · ${esc(u.person.employee_id || 'no ID')} · ${esc(coShort(u.person.company_code))}${u.person.title ? ' · ' + esc(u.person.title) : ''}</span>${canLink ? '<button type="button" class="lnk" data-act="unlink">Unlink</button>' : ''}`
                     : u.suggested_person ? `${icon('users')}<span class="muted">Same email as ${esc(u.suggested_person.name)} (${esc(u.suggested_person.employee_id || 'no ID')})</span>${canLink ? '<button type="button" class="lnk" data-act="link-sugg">Link</button>' : ''}`
                     : `<span class="muted">Not linked to a person</span>${canLink ? '<button type="button" class="lnk" data-act="link">Link to person…</button>' : ''}`}</div></div></div>
-              <div class="u-roles">${u.roles.map((r) => `<span class="role-chip r-${esc(r.code)}" title="${esc(r.note || '')}">${esc(roleName(r.code))}<em>${esc(scopeTxt(r.companies))}</em>${sup ? `<button type="button" data-act="revoke" data-role="${esc(r.code)}" aria-label="Remove ${esc(roleName(r.code))}">${icon('x')}</button>` : ''}</span>`).join('') || '<span class="muted small">No CMS role · cannot use the CMS</span>'}
-                ${sup ? `<button type="button" class="btn sm ghost" data-act="add">${icon('plus')}Add role</button>` : ''}</div>
-              ${u.suggestions.length ? `<div class="u-sugg"><span class="lbl">${icon('sparkle')}Suggested</span>${u.suggestions.map((s, i) => `<span class="sugg"><span><b>${esc(roleName(s.role))}</b> · ${esc(scopeTxt(s.companies))}<small>${esc(s.reason)}</small></span>${sup ? `<button type="button" class="btn sm primary" data-act="accept" data-i="${i}">Accept</button>` : ''}</span>`).join('')}</div>` : ''}
+              <div class="u-roles">${u.roles.map((r) => `<span class="role-chip r-${esc(r.code)}" title="${esc(r.note || '')}">${esc(roleName(r.code))}<em>${esc(scopeTxt(r.companies))}</em>${grantOn(u) && (sup || r.code !== 'super_admin') ? `<button type="button" data-act="revoke" data-role="${esc(r.code)}" aria-label="Remove ${esc(roleName(r.code))}">${icon('x')}</button>` : ''}</span>`).join('') || '<span class="muted small">No CMS role · cannot use the CMS</span>'}
+                ${Object.keys(extra[u.id] || {}).length ? `<span class="role-chip r-extra" title="${esc(Object.keys(extra[u.id]).map((k) => (matrix.modules.find((m) => m.code === k) || {}).label || k).join(', '))}">+${Object.keys(extra[u.id]).length} extra permission${Object.keys(extra[u.id]).length === 1 ? '' : 's'}</span>` : ''}
+                ${grantOn(u) ? `<button type="button" class="btn sm ghost" data-act="add">${icon('plus')}Add role</button><button type="button" class="btn sm ghost" data-act="extra">${icon('lock')}Extra permissions</button>` : ''}</div>
+              ${u.suggestions.length ? `<div class="u-sugg"><span class="lbl">${icon('sparkle')}Suggested</span>${u.suggestions.map((s, i) => `<span class="sugg"><span><b>${esc(roleName(s.role))}</b> · ${esc(scopeTxt(s.companies))}<small>${esc(s.reason)}</small></span>${grantOn(u) && (sup || s.role !== 'super_admin') ? `<button type="button" class="btn sm primary" data-act="accept" data-i="${i}">Accept</button>` : ''}</span>`).join('')}</div>` : ''}
             </article>`).join('') || '<div class="empty small"><p>No logins match</p></div>'}</div>
         </section>`;
     }
 
     function drawGrid() {
-      const roles = matrix.roles; const mods = matrix.modules; let grp = '';
+      const roles = matrix.roles; const mods = orderedMods(); let grp = '';
       return `<section class="card"><div class="card-head"><h3>${icon('lock')}Who can do what</h3><span class="muted small">V view · C create · E edit · A approve · D delete · X export</span></div>
-        <p class="muted small">${canPerm ? `Click a cell to change it; every change needs a reason and goes into the Audit Log. Super Admin always has everything. ${icon('lock')} Locked sections${sup ? '' : ' and the Admin role'} can only be changed by a Super Admin.` : 'Only Admin and Super Admin can change permissions.'}</p>
+        <p class="muted small">${canPerm ? `Click a cell to change it, or use the Roles &amp; permissions tab to change one role at a time. Every change needs a reason and goes into the Audit Log. Super Admin always has everything. ${icon('lock')} Locked items${sup ? '' : ' and the Admin role'} can only be changed by a Super Admin. ✓ = special permission allowed.` : 'Only Admin and Super Admin can change permissions.'}</p>
         <div class="table-wrap fill"><table class="grid perm-grid freeze1"><thead><tr><th>Module</th>${roles.map((r) => `<th title="${esc(r.description)}">${esc(r.name)}<small>${r.users} ${r.users === 1 ? 'user' : 'users'}</small></th>`).join('')}</tr></thead><tbody>
-        ${mods.map((m) => { const head = m.grp !== grp ? `<tr class="grp"><td colspan="${roles.length + 1}">${esc(m.grp)}</td></tr>` : ''; grp = m.grp;
-          return `${head}<tr><td>${m.locked ? `<span class="lock-ic" title="Locked: only a Super Admin can change this">${icon('lock')}</span>` : ''}${esc(m.label)} ${m.phase === 0 ? '<span class="tag live xs">Live</span>' : `<span class="tag phase p${m.phase} xs">P${m.phase}</span>`}</td>${roles.map((r) => {
-            const a = matrix.permissions[r.code]?.[m.code] || '';
-            return `<td><button type="button" class="pcell ${a ? 'on' : ''}" data-role="${esc(r.code)}" data-mod="${esc(m.code)}" ${canPerm && r.code !== 'super_admin' && (sup || (!m.locked && r.code !== 'admin')) ? '' : 'disabled'} aria-label="${esc(r.name)} · ${esc(m.label)}: ${a || 'none'}">${a ? 'VCEADX'.split('').filter((x) => a.includes(x)).map((x) => `<i>${x}</i>`).join('') : '·'}</button></td>`; }).join('')}</tr>`; }).join('')}
+        ${mods.map((m) => { const head = m.kind !== 'special' && m.grp !== grp ? `<tr class="grp"><td colspan="${roles.length + 1}">${esc(m.grp)}</td></tr>` : ''; if (m.kind !== 'special') grp = m.grp;
+          return `${head}<tr class="${m.kind === 'special' ? 'sp' : ''}"><td>${m.kind === 'special' ? '<span class="sp-ind">↳</span>' : ''}${m.locked ? `<span class="lock-ic" title="Locked: only a Super Admin can change this">${icon('lock')}</span>` : ''}${esc(m.label)} ${m.kind === 'special' ? (m.from_phase ? `<span class="tag phase p${m.from_phase} xs">P${m.from_phase}</span>` : '') : m.phase === 0 ? '<span class="tag live xs">Live</span>' : `<span class="tag phase p${m.phase} xs">P${m.phase}</span>`}</td>${roles.map((r) => {
+            const a = r.code === 'super_admin' ? actsOf(m) : norm(matrix.permissions[r.code]?.[m.code]);
+            return `<td><button type="button" class="pcell ${a ? 'on' : ''}" data-role="${esc(r.code)}" data-mod="${esc(m.code)}" ${canPerm && r.code !== 'super_admin' && (sup || (!m.locked && r.code !== 'admin')) ? '' : 'disabled'} aria-label="${esc(r.name)} · ${esc(m.label)}: ${a || 'none'}">${a ? (m.kind === 'special' ? '<i>✓</i>' : 'VCEADX'.split('').filter((x) => a.includes(x)).map((x) => `<i>${x}</i>`).join('')) : '·'}</button></td>`; }).join('')}</tr>`; }).join('')}
         </tbody></table></div></section>
         <section class="card"><div class="card-head"><h3>${icon('shield')}Roles</h3></div>
           <ul class="role-desc">${roles.map((r) => `<li><span class="role-chip r-${esc(r.code)}">${esc(r.name)}</span><span>${esc(r.description)}</span>${r.phase > 0 ? `<span class="tag phase p${r.phase}">used from ${esc(window.CMS_PHASES[r.phase])}</span>` : ''}</li>`).join('')}</ul></section>`;
+    }
+
+    function drawRoles() {
+      const roles = matrix.roles; const r = roles.find((x) => x.code === selRole) || roles.find((x) => x.code !== 'super_admin') || roles[0]; selRole = r.code;
+      const isSup = r.code === 'super_admin'; const editable = (m) => canPerm && !isSup && (sup || (!m.locked && r.code !== 'admin'));
+      const cur = isSup ? Object.fromEntries(matrix.modules.map((m) => [m.code, actsOf(m)])) : (matrix.permissions[r.code] || {});
+      const dflt = (matrix.defaults || {})[r.code] || {};
+      const changed = isSup ? 0 : matrix.modules.filter((m) => norm(cur[m.code]) !== norm(dflt[m.code])).length;
+      const anyEdit = matrix.modules.some(editable);
+      return `<div class="rr">
+        <aside class="card rr-list"><div class="rr-h"><b>Roles</b>${canPerm ? '<button type="button" class="btn sm" data-newrole>+ New role</button>' : ''}</div>
+          ${roles.map((x) => `<button type="button" class="rr-i ${x.code === r.code ? 'on' : ''}" data-rolepick="${esc(x.code)}"><span class="role-chip r-${esc(x.code)}">${esc(x.name)}</span><small>${x.users} ${x.users === 1 ? 'user' : 'users'}${x.is_system === false ? ' · made in the CMS' : ''}</small></button>`).join('')}</aside>
+        <section class="card rr-d"><div class="card-head"><h3>${icon('shield')}${esc(r.name)}</h3><div class="btn-row">
+            ${canPerm && !isSup && (sup || r.code !== 'admin') ? '<button type="button" class="btn sm ghost" data-rolename>Rename…</button>' : ''}
+            ${canPerm && !isSup && changed ? `<button type="button" class="btn sm ghost" data-rolereset>Reset to default (${changed})</button>` : ''}
+            ${canPerm && r.is_system === false ? '<button type="button" class="btn sm ghost" data-rolearch>Remove role…</button>' : ''}</div></div>
+          <p class="muted small">${esc(r.description || '')}</p>
+          ${isSup ? '<p class="note">Super Admin always has every permission.</p>' : !canPerm ? '<p class="muted small">Only Admin and Super Admin can change permissions.</p>' : r.code === 'admin' && !sup ? '<p class="muted small">Only a Super Admin can change the Admin role.</p>' : changed ? `<p class="small">${changed} item${changed === 1 ? '' : 's'} changed from the default (marked below).</p>` : '<p class="muted small">Same as the default.</p>'}
+          <div id="pl-box">${permList(cur, isSup ? null : dflt, editable)}</div>
+          ${anyEdit ? '<div class="pl-save"><span class="muted small" id="pl-n">No unsaved changes</span><input id="pl-why" maxlength="300" placeholder="Reason for the change"><button type="button" class="btn primary" data-plsave disabled>Save changes</button></div>' : ''}</section></div>`;
+    }
+    function wireRoles() {
+      const r = matrix.roles.find((x) => x.code === selRole); const box = $('#pl-box', body); const cur = matrix.permissions[selRole] || {};
+      const diff = () => Object.fromEntries(Object.entries(readPerm(box)).filter(([k, v]) => norm(v) !== norm(cur[k])));
+      wirePerm(box, () => { const n = Object.keys(diff()).length; $('#pl-n', body).textContent = n ? `${n} unsaved change${n === 1 ? '' : 's'}` : 'No unsaved changes'; $('[data-plsave]', body).disabled = !n; });
+      $$('[data-rolepick]', body).forEach((b) => b.addEventListener('click', () => { selRole = b.dataset.rolepick; draw(); }));
+      $('[data-plsave]', body)?.addEventListener('click', async () => {
+        const why = $('#pl-why', body).value.trim(); if (!why) { toast('Give a reason for the change.', 'err'); $('#pl-why', body).focus(); return; }
+        try { const n = await API.rpc('cms_role_permissions_save', { p_role: selRole, p_perms: diff(), p_reason: why }); toast(`${r.name}: ${n} change${n === 1 ? '' : 's'} saved`); await reload(); }
+        catch (e) { toast(e.message, 'err'); } });
+      $('[data-rolereset]', body)?.addEventListener('click', async () => {
+        const ok = await modal({ title: `Reset ${r.name} to its default`, ok: 'Reset', danger: true, body: '<p class="muted small">Every item marked “changed from default” goes back to the default.</p><label class="fld"><span>Reason</span><input name="why" required maxlength="300"></label>',
+          onOk: async (f) => { if (!f.why.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_role_reset', { p_role: selRole, p_reason: f.why.value.trim() }); } });
+        if (ok) { toast(`${r.name} reset to default`); await reload(); } });
+      $('[data-rolename]', body)?.addEventListener('click', async () => {
+        const ok = await modal({ title: `Rename ${r.name}`, body: `<label class="fld"><span>Name</span><input name="nm" required value="${esc(r.name)}"></label><label class="fld"><span>What this role is for</span><input name="ds" value="${esc(r.description || '')}"></label>`,
+          onOk: async (f) => { await API.rpc('cms_role_save', { p: { code: selRole, name: f.nm.value.trim(), description: f.ds.value.trim() } }); } });
+        if (ok) { toast('Role saved'); await reload(); } });
+      $('[data-rolearch]', body)?.addEventListener('click', async () => {
+        const ok = await modal({ title: `Remove ${r.name}`, ok: 'Remove role', danger: true, body: '<p class="muted small">Only possible when nobody holds this role. Its history stays in the Audit Log.</p><label class="fld"><span>Reason</span><input name="why" required></label>',
+          onOk: async (f) => { if (!f.why.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_role_archive', { p_code: selRole, p_reason: f.why.value.trim() }); } });
+        if (ok) { toast('Role removed'); selRole = 'hr'; await reload(); } });
+      $('[data-newrole]', body)?.addEventListener('click', async () => {
+        let code = null;
+        const ok = await modal({ title: 'New role', body: `<label class="fld"><span>Name</span><input name="nm" required maxlength="60" placeholder="e.g. Centre Manager"></label>
+            <label class="fld"><span>What this role is for</span><input name="ds" maxlength="200"></label>
+            <label class="fld"><span>Start from the permissions of</span><select name="src"><option value="">Nothing (an empty role)</option>${matrix.roles.filter((x) => x.code !== 'super_admin').map((x) => `<option value="${esc(x.code)}">${esc(x.name)}</option>`).join('')}</select></label>
+            <p class="muted small">You can change its permissions straight after. What it starts with becomes its default.</p>`,
+          ok: 'Create role', onOk: async (f) => { if (!f.nm.value.trim()) throw new Error('Give the role a name.'); code = await API.rpc('cms_role_save', { p: { name: f.nm.value.trim(), description: f.ds.value.trim(), copy_from: f.src.value || null } }); } });
+        if (ok && code) { toast('Role created'); selRole = code; await reload(); } });
     }
 
     function drawRules() {
@@ -1345,7 +1422,8 @@
 
     function draw() {
       $$('.tabs button', el).forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-      body.innerHTML = tab === 'grid' ? drawGrid() : tab === 'rules' ? drawRules() : drawLogins();
+      body.innerHTML = tab === 'grid' ? drawGrid() : tab === 'rules' ? drawRules() : tab === 'roles' ? drawRoles() : drawLogins();
+      if (tab === 'roles') wireRoles();
       if (tab === 'logins') {
         $('#uq', body).addEventListener('input', (e) => { filter.q = e.target.value; const pos = e.target.selectionStart; draw(); const i = $('#uq', body); i.focus(); i.setSelectionRange(pos, pos); });
         $$('[data-show]', body).forEach((b) => b.addEventListener('click', () => { filter.show = b.dataset.show; draw(); }));
@@ -1364,7 +1442,7 @@
         await confirmBox(`Grant ${roleName(s.role)}?`, `<b>${esc(u.name)}</b> (${esc(u.email)}) gets <b>${esc(roleName(s.role))}</b> for ${esc(scopeTxt(s.companies))}.<br><small class="muted">Reason: ${esc(s.reason)}</small>`, 'Grant role', false,
           () => grant(u, s.role, s.companies, 'Accepted suggestion: ' + s.reason));
       } else if (act === 'add') {
-        const opts = matrix.roles.filter((r) => !u.roles.some((x) => x.code === r.code));
+        const opts = matrix.roles.filter((r) => !u.roles.some((x) => x.code === r.code) && (sup || r.code !== 'super_admin'));
         await modal({
           title: `Add a role · ${u.name}`,
           body: `<label class="fld"><span>Role</span><select name="role">${opts.map((r) => `<option value="${esc(r.code)}">${esc(r.name)}</option>`).join('')}</select></label>
@@ -1373,6 +1451,16 @@
           ok: 'Grant role',
           onOk: async (form) => { if (!form.role.value) throw new Error('This login already holds every role.'); await grant(u, form.role.value, form.role.value === 'super_admin' ? null : readScope(form), form.note.value); },
         });
+      } else if (act === 'extra') {
+        const cur = extra[u.id] || {};
+        await modal({ title: `Extra permissions · ${u.name}`, wide: true, ok: 'Save',
+          body: `<p class="muted small">Added on top of ${u.roles.length ? `the roles ${esc(u.roles.map((r) => roleName(r.code)).join(', '))}` : 'any roles'} for this login only. Untick to take one away. Locked items can only be given by a Super Admin.</p>
+            <div class="pl-modal">${permList(cur, null, (m) => sup || !m.locked)}</div>
+            <label class="fld"><span>Reason for the change</span><input name="why" required maxlength="300" placeholder="e.g. Accounts needs to see payroll totals"></label>`,
+          onOpen: (w) => wirePerm($('.pl-modal', w)),
+          onOk: async (form) => { if (!form.why.value.trim()) throw new Error('Give a reason for the change.');
+            const want = Object.fromEntries(Object.entries(readPerm($('.pl-modal', form))).filter(([, v]) => v));
+            const n = await API.rpc('cms_user_permissions_save', { p_user: u.id, p_perms: want, p_reason: form.why.value.trim() }); toast(n ? `${n} permission change${n === 1 ? '' : 's'} saved for ${u.name}` : 'No changes'); await reload(); } });
       } else if (act === 'revoke') {
         const role = btn.dataset.role;
         await confirmBox(`Remove ${roleName(role)}?`, `<b>${esc(u.name)}</b> will lose <b>${esc(roleName(role))}</b>${u.roles.length === 1 ? ' and will no longer be able to use the CMS' : ''}.`, 'Remove role', true, async () => {
@@ -1401,7 +1489,7 @@
     async function editCell(role, mod) {
       const cur = matrix.permissions[role]?.[mod] || '';
       const r = matrix.roles.find((x) => x.code === role); const m = matrix.modules.find((x) => x.code === mod);
-      const L = [['V', 'View'], ['C', 'Create'], ['E', 'Edit'], ['A', 'Approve'], ['D', 'Delete'], ['X', 'Export']];
+      const L = m.kind === 'special' ? [['V', 'Allowed']] : actsOf(m).split('').map((l) => [l, m.act_labels?.[l] || ACT[l]]);
       await modal({
         title: `${r.name} · ${m.label}`,
         body: `<div class="checks big">${L.map(([k, l]) => `<label><input type="checkbox" name="a" value="${k}" ${cur.includes(k) ? 'checked' : ''}> <b>${k}</b> ${l}</label>`).join('')}</div>
@@ -1410,7 +1498,7 @@
         onOk: async (form) => {
           const v = $$('input[name=a]:checked', form).map((x) => x.value).join('');
           if (!form.why.value.trim()) throw new Error('Give a reason for the change.');
-          const saved = await API.rpc('cms_permission_change', { p_role: role, p_module: mod, p_actions: v, p_reason: form.why.value.trim() });
+          const saved = await API.rpc('cms_permission_change', { p_role: role, p_module: mod, p_actions: v, p_reason: form.why.value.trim() }); matrix = await API.rpc('cms_roles_matrix');
           matrix.permissions[role] = matrix.permissions[role] || {}; matrix.permissions[role][mod] = saved;
           toast(`${r.name} · ${m.label}: ${saved || 'none'}`); draw();
         },
@@ -1896,7 +1984,7 @@
     return t;
   }
   async function loadSelfPending() {
-    if (!can('selfservice', 'E')) return;
+    if (!can('selfservice.profile')) return;
     try { state.selfPending = await API.rpc('cms_self_pending'); drawBell(); } catch (e) { /* reminder only */ }
   }
   async function refreshSelf() { try { state.self = await API.rpc('cms_my_self'); drawBell(); } catch (e) { /* keep the last */ } }
@@ -3441,7 +3529,7 @@
       approve: L.can_approve ? L.letters.filter((l) => l.status === 'pending_approval' && l.created_by !== me) : [],
       issue: L.can_issue ? L.letters.filter((l) => l.status === 'approved') : [],
       back: L.letters.filter((l) => l.status === 'draft' && l.rejected && l.created_by === me),
-      tpls: L.can_approve ? L.templates.filter((t) => t.status === 'pending' || t.pending?.submitted_at || t.retire_request) : [] });
+      tpls: L.can_publish ? L.templates.filter((t) => t.status === 'pending' || t.pending?.submitted_at || t.retire_request) : [] });
     const T0 = todo(); const nTodo = T0.approve.length + T0.issue.length + T0.back.length + T0.tpls.length;
     const f = { tab: q.get('tab') || (nTodo ? 'todo' : 'issued'), q: '', retired: false };
     const reload = async () => { const y = pageScroller().scrollTop; try { await load(); loadLettersPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
@@ -3458,8 +3546,8 @@
       const TABS = [['todo', `To do <span>${n}</span>`], ['issued', `Issued <span>${iss.length}</span>`], ['progress', `In progress <span>${prog.length}</span>`], ['templates', `Templates <span>${L.templates.filter((x) => x.status !== 'retired').length}</span>`], ['placeholders', `Placeholders <span>${L.placeholders.filter((x) => x.active).length}</span>`]];
       $('#lt-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="${f.tab === 'placeholders' ? 'Placeholder name or label' : f.tab === 'templates' ? 'Template' : 'Name or letter'}" value="${esc(f.q)}" aria-label="Search"></label>
-          ${f.tab === 'templates' ? `<label class="chk"><input type="checkbox" id="lret" ${f.retired ? 'checked' : ''}> Show retired</label>${L.can_edit ? `<button type="button" class="btn sm" data-imp>${icon('plus')}Import from Word…</button><a class="btn sm" href="#/letters?tpl=new">+ New text template</a>` : ''}`
-            : f.tab === 'placeholders' ? (L.can_change ? '<button type="button" class="btn sm primary" data-phnew>+ New placeholder…</button>' : '')
+          ${f.tab === 'templates' ? `<label class="chk"><input type="checkbox" id="lret" ${f.retired ? 'checked' : ''}> Show retired</label>${L.can_change ? `<button type="button" class="btn sm" data-imp>${icon('plus')}Import from Word…</button><a class="btn sm" href="#/letters?tpl=new">+ New text template</a>` : ''}`
+            : f.tab === 'placeholders' ? (L.can_placeholders ? '<button type="button" class="btn sm primary" data-phnew>+ New placeholder…</button>' : '')
             : L.can_edit ? '<a class="btn sm primary" href="#/letters?ws=new">+ New letter</a>' : ''}</div><div id="lt-tab"></div></section>
         <p class="muted small">HR drafts a letter and sends it for approval; Admin, Super Admin or a Director approves it (never the person who drafted it); then HR, Admin, Super Admin or a Director issues it. The approved wording is what gets issued, and every issued letter is kept in the person's records. New and changed templates need approval too, unless made by someone who can approve.</p>`;
       const box = $('#lt-tab', el);
@@ -3478,10 +3566,10 @@
             <td><b>${esc(x.title)}</b> <small class="muted">${esc(x.code)}</small> ${x.format === 'docx' ? '<span class="tag xs">Word</span>' : '<span class="tag xs">Text</span>'}${x.company ? ` <span class="tag xs">${esc(coShort(x.company) || x.company)}</span>` : ''}
               <small class="sub">${tplKeys(x.body).length} field${tplKeys(x.body).length === 1 ? '' : 's'}${x.created_by_name ? ` · by ${esc(x.created_by_name)}` : ''}${x.reviewed_by_name ? ` · approved by ${esc(x.reviewed_by_name)}` : ''}</small></td>
             <td>${tag(TPL_ST, x.status)}${x.pending?.submitted_at ? '<small class="sub">change waiting for approval</small>' : x.pending ? `<small class="sub">${x.pending.rejected ? 'change sent back' : 'change in draft'}</small>` : ''}${x.retire_request ? '<small class="sub">retirement asked</small>' : ''}${x.status === 'rejected' && x.review_note ? `<small class="sub">${esc(x.review_note)}</small>` : ''}</td>
-            <td>${x.status === 'published' ? (L.can_approve ? `<label class="switch" title="Switch on to use for letters"><input type="checkbox" data-on="${esc(x.code)}" ${x.active ? 'checked' : ''}><span></span></label>` : (x.active ? '<span class="tag ok xs">On</span>' : '<span class="tag xs">Off</span>')) : '—'}</td>
+            <td>${x.status === 'published' ? (L.can_switch ? `<label class="switch" title="Switch on to use for letters"><input type="checkbox" data-on="${esc(x.code)}" ${x.active ? 'checked' : ''}><span></span></label>` : (x.active ? '<span class="tag ok xs">On</span>' : '<span class="tag xs">Off</span>')) : '—'}</td>
             <td class="num">${num(x.used || 0)}</td>
             <td class="nowrap">${x.status === 'published' && x.active && L.can_edit ? `<a class="btn sm" href="#/letters?ws=new&template=${encodeURIComponent(x.code)}">Use</a> ` : ''}
-              ${L.can_approve && (x.status === 'pending' || x.pending?.submitted_at || x.retire_request) ? `<button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button> ` : ''}
+              ${L.can_publish && (x.status === 'pending' || x.pending?.submitted_at || x.retire_request) ? `<button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button> ` : ''}
               ${L.can_change && x.status !== 'retired' ? `<a class="btn sm ghost" href="#/letters?${x.format === 'docx' ? 'import' : 'tpl'}=${encodeURIComponent(x.code)}">Edit</a> ` : ''}
               <button type="button" class="btn sm ghost" data-hist="${esc(x.code)}">History</button>
               ${L.can_change && x.status !== 'retired' && !x.retire_request ? ` <button type="button" class="btn sm ghost" data-retire="${esc(x.code)}">Retire…</button>` : ''}</td></tr>`).join('')}`).join('')}</tbody></table></div>` : '<div class="empty small"><p>No templates</p></div>';
@@ -3492,7 +3580,7 @@
             return `<tr class="${p.active ? '' : 'muted'}"><td><code>{{${esc(p.key)}}}</code>${p.protected ? ` <span class="lock-ic" title="Protected: filled from the Employee Master">${icon('lock')}</span>` : ''}${p.active ? '' : ' <span class="tag xs">off</span>'}</td>
               <td>${esc(p.label)}${p.required ? '' : ' <small class="muted">optional</small>'}</td><td>${esc((KINDS.find((k) => k[0] === p.kind) || [0, p.kind])[1])}</td>
               <td>${esc((SOURCES.find((k) => k[0] === p.source) || [0, p.source])[1])}${p.source_key ? `<small class="sub">${esc(p.source_key)}</small>` : ''}</td><td class="num">${used} template${used === 1 ? '' : 's'}</td>
-              <td>${L.can_change && !p.protected ? `<button type="button" class="btn sm ghost" data-ph="${esc(p.key)}">Edit…</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+              <td>${L.can_placeholders && !p.protected ? `<button type="button" class="btn sm ghost" data-ph="${esc(p.key)}">Edit…</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
       }
       $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; f.q = ''; draw(); }));
       $('#lq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#lq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
@@ -3508,8 +3596,8 @@
       $$('[data-hist]', box).forEach((b) => b.addEventListener('click', () => templateHistory(L, b.dataset.hist)));
       $$('[data-retire]', box).forEach((b) => b.addEventListener('click', async () => {
         const x = L.templates.find((y) => y.code === b.dataset.retire); let out = null;
-        const ok = await modal({ title: `Retire ${x.title} (${x.code})`, ok: L.can_approve ? 'Retire' : 'Ask to retire', danger: true,
-          body: `<p class="muted small">${L.can_approve ? 'It stops being used for new letters; letters already issued are kept.' : 'Admin, Super Admin or a Director approves the retirement.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
+        const ok = await modal({ title: `Retire ${x.title} (${x.code})`, ok: L.can_publish ? 'Retire' : 'Ask to retire', danger: true,
+          body: `<p class="muted small">${L.can_publish ? 'It stops being used for new letters; letters already issued are kept.' : 'Admin, Super Admin or a Director approves the retirement.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
           onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); out = await API.rpc('cms_letter_template_retire', { p_code: x.code, p_reason: fm.r.value.trim() }); } });
         if (ok) { toast(out === 'retired' ? 'Template retired' : 'Retirement sent for approval'); reload(); }
       }));
@@ -3643,7 +3731,7 @@
     if (status === 'pending_approval' && L.can_approve && rec.created_by !== L.me) acts.push('<button type="button" class="btn danger" data-a="back">Send back…</button>', '<button type="button" class="btn primary" data-a="approve">Approve</button>');
     if (status === 'approved' && L.can_issue) acts.push('<button type="button" class="btn primary" data-a="issue">Issue letter…</button>');
     if (status === 'issued') { acts.push(`<button type="button" class="btn primary" data-a="print">${icon('download')}Print / PDF</button>`); if (rec.docx_path) acts.push('<button type="button" class="btn" data-a="word">Download Word</button>'); }
-    if (rec && ['draft', 'pending_approval', 'approved', 'issued'].includes(status) && L.can_change) acts.push('<button type="button" class="btn ghost" data-a="void">Cancel letter…</button>');
+    if (rec && ['draft', 'pending_approval', 'approved', 'issued'].includes(status) && L.can_void) acts.push('<button type="button" class="btn ghost" data-a="void">Cancel letter…</button>');
     $('#lw-acts', el).innerHTML = acts.join('');
     const payload = (submit) => { const t = tpl(); return { id: rec?.id || null, person_id: personId, template: t.code, fields: vals, text: fillTpl(t.body, vals), company: co ? { ...co, logo: undefined } : null, appraisal_id: appraisal, submit }; };
     const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
@@ -3696,8 +3784,8 @@
     const pub = t?.status === 'published';
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit · ${esc(t.title)}` : 'New text template'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
-        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_approve ? 'Publish' : 'Send for approval'}</button></div></div>
-      ${pub ? `<div class="note">${icon('help')}<div>This template is published${t.active ? ' and in use' : ''}. Your change ${L.can_approve ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current wording stays in use.${t.pending?.rejected ? `<br><b class="bad-t">Last change sent back:</b> ${esc(t.pending.rejected)}` : ''}</div></div>` : t?.status === 'rejected' && t.review_note ? `<div class="note bad">${icon('help')}<div><b>Sent back:</b> ${esc(t.review_note)}</div></div>` : ''}
+        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_publish ? 'Publish' : 'Send for approval'}</button></div></div>
+      ${pub ? `<div class="note">${icon('help')}<div>This template is published${t.active ? ' and in use' : ''}. Your change ${L.can_publish ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current wording stays in use.${t.pending?.rejected ? `<br><b class="bad-t">Last change sent back:</b> ${esc(t.pending.rejected)}` : ''}</div></div>` : t?.status === 'rejected' && t.review_note ? `<div class="note bad">${icon('help')}<div><b>Sent back:</b> ${esc(t.review_note)}</div></div>` : ''}
       <form class="lw-grid" id="te-f" onsubmit="return false">
         <section class="card lw-form">
           <div class="grid-2 tight"><label class="fld fld-2"><span>Template title</span><input name="title" required value="${esc(fromWord?.title || pend?.title || t?.title || '')}" placeholder="e.g. Letter of Confirmation (teachers)"></label>
@@ -3736,9 +3824,9 @@
         if (!t && !f.ltype.value) throw new Error('Choose the letter type.');
         if (pub && !f.why.value.trim()) throw new Error('Give the reason for the change.');
         const unk = tplKeys(ta.value).filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
-        if (submit && !(await ask(L.can_approve ? 'Publish this template? Switch it on afterwards to use it for letters.' : 'Send this template for approval?', L.can_approve ? 'Publish' : 'Send'))) return;
+        if (submit && !(await ask(L.can_publish ? 'Publish this template? Switch it on afterwards to use it for letters.' : 'Send this template for approval?', L.can_publish ? 'Publish' : 'Send'))) return;
         const c = await API.rpc('cms_letter_template_save', { p: { code: t?.code || null, ...(t ? {} : readType(f)), title: f.title.value.trim(), format: 'text', body: ta.value, company: f.co.value, reason: pub ? f.why.value.trim() : (fromWord ? 'Converted from a Word file' : null), submit } });
-        toast(submit ? (L.can_approve ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
+        toast(submit ? (L.can_publish ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
         location.hash = '#/letters?tab=templates';
       } catch (e) { toast(e.message, 'err'); }
     }));
@@ -3757,8 +3845,8 @@
     let bytes = null; let info = null; let fileName = t?.pending?.file_name || t?.file_name || ''; let view = null; let rows = []; let who = null; let changed = false;
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit Word template · ${esc(t.title)}` : 'Import a letter from Word'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
-        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_approve ? 'Publish' : 'Send for approval'}</button></div></div>
-      ${pub ? `<div class="note">${icon('help')}<div>This template is published. Your change ${L.can_approve ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current file stays in use.</div></div>` : ''}
+        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_publish ? 'Publish' : 'Send for approval'}</button></div></div>
+      ${pub ? `<div class="note">${icon('help')}<div>This template is published. Your change ${L.can_publish ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current file stays in use.</div></div>` : ''}
       <form class="lw-grid" id="wi-f" onsubmit="return false">
         <section class="card lw-form">
           <h4 class="sec-h">1 · The Word file</h4>
@@ -3850,12 +3938,12 @@
         const unk = info.fields.filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
         if ($('input[name=keep]:checked', el)?.value === 'text') { state.wordText = { body: await W.toText(bytes), title: f.title.value.trim(), letter_type: f.ltype.value === '__new' ? '' : f.ltype.value, company: f.co.value }; location.hash = '#/letters?tpl=new&from=word'; return; }
         if (!info.fields.length && !(await ask('This letter has no placeholders yet, so every letter would be identical. Save anyway?', 'Save anyway'))) return;
-        if (submit && !(await ask(L.can_approve ? 'Publish this Word template? Switch it on afterwards to use it for letters.' : 'Send this Word template for approval?', L.can_approve ? 'Publish' : 'Send'))) return;
+        if (submit && !(await ask(L.can_publish ? 'Publish this Word template? Switch it on afterwards to use it for letters.' : 'Send this Word template for approval?', L.can_publish ? 'Publish' : 'Send'))) return;
         b.disabled = true;
         const path = !t || changed ? await putDocx('templates', bytes) : (t.pending?.source_path || t.source_path);
         const c = await API.rpc('cms_letter_template_save', { p: { code: t?.code || null, ...(t ? {} : readType(f)), title: f.title.value.trim(), format: 'docx', body: info.text, company: f.co.value,
           source_path: path, file_name: fileName, reason: pub ? f.why.value.trim() : 'Imported from Word', submit } });
-        toast(submit ? (L.can_approve ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
+        toast(submit ? (L.can_publish ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
         location.hash = '#/letters?tab=templates';
       } catch (e) { b.disabled = false; toast(e.message, 'err'); }
     }));
@@ -4063,14 +4151,15 @@
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
     el.innerHTML = `${pageHead(item)}
       <section class="card coming"><div class="coming-art">${icon(item.icon || item.groupIcon || 'sparkle')}</div>
-        <div><h3>Arrives in ${esc(window.CMS_PHASES[item.phase] || 'a later phase')}</h3>
-        <p>${item.source ? `Until then, keep using <b>${esc(item.source)}</b>. Its data moves into the CMS when this module goes live, so nothing is retyped.` : 'This module is new in the CMS.'}</p>
+        <div><h3>${item.myp ? `Runs in ${esc(item.source)} until ${esc(window.CMS_PHASES[6])}` : `Arrives in ${esc(window.CMS_PHASES[item.phase] || 'a later phase')}`}</h3>
+        <p>${item.myp ? `<b>${esc(item.source)}</b> works on the same data as the CMS, so nothing is entered twice. In Phase 6 this page is rebuilt inside the CMS; until then open it with the button below. Your access follows your CMS Payroll permission.`
+          : item.source ? `Until then, keep using <b>${esc(item.source)}</b>. Its data moves into the CMS when this module goes live, so nothing is retyped.` : 'This module is new in the CMS.'}</p>
         ${plan.length ? `<ul class="plan">${plan.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
         ${url ? `<div class="btn-row"><a class="btn primary" href="${esc(url)}" target="_blank" rel="noopener">${icon('plug')}Open ${esc(item.source)}</a></div>` : ''}</div></section>`;
   }
 
   function noAccessPage(el) {
-    el.innerHTML = `<section class="card coming"><div class="coming-art">${icon('lock')}</div><div><h3>You do not have access to this page</h3><p>Ask a Super Admin to add it to one of your roles.</p><div class="btn-row"><a class="btn primary" href="#/dashboard">Back to the dashboard</a></div></div></section>`;
+    el.innerHTML = `<section class="card coming"><div class="coming-art">${icon('lock')}</div><div><h3>You do not have access to this page</h3><p>Ask an Admin or Super Admin to give you access.</p><div class="btn-row"><a class="btn primary" href="#/dashboard">Back to the dashboard</a></div></div></section>`;
   }
 
   const LIVE = {
