@@ -13,6 +13,8 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | **Built in v2026.10.21-14:20** (staff confirmation in My Items) |
 | PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | **Built in v2026.10.21-15:45** |
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | **Built in v2026.10.21-15:45** |
+| PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | Recorded |
+| PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Recorded |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -167,3 +169,28 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - The JD Manual salary bands stay as the market reference. Beside each level, a **MyEden cap** (min / max) that
   HR/Admin can edit, with effective date and change history (who, when, why). Career Paths and increment reviews
   use the MyEden cap; the market range stays visible for comparison.
+
+## PRI-009 · Person facts beside the letter draft — recorded 2026-10-22
+- When HR picks a person and a letter type, the letter workspace shows a "Facts for this letter" panel from the CMS records,
+  so HR can assess before issuing. Only the facts that matter for that letter type:
+  - *Confirmation (LOC), Confirmation & Increment (LOC_LOI), Probation Extension (PEL):* start date, probation period,
+    confirmation due date, extensions already given (with dates), appraisal result, current salary, last increment.
+  - *Increment (LOI), Promotion (LOP):* current salary and position, last increment (amount, date), next review due,
+    MyEden cap / JD range for the level, appraisal result.
+  - *Resignation acceptance (RL):* resignation letter date, notice period (contract and Employment Act), last working day,
+    annual leave balance for the offset version, items still to hand over, company loan balance.
+  - *Warning, Show Cause, Explanation, Domestic Inquiry, Suspension, Termination, PIP:* earlier letters of these types
+    with dates, open hand-over items, notice / termination terms.
+  - *Transfer (TRL):* current company / centre / paying company and position. *Unpaid leave (UAL):* leave balances and unpaid days this year.
+- Facts that match a placeholder can be filled in with one click; HR can still change them before submitting.
+- Facts the user may not see (salary, IC) follow the existing permissions.
+
+## PRI-010 · Run side by side until stable, then redirect — recorded 2026-10-22
+- No one-way copy: the forms (SCF, OTCF, MTCF, TEC, PRFAF), MyPayroll V2.0, MEG-EAF V2 and the CMS already read and write the
+  same database, so a change in one shows in the others straight away.
+- Side-by-side period: both stay open; parity checks (payroll recalculation vs saved months, claim counts, leave balances)
+  are run and reported each release; nothing is switched off until CLC confirms it is stable.
+- Then (Phase 6f for payroll, later for forms): old apps become read-only with a link to the CMS page, and staff are
+  redirected to the CMS for all transactions.
+- MEG-EAF V2 applicant and HR system pages move into the CMS in a later phase.
+
