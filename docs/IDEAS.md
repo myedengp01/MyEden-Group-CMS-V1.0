@@ -13,7 +13,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-006 | 2026-10-21 | Employee items register (hand-on / hand-over): every company item issued is recorded and confirmed by the employee in their own app (time stamp, optional photo); returns, renewals, replacements and credential changes during employment; hand-over list activated at offboarding with deadline, notes and approval | **Built in v2026.10.21-14:20** (staff confirmation in My Items) |
 | PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | **Built in v2026.10.21-15:45** |
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | **Built in v2026.10.21-15:45** |
-| PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | Recorded |
+| PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | **Built in v2026.10.22-14:45** |
 | PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Recorded |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
@@ -170,7 +170,15 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   HR/Admin can edit, with effective date and change history (who, when, why). Career Paths and increment reviews
   use the MyEden cap; the market range stays visible for comparison.
 
-## PRI-009 · Person facts beside the letter draft — recorded 2026-10-22
+## PRI-009 · Person facts beside the letter draft — built in v2026.10.22-14:45
+- **How it was built:** `cms_letter_facts(person, letter type)` gathers the facts on the server (employment, probation from the probation
+  rules and issued Probation Extension letters, the latest approved appraisal, pay from Increments & Reviews and the JD / MyEden cap
+  of the person's Career Paths position, notice from the leaving record with the Employment Act s.12 minimum, open hand-over items,
+  company loan balance, earlier disciplinary letters, unpaid leave). Leave balances are worked out in the page with the payroll leave
+  engine, so they match Leave Balances. The panel sits above the letter fields; facts are flagged (overdue, due soon, already confirmed,
+  extension no. 2, salary near / above the cap, last day earlier than the notice). **Insert** / **Fill all matching** only for fields of
+  the chosen template that are editable (fields locked to the records are already filled). Salary facts need "See salaries",
+  leave needs Leave or Payroll view, loans need Payroll view.
 - When HR picks a person and a letter type, the letter workspace shows a "Facts for this letter" panel from the CMS records,
   so HR can assess before issuing. Only the facts that matter for that letter type:
   - *Confirmation (LOC), Confirmation & Increment (LOC_LOI), Probation Extension (PEL):* start date, probation period,

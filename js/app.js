@@ -3666,6 +3666,7 @@
             <select id="lw-p" ${editable && !rec ? '' : 'disabled'}><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === personId ? 'selected' : ''}>${esc(p.name)} · ${esc(p.employee_id || 'no ID')}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></div>
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
+          <div id="lw-facts"></div>
           <div id="lw-fields"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
@@ -3714,7 +3715,7 @@
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
     };
     const loadCtx = async (fresh) => {
-      if (!personId) { ctx = null; drawFields(); preview(); return; }
+      if (!personId) { ctx = null; drawFields(); preview(); loadFacts(); return; }
       try { ctx = await API.rpc('cms_letter_context', { p_person: personId }); } catch (e) { toast(e.message, 'err'); return; }
       co = ctx._company || null; coCode = person()?.company || co?.code || null;
       if (editable) {
@@ -3723,7 +3724,59 @@
         L.placeholders.forEach((p) => { if (p.default && (vals[p.key] == null || vals[p.key] === '')) vals[p.key] = p.default; });
         calc();
       }
-      drawFields(); preview();
+      drawFields(); preview(); loadFacts();
+    };
+    // PRI-009 · facts for this letter: what matters for this letter type, with one-click insert into matching fields
+    let facts = null; let factsFor = '';
+    const fmtD = (iso) => (iso ? longDate(String(iso).slice(0, 10)) : '');
+    const leaveFacts = async (F) => {
+      if (!F.leave || !F.eppd_employee_id || !(can('leave') || can('payroll'))) return null;
+      try {
+        const lib = await mypImport('leave-data.js'); const sb = mypSb();
+        const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+        const asOf = F.type === 'UAL' || !F.last_day || F.last_day.slice(0, 4) !== today.slice(0, 4) ? today : F.last_day;
+        const D = await lib.loadLeaveYear(sb, Number(asOf.slice(0, 4))); const pp = D.people.find((x) => x.id === F.eppd_employee_id); if (!pp) return null;
+        const b = lib.balancesFor(pp, D, asOf); const n = (v) => (v == null ? '—' : String(Math.round(v * 100) / 100));
+        const items = [
+          { label: `Annual leave entitled ${asOf.slice(0, 4)}${b.AL.carried ? ` (incl. ${n(b.AL.carried)} carried)` : ''}`, value: `${n((b.AL.entitled || 0) + (b.AL.carried || 0))} days`, key: 'leave_entitlement', insert: n((b.AL.entitled || 0) + (b.AL.carried || 0)) },
+          { label: 'Annual leave taken', value: `${n(b.AL.taken)} days`, key: 'al_taken', insert: n(b.AL.taken) },
+          { label: `Annual leave balance at ${fmtD(asOf)}`, value: `${n(b.AL.balance)} days`, key: 'al_balance', insert: n(b.AL.balance), flag: b.AL.balance < 0 ? 'bad' : null, note: b.AL.balance < 0 ? 'Negative balance — becomes unpaid leave.' : null },
+          { label: 'Balance worked out to', value: fmtD(asOf), key: 'al_asofdate', insert: fmtD(asOf) },
+          { label: 'Sick leave balance', value: `${n(b.SL?.balance)} days` },
+          { label: 'Unpaid leave taken', value: `${n(b.UPL?.taken)} days` }];
+        return { title: 'Leave (same numbers as Leave Balances)', items };
+      } catch (e) { return { title: 'Leave', items: [{ label: 'Leave balances', value: 'Could not be worked out', flag: 'warn', note: e.message }] }; }
+    };
+    const drawFacts = () => {
+      const box = $('#lw-facts', el); if (!box) return;
+      if (!facts || !personId || !tpl()) { box.innerHTML = ''; return; }
+      const k = new Set(keys());
+      const canIns = (it) => { if (!(editable && it.key && k.has(it.key) && it.insert != null && it.insert !== '' && it.insert !== '—')) return false; const p = ph.get(it.key) || {}; return !(p.protected || p.editable === false || p.source === 'calculation'); };
+      const all = facts.groups.flatMap((g) => g.items).filter(canIns);
+      const flagIc = { ok: 'check-circle', warn: 'help', bad: 'help' };
+      box.innerHTML = `<details class="lw-facts" open><summary><b>Facts for this letter</b><span class="muted small"> · from the CMS records</span>
+          ${all.length ? `<button type="button" class="btn sm" data-fill-all>Fill all matching (${all.length})</button>` : ''}</summary>
+        ${facts.groups.map((g) => `<div class="lf-g"><h5>${esc(g.title)}</h5>${g.items.map((it, i) => `<div class="lf-row ${it.flag ? `lf-${esc(it.flag)}` : ''}">
+          <span class="lf-l">${esc(it.label)}</span><span class="lf-v">${it.flag ? icon(flagIc[it.flag] || 'help') : ''}${esc(it.value)}${it.note ? `<small>${esc(it.note)}</small>` : ''}</span>
+          ${canIns(it) ? `<button type="button" class="lnk small" data-ins-k="${esc(it.key)}" data-ins-v="${esc(it.insert)}" title="Put this into “${esc(labelOf(it.key))}”">${String(vals[it.key] ?? '') === String(it.insert) ? 'In letter ✓' : 'Insert'}</button>` : '<span></span>'}</div>`).join('')}</div>`).join('')}
+        ${!facts.groups.length ? '<p class="muted small">No facts for this letter type.</p>' : ''}</details>`;
+      const put = (key, v) => { vals[key] = v; };
+      $$('[data-ins-k]', box).forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); put(b.dataset.insK, b.dataset.insV); calc(); drawFields(); drawFacts(); later(); toast(`Inserted into “${labelOf(b.dataset.insK)}”`); }));
+      $('[data-fill-all]', box)?.addEventListener('click', (e) => { e.preventDefault(); all.forEach((it) => put(it.key, it.insert)); calc(); drawFields(); drawFacts(); later(); toast(`${all.length} field${all.length === 1 ? '' : 's'} filled from the records`); });
+    };
+    const loadFacts = async () => {
+      const t = tpl(); const typ = t ? (t.letter_type || String(t.code).split('_TP')[0]) : '';
+      if (!personId || !t) { facts = null; drawFacts(); return; }
+      const sig = `${personId}|${typ}`; if (sig === factsFor && facts) { drawFacts(); return; }
+      factsFor = sig; $('#lw-facts', el).innerHTML = `<div class="lw-facts muted small">${icon('clock')} Looking up the facts for this letter…</div>`;
+      try {
+        const F = await API.rpc('cms_letter_facts', { p_person: personId, p_type: typ });
+        if (factsFor !== sig) return;
+        const wantLeave = F.leave && F.eppd_employee_id && (can('leave') || can('payroll'));
+        facts = F; if (wantLeave) F.groups.push({ title: 'Leave', items: [{ label: 'Leave balances', value: 'Working out…' }] });
+        drawFacts();
+        if (wantLeave) { const lv = await leaveFacts(F); if (factsFor !== sig) return; F.groups.pop(); if (lv) F.groups.push(lv); drawFacts(); }
+      } catch (e) { facts = { groups: [{ title: 'Facts', items: [{ label: 'Could not load the facts', value: e.message, flag: 'warn' }] }] }; if (factsFor === sig) drawFacts(); }
     };
     // actions
     const acts = [];
@@ -3763,7 +3816,7 @@
     const pq = $('#lw-pq', el); const psel = $('#lw-p', el);
     pq?.addEventListener('input', () => { const t = pq.value.trim().toLowerCase(); let first = null; $$('option', psel).forEach((o) => { const hit = !o.value || !t || o.textContent.toLowerCase().includes(t); o.hidden = !hit; if (hit && o.value && !first) first = o; }); if (t && first && psel.value !== first.value) { psel.value = first.value; psel.dispatchEvent(new Event('change')); } });
     psel.addEventListener('change', () => { personId = psel.value; Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(true); });
-    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; drawFields(); later(); });
+    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; drawFields(); later(); loadFacts(); });
     $('#lw-zoom', el).addEventListener('change', (e) => { zoom = e.target.value; applyZoom(); });
     $('#lw-full', el).addEventListener('click', () => { const c = $('#lw-pv-card', el); c.classList.toggle('lw-fullscreen'); $('#lw-full', el).lastChild.textContent = c.classList.contains('lw-fullscreen') ? 'Close full screen' : 'Full screen'; requestAnimationFrame(applyZoom); });
     window.addEventListener('resize', () => { if (zoom === 'fit') applyZoom(); });
@@ -4178,6 +4231,14 @@
   };
   let mypCss = null;
   const mypStyles = () => mypCss || (mypCss = new Promise((ok) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = asset(`payroll/payroll.css?v=${encodeURIComponent(window.CMS_VERSION || '')}`); l.onload = ok; l.onerror = ok; document.head.appendChild(l); }));
+  // MyPayroll code inside the CMS uses the CMS sign-in; identity & bank details come from the CMS view that follows
+  // "See IC" / "See bank" (Phase 6d); writes still go to the table
+  function mypSb() {
+    const real = API.sb();
+    return new Proxy(real, { get: (c, k) => (k === 'from' ? (t) => { const b = c.from(t); if (t === 'eppd_employee_private') b.select = (...a) => c.from('cms_eppd_private').select(...a); return b; }
+      : (typeof c[k] === 'function' ? c[k].bind(c) : c[k])) });
+  }
+  const mypImport = (path) => import(asset(`payroll/js/${path}?v=${encodeURIComponent(window.CMS_VERSION || '')}`));
   async function mypPage(item, el) {
     const P = MYP_PAGES[item.route];
     document.body.classList.remove('doc-mode');
@@ -4186,10 +4247,7 @@
     let mod; try { await mypStyles(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
     catch (e) { root.innerHTML = errorCard(`This page could not be loaded (${e.message}). Check the connection and reload.`); return; }
     const me = { user_id: state.access?.user_id, email: state.access?.email, display_name: state.access?.name, role: P.edit() ? 'admin' : 'viewer', status: 'active' };
-    // identity & bank details come from the CMS view that follows "See IC" / "See bank" (Phase 6d); writes still go to the table
-    const real = API.sb();
-    const sb = new Proxy(real, { get: (c, k) => (k === 'from' ? (t) => { const b = c.from(t); if (t === 'eppd_employee_private') b.select = (...a) => c.from('cms_eppd_private').select(...a); return b; }
-      : (typeof c[k] === 'function' ? c[k].bind(c) : c[k])) });
+    const sb = mypSb();
     const ctx = { sb, hidden: { ic: !can('people.ic'), bank: !can('people.bank') }, can: (roles) => (P.can ? P.can(roles) : P.edit()), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
     try { ctx.session = await API.session(); const { data } = await API.sb().from('eppd_policies').select('value').eq('key', 'modules').maybeSingle(); ctx.modules = data?.value || {}; } catch (e) { /* optional modules stay off */ }
     root.innerHTML = '';

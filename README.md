@@ -62,6 +62,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 34. `20261022_cms_phase6c_payroll.sql` — Phase 6c: Payroll "view" may read pay lines, claims, date of birth, salary history, tax profiles, loans and settlements; "Prepare payroll" may change allowances and delete a draft month; save / finalise / reopen accept Prepare / Finalise / Reopen payroll
 35. `20261022_cms_phase6d_payslips_reports.sql` — Phase 6d: `cms_eppd_private` view (via `cms_payroll_private()`): date of birth with Payroll view, IC / passport / EPF / SOCSO / tax numbers only with "See IC", bank only with "See bank"; the Phase 6c read rule on the private table is switched off (`using (false)`)
 36. `20261022_cms_phase6e_directory.sql` — Phase 6e: loans and settlements change with "Prepare payroll"; workbook history import accepts CMS Super Admin; Employee Directory permissions (`directory`, `directory.contacts`, `directory.all`, `directory.chart`, defaults Admin / HR / Director), `cms_directory()` and `cms_directory_exported()`
+37. `20261022_cms_letter_facts.sql` — PRI-009: `cms_letter_facts(person, letter type)` with helpers `private.cms_ldate`, `private.cms_fact`, `private.cms_fact_group`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -111,6 +112,15 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-14:45** — PRI-009 · **facts for this letter**: in the HR letter workspace, as soon as the person and the letter are chosen,
+  a "Facts for this letter" panel shows what matters for that letter type from the CMS records — employment (start, service, position,
+  centre, status, reports to); probation (period, end / confirmation due with overdue / due-soon flags, extensions already given);
+  latest approved appraisal; pay (current basic, last increment, next review, JD range and MyEden cap) for increment / promotion letters;
+  notice (resignation date, contract notice, Employment Act s.12 minimum, last day by the notice vs agreed, items to hand over, loan
+  balance) for resignation / termination; earlier disciplinary letters; current employer / centre for transfers; leave balances (same
+  numbers as Leave Balances) for resignation and unpaid-leave letters. Each fact that matches an editable field of the template has
+  **Insert**, plus **Fill all matching**. Drafter and approver both see it; salary, leave and loan facts follow their permissions.
+  Database: `20261022_cms_letter_facts.sql`.
 - **v2026.10.22-14:20** — Phase 6e · **loans, final settlement and past months inside the CMS**, plus the **Employee Directory**.
   Company Loans and Final Settlement open inside the CMS (read with Payroll "view"; add / change with "Prepare payroll"); Import Past Months opens
   inside the CMS for Super Admin. Every MyPayroll V2.0 page now has its CMS version. Employee Directory (the Phase 4 page): who is who by centre

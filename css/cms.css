@@ -934,3 +934,23 @@ table.data tr.tot td { border-top: 2px solid var(--line); background: var(--soft
 .oc-node small { display: block; color: var(--mute); }
 .oc-loose { margin-top: 16px; }
 @media (max-width: 700px) { .oc-tree ul { margin-left: 8px; padding-left: 10px; } #dir-count { margin-left: 0; } }
+
+/* ---------- PRI-009 · facts for this letter ---------- */
+.lw-facts { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 10px 12px; margin: 4px 0 14px; }
+.lw-facts > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; list-style: none; }
+.lw-facts > summary::-webkit-details-marker { display: none; }
+.lw-facts > summary .btn { margin-left: auto; }
+.lf-g { margin-top: 10px; }
+.lf-g h5 { margin: 0 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--mute); }
+.lf-row { display: grid; grid-template-columns: 40% minmax(0, 1fr) 4.5em; gap: 8px; align-items: baseline; padding: 5px 0; border-top: 1px dashed var(--line); font-size: 13px; }
+.lf-g .lf-row:first-of-type { border-top: 0; }
+.lf-l { color: var(--mute); }
+.lf-v { font-weight: 600; overflow-wrap: anywhere; }
+.lf-v svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
+.lf-v small { display: block; font-weight: 400; color: var(--mute); }
+.lf-ok .lf-v svg { color: var(--green); }
+.lf-warn .lf-v, .lf-warn .lf-v svg { color: #b85a0a; }
+.lf-bad .lf-v, .lf-bad .lf-v svg { color: var(--rose); }
+:root[data-theme="dark"] .lf-warn .lf-v, :root[data-theme="dark"] .lf-warn .lf-v svg { color: #ffb070; }
+.lf-row .lnk { white-space: nowrap; justify-self: end; }
+@media (max-width: 560px) { .lf-row { grid-template-columns: 1fr auto; } .lf-l { grid-column: 1 / -1; } }
