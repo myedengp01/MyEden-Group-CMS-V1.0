@@ -1,0 +1,463 @@
+// Monthly payroll: list of months, and the pay run for one month (prepare → finalise)
+import { h, clear, pageHead, toast, failed, confirmDialog, openModal, field, money, fmtDateTime, switchToggle } from '../ui.js';
+import { fetchAll } from '../data.js';
+import { loadPayMonth, loadPayInputs, loadPayPeople } from '../pay-data.js';
+import { editPayType } from '../paytype-form.js';
+import { editAllowance, deleteRow } from '../employee-forms.js';
+import { loadPeople, loadLeaveYear, loadHolidaySet, LEAVE_LABELS } from '../leave-data.js';
+import { editTimeEntry, pullOtcf } from '../time-forms.js';
+import { savePtTotal } from '../pt-hours.js';
+import { openLeaveForm } from './leave.js';
+import { OT_CATEGORIES } from '../engines/ot.js';
+import { lastDayOfMonth } from '../engines/employee.js';
+import { buildRun, recomputeLine, runTotals, lineSummary, groupItems, itemFromType, itemAmount, monthLabel, periodOf, STAT_KEYS, STAT_LABELS, STAT_COLS, STAT_COLS_EE, STAT_LEGEND, statVal, r2 } from '../engines/payroll.js';
+import { todayIso, addDays } from '../engines/employee.js';
+
+const ym = (period) => String(period).slice(0, 7);
+const nextPeriod = (period) => periodOf(addDays(periodOf(period), 32));
+const statusTag = (run) => !run ? h('span', { class: 'tag' }, 'Not started')
+  : run.status === 'finalised' ? h('span', { class: 'tag ok' }, run.source === 'import' ? 'Finalised · imported' : 'Finalised')
+  : h('span', { class: 'tag warn' }, 'Draft');
+
+// ============================================================ list of months
+export async function render(el, ctx, params, query) {
+  if (params.period) return renderRun(el, ctx, params.period);
+  const runs = await fetchAll(() => ctx.sb.from('eppd_pay_runs').select('id,period,status,source,totals,finalised_at,updated_at').order('period', { ascending: false }));
+  const thisMonth = periodOf(todayIso());
+  const next = runs.length ? nextPeriod(runs[0].period) : thisMonth;
+  const pick = h('input', { type: 'month', value: ym(next), 'aria-label': 'Month', style: 'width:auto' });
+  const open = h('button', { class: 'btn', type: 'button', onclick: () => { if (pick.value) location.hash = `#/payroll/${pick.value}`; } }, 'Open month');
+  el.append(pageHead('Monthly payroll', 'One pay run a month. Each line is one employee paid by one company. Prepare the month, check it, then finalise it to lock it.',
+    pick, open, h('a', { class: 'btn primary', href: `#/payroll/${ym(next)}` }, runs.some((r) => r.period === next) ? `Open ${monthLabel(next)}` : `Start ${monthLabel(next)}`)));
+  if (!runs.length) {
+    el.append(h('div', { class: 'empty-state' }, h('p', {}, 'No payroll months yet.'),
+      ctx.can(['admin']) ? h('p', {}, 'Bring in January–September 2026 from the workbook first: ', h('a', { href: '#/payroll/import' }, 'Payroll › Import past months'), '.') : null));
+    return;
+  }
+  const t = (r, k) => money(r.totals?.all?.[k] ?? 0);
+  el.append(h('section', { class: 'panel' }, h('div', { class: 'table-wrap' }, h('table', { class: 'data clickable' },
+    h('thead', {}, h('tr', {}, ['Month', 'Status', 'Staff', 'Gross', ...STAT_COLS.map((c) => c[1]), 'PCB', 'Net paid', 'Last change'].map((x, i, arr) => h('th', { class: i >= 2 && i < arr.length - 1 ? 'num' : '' }, x)))),
+    h('tbody', {}, runs.map((r) => {
+      const a = r.totals?.all || {};
+      const tr = h('tr', {},
+        h('td', {}, h('a', { href: `#/payroll/${ym(r.period)}`, class: 'row-link' }, monthLabel(r.period))), h('td', {}, statusTag(r)),
+        h('td', { class: 'num' }, a.lines ?? ''), h('td', { class: 'num' }, t(r, 'gross')),
+        ...STAT_COLS.map(([k]) => h('td', { class: 'num' }, money(statVal(a, k)))), h('td', { class: 'num' }, t(r, 'pcb')), h('td', { class: 'num strong' }, t(r, 'net_paid')),
+        h('td', { class: 'small muted' }, fmtDateTime(r.finalised_at || r.updated_at)));
+      tr.addEventListener('click', (e) => { if (!e.target.closest('a')) location.hash = `#/payroll/${ym(r.period)}`; });
+      return tr;
+    })))), h('p', { class: 'small muted', style: 'margin-top:.6rem' }, STAT_LEGEND)));
+}
+
+// ============================================================ one month
+async function renderRun(el, ctx, param) {
+  if (!/^\d{4}-\d{2}$/.test(param)) { el.append(h('div', { class: 'empty-state' }, 'Month not recognised.')); return; }
+  const D = await loadPayMonth(ctx.sb, `${param}-01`);
+  const run = D.run;
+  const locked = run?.status === 'finalised';
+  const isAdmin = ctx.can(['admin']);
+  let lines; let dirty = false; let refreshed = false; let notices = [];
+  if (locked) lines = run.lines;
+  else {
+    const res = buildRun(D);
+    lines = res.lines; notices = [...(D.phase6Errors || []).map((e) => `Could not load ${e}. Check that sql/008_phase6.sql has been run.`), ...(res.notices || [])];
+    if (!run) dirty = true;
+    else {
+      const before = JSON.stringify(runTotals(run.lines).all), after = JSON.stringify(runTotals(lines).all);
+      if (before !== after || run.lines.length !== lines.length) { dirty = true; refreshed = true; }
+    }
+  }
+  // December: negative annual leave balances become unpaid leave at the year-end close (PRI-004), so close the year first
+  let yearOpen = false;
+  if (!locked && D.period.slice(5, 7) === '12') {
+    const { data: yc } = await ctx.sb.from('eppd_leave_year_closes').select('year').eq('year', Number(D.period.slice(0, 4))).maybeSingle();
+    yearOpen = !yc;
+  }
+  const companyName = (id) => D.companies.get(Number(id))?.short_name || D.companies.get(Number(id))?.name || (id ? `Company ${id}` : 'No company');
+
+  const head = h('div', {}); const notice = h('div', {}); const facts = h('div', { class: 'facts' }); const compBox = h('section', { class: 'panel' });
+  const search = h('input', { type: 'search', placeholder: 'Search name or ID', 'aria-label': 'Search' });
+  let onlyWarn = false;
+  const warnToggle = h('label', { class: 'check-row small' }, switchToggle(false, (v) => { onlyWarn = v; drawLines(); }, { label: 'Only lines with warnings' }), 'Only lines with warnings');
+  const linesBody = h('div', { class: 'table-wrap' });
+  const bar = h('div', { class: 'import-bar' });
+  el.append(head, notice, facts, compBox,
+    h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1rem' }, search, warnToggle)), linesBody), bar);
+  search.addEventListener('input', drawLines);
+
+  const leaveGuard = (e) => { if (dirty && !locked) { e.preventDefault(); e.returnValue = ''; } };
+  window.addEventListener('beforeunload', leaveGuard);
+  const offHash = () => { window.removeEventListener('beforeunload', leaveGuard); window.removeEventListener('hashchange', offHash); };
+  window.addEventListener('hashchange', offHash);
+
+  function drawHead() {
+    const actions = [];
+    actions.push(h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'Export CSV'));
+    if (!locked) {
+      actions.push(h('button', { class: 'btn', type: 'button', onclick: recalc }, 'Recalculate'));
+      if (run) actions.push(h('button', { class: 'btn danger', type: 'button', onclick: deleteDraft }, 'Delete draft'));
+    } else if (isAdmin) actions.push(h('button', { class: 'btn', type: 'button', onclick: reopen }, 'Reopen'));
+    clear(head).append(h('p', { class: 'crumbs' }, h('a', { href: '#/payroll' }, 'Monthly payroll'), ` / ${monthLabel(D.period)}`),
+      pageHead(`Payroll · ${monthLabel(D.period)}`, locked
+        ? `Finalised${run.finalised_at ? ` on ${fmtDateTime(run.finalised_at)}` : ''}. This month is locked${isAdmin ? '; an admin can reopen it with a reason' : ''}.`
+        : 'Figures come from salary history, recurring items, unpaid leave and overtime & hours. Click a line to add items (this month only or recurring), type PCB or adjust an amount.',
+      statusTag(run), ...actions));
+    const n = [];
+    if (yearOpen) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `The ${D.period.slice(0, 4)} leave year is not closed yet. Close it at `, h('a', { href: `#/leave/year-end?year=${D.period.slice(0, 4)}` }, 'Year-end close'), ' before finalising December: negative annual leave balances become unpaid leave in this payroll, then click Recalculate.'));
+    if (refreshed) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, 'Figures were refreshed from the latest salary, leave and overtime records since this draft was saved. Save to keep them.'));
+    if (run?.reopen_reason && !locked) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `Reopened by an admin: ${run.reopen_reason}`));
+    for (const t of locked ? [] : notices) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, t));
+    if (locked && run.source === 'import') n.push(h('p', { class: 'small muted', style: 'margin-bottom:1rem' }, 'Imported from the MEG-EPPD workbook: the figures are exactly as the workbook calculated them.'));
+    clear(notice).append(...n);
+  }
+
+  function drawTotals() {
+    const T = runTotals(lines); const a = T.all;
+    const warnLines = lines.filter((l) => !l.excluded && (l.warnings || []).some((w) => w.level === 'warn')).length;
+    clear(facts).append(...[[a.lines, 'staff paid'], [money(a.gross), 'gross pay'],
+      [money(a.epf_ee), 'EPF employee'], [money(a.epf_er), 'EPF employer'],
+      [money(statVal(a, 'socso_ee_inv')), 'SOCSO employee – invalidity'], [money(a.socso_ee_nei), 'SOCSO employee – NEI'], [money(a.socso_er), 'SOCSO employer'],
+      [money(a.eis_ee), 'EIS employee'], [money(a.eis_er), 'EIS employer'], [money(a.pcb), 'PCB'],
+      [money(a.net_paid), 'net paid to staff'], [money(a.employer_cost), 'total employer cost'], [warnLines, 'lines with warnings']]
+      .map(([v, l]) => h('div', { class: `fact ${l.includes('warnings') && v ? 'bad' : ''}` }, h('b', {}, v), h('span', {}, l))));
+    const ids = Object.keys(T.companies);
+    clear(compBox).append(h('div', { class: 'panel-head' }, h('h2', {}, 'By paying company')),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+        h('thead', {}, h('tr', {}, ['Company', 'Staff', 'Gross', ...STAT_COLS.map((c) => c[1]), 'PCB', 'Net paid'].map((x, i) => h('th', { class: i ? 'num' : '' }, x)))),
+        h('tbody', {}, ids.map((id) => { const c = T.companies[id];
+          return h('tr', {}, h('td', {}, companyName(id)), h('td', { class: 'num' }, c.lines), ...['gross', ...STAT_COLS.map((x) => x[0]), 'pcb'].map((k) => h('td', { class: 'num' }, money(statVal(c, k)))), h('td', { class: 'num strong' }, money(c.net_paid))); })),
+        h('tfoot', {}, h('tr', {}, h('th', {}, 'Total'), h('th', { class: 'num' }, a.lines), ...['gross', ...STAT_COLS.map((x) => x[0]), 'pcb', 'net_paid'].map((k) => h('th', { class: 'num' }, money(statVal(a, k)))))))),
+      h('p', { class: 'small muted', style: 'margin-top:.6rem' }, STAT_LEGEND));
+  }
+
+  function drawLines() {
+    const q = search.value.trim().toLowerCase();
+    const shown = lines.filter((l) => (!q || `${l.emp_name} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn')));
+    clear(linesBody).append(h('table', { class: 'data clickable' },
+      h('thead', {}, h('tr', {}, ['Employee', 'Company', 'Basic', 'Overtime', 'Other pay', 'Unpaid leave', 'Gross', ...STAT_COLS_EE.map((c) => c[1]), 'PCB', 'Net paid'].map((x, i) => h('th', { class: i >= 2 ? 'num' : '' }, x)))),
+      h('tbody', {}, shown.length ? shown.map((l) => {
+        const s = lineSummary(l); const warn = (l.warnings || []).filter((w) => w.level === 'warn').length;
+        const tr = h('tr', { class: l.excluded ? 'inactive' : '' },
+          h('td', {}, h('span', { class: 'strong' }, l.emp_name), warn ? h('span', { class: 'tag warn', style: 'margin-left:.4rem', title: l.warnings.map((w) => w.text).join('\n') }, `${warn} warning${warn > 1 ? 's' : ''}`) : null,
+            l.excluded ? h('span', { class: 'tag', style: 'margin-left:.4rem' }, 'Left out') : null, h('div', { class: 'small muted' }, l.emp_code || '')),
+          h('td', { class: 'small' }, companyName(l.company_id)),
+          h('td', { class: 'num' }, money(s.basic)), h('td', { class: 'num' }, s.overtime ? money(s.overtime) : ''), h('td', { class: 'num' }, s.other ? money(s.other) : ''),
+          h('td', { class: 'num' }, s.unpaid ? `−${money(s.unpaid)}` : ''), h('td', { class: 'num' }, money(l.gross)),
+          ...STAT_COLS_EE.map(([k]) => h('td', { class: 'num' }, money(statVal(l, k)))),
+          h('td', { class: 'num' }, l.pcb ? money(l.pcb) : '', l.inputs?.pcb?.auto && !(l.overrides?.pcb !== undefined && l.overrides?.pcb !== null && l.overrides?.pcb !== '') ? h('div', { class: 'small muted' }, 'auto') : null),
+          h('td', { class: 'num strong' }, money(l.net_paid), s.claims ? h('div', { class: 'small muted' }, `incl. claims ${money(s.claims)}`) : null));
+        tr.addEventListener('click', () => openLine(l));
+        return tr;
+      }) : h('tr', {}, h('td', { colspan: 13, class: 'muted' }, lines.length ? 'No lines match.' : 'Nobody is employed in this month.')))));
+  }
+
+  function drawBar() {
+    if (locked) { clear(bar).append(h('p', { class: 'small muted' }, 'Finalised months cannot be changed. Corrections go into the next month.')); return; }
+    const save = h('button', { class: 'btn', type: 'button', onclick: () => saveRun() }, run ? 'Save draft' : 'Save as draft');
+    const fin = h('button', { class: 'btn primary', type: 'button', onclick: finalise }, `Finalise ${monthLabel(D.period)}`);
+    clear(bar).append(h('p', { class: `small ${dirty ? 'strong' : 'muted'}` }, dirty ? 'Unsaved changes.' : 'All changes saved.'), h('div', { class: 'side-actions' }, save, fin));
+  }
+  const drawAll = () => { drawHead(); drawTotals(); drawLines(); drawBar(); };
+
+  // ---------------------------------------------------------- actions
+  function recalc() {
+    const res = buildRun({ ...D, existing: lines });
+    lines = res.lines; notices = res.notices || []; dirty = true; drawAll();
+    toast(res.skipped.length ? `Recalculated. ${res.skipped.length} line(s) removed: ${res.skipped.map((s) => s.name).join(', ')}.` : 'Recalculated from the latest records.');
+  }
+  const dbLine = (l) => ({ employee_id: l.employee_id, assignment_id: l.assignment_id, company_id: l.company_id, emp_name: l.emp_name, emp_code: l.emp_code,
+    mode: l.mode || 'auto', excluded: !!l.excluded, items: l.items, overrides: l.overrides || {}, inputs: l.inputs || {}, warnings: l.warnings || [], note: l.note || null,
+    gross: l.gross, epf_wage: l.epf_wage, socso_wage: l.socso_wage, eis_wage: l.eis_wage, ...Object.fromEntries(STAT_KEYS.map((k) => [k, l[k]])), socso_ee_nei: l.socso_ee_nei || 0,
+    pcb: l.pcb, net: l.net, personal_deductions: l.personal_deductions, reimbursements: l.reimbursements || 0, net_paid: l.net_paid });
+  async function saveRun(quiet = false) {
+    const { data, error } = await ctx.sb.rpc('eppd_save_pay_run', { p: { period: D.period, notes: run?.notes || null, totals: runTotals(lines), lines: lines.map(dbLine),
+      expected_updated_at: run?.updated_at || null } });
+    if (failed(error, 'Save')) return null;
+    dirty = false;
+    if (!quiet) { toast(`${monthLabel(D.period)} saved as a draft.`); reload(); }
+    return data;
+  }
+  async function finalise() {
+    const a = runTotals(lines).all;
+    const warn = lines.filter((l) => !l.excluded && (l.warnings || []).some((w) => w.level === 'warn')).length;
+    const noPcb = lines.filter((l) => !l.excluded && !Number(l.pcb)).length;
+    const msg = `${warn ? `${warn} line(s) still have warnings. ` : ''}Lock ${monthLabel(D.period)}: ${a.lines} staff, gross RM${money(a.gross)}, net paid RM${money(a.net_paid)}. ` +
+      `${noPcb} line(s) have no PCB. After finalising nobody can change this month; corrections go into the next month.`;
+    if (!(await confirmDialog(`Finalise ${monthLabel(D.period)}`, msg, 'Finalise'))) return;
+    const saved = await saveRun(true); if (!saved) return;
+    const { error } = await ctx.sb.rpc('eppd_finalise_pay_run', { p_run: saved.run_id });
+    if (failed(error, 'Finalise')) { reload(); return; }
+    toast(`${monthLabel(D.period)} finalised.`); reload();
+  }
+  async function deleteDraft() {
+    if (!(await confirmDialog('Delete draft', `Delete the ${monthLabel(D.period)} draft and every change typed into it? Salary, leave and overtime records are not affected.`, 'Delete draft', true))) return;
+    const { error } = await ctx.sb.from('eppd_pay_runs').delete().eq('id', run.id);
+    if (failed(error, 'Delete')) return;
+    dirty = false; toast('Draft deleted.'); location.hash = '#/payroll';
+  }
+  function reopen() {
+    const f = field('Reason (kept in the audit log)', { type: 'textarea', required: true });
+    openModal({ title: `Reopen ${monthLabel(D.period)}`, body: h('div', {}, h('p', { style: 'margin-bottom:.8rem' }, 'Reopening unlocks the month so it can be changed and finalised again. Payslips already given out will no longer match until it is finalised again.'), f),
+      actions: [{ label: 'Reopen month', danger: true, onClick: async (close) => {
+        const reason = f.getValue(); if (!reason) { toast('Give a reason.', 'error'); return false; }
+        const { error } = await ctx.sb.rpc('eppd_reopen_pay_run', { p_run: run.id, p_reason: reason });
+        if (failed(error, 'Reopen')) return false;
+        close(); toast(`${monthLabel(D.period)} reopened.`); reload(); return true;
+      } }] });
+  }
+  function reload() { window.removeEventListener('beforeunload', leaveGuard); window.dispatchEvent(new HashChangeEvent('hashchange')); }
+  function exportCsv() {
+    const cols = ['Employee ID', 'Name', 'Company', 'Basic', 'Overtime', 'Other pay', 'Unpaid leave', 'Gross', 'EPF wage', 'EPF ee', 'EPF er', 'SOCSO wage', 'SOCSO ee Inv.', 'SOCSO ee NEI', 'SOCSO ee total', 'SOCSO er', 'EIS wage', 'EIS ee', 'EIS er', 'PCB', 'Net', 'Personal deductions', 'Claims', 'Net paid', 'Left out', 'Warnings'];
+    const rows = lines.map((l) => { const s = lineSummary(l); return [l.emp_code || '', l.emp_name, companyName(l.company_id), s.basic, s.overtime, s.other, s.unpaid, l.gross, l.epf_wage, l.epf_ee, l.epf_er, l.socso_wage, statVal(l, 'socso_ee_inv'), statVal(l, 'socso_ee_nei'), l.socso_ee, l.socso_er, l.eis_wage, l.eis_ee, l.eis_er, l.pcb, l.net, l.personal_deductions, s.claims, l.net_paid, l.excluded ? 'Yes' : '', (l.warnings || []).map((w) => w.text).join(' | ')]; });
+    const csv = [cols, ...rows].map((r) => r.map((v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(',')).join('\r\n');
+    const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `payroll_${ym(D.period)}.csv` }); document.body.append(a); a.click(); a.remove();
+  }
+
+  // ---------------------------------------------------------- one line
+  // ---------------------------------------------------------- inputs of one line (overtime, hours, leave) — edited from the line window
+  let peopleCache = null;
+  const ymOf = () => ym(D.period);
+  async function inputsPanel(L, onChanged) {
+    const box = h('div', { class: 'inputs-panel' }, h('div', { class: 'loading' }, 'Loading this month’s overtime, hours and leave…'));
+    const month = ymOf(); const start = D.period, end = lastDayOfMonth(D.period);
+    const load = async () => {
+      const [time, leave, monthOtcf] = await Promise.all([
+        fetchAll(() => ctx.sb.from('eppd_time_entries').select('*').eq('employee_id', L.employee_id).gte('work_date', start).lte('work_date', end).order('work_date')),
+        fetchAll(() => ctx.sb.from('eppd_leave_records').select('*').eq('employee_id', L.employee_id).gte('date_from', start).lte('date_from', end).order('date_from')),
+        fetchAll(() => ctx.sb.from('eppd_time_entries').select('employee_id,otcf_submission_id').gte('work_date', start).lte('work_date', end).not('otcf_submission_id', 'is', null)),
+      ]);
+      if (!peopleCache) peopleCache = await loadPeople(ctx.sb, D.ref);
+      const hourly = L.inputs?.basis === 'hourly';
+      const pt = time.filter((e) => e.category === 'PT_HOURS'); const ot = time.filter((e) => e.category !== 'PT_HOURS');
+      const ptTotal = Math.round(pt.reduce((s, e) => s + Number(e.hours), 0) * 100) / 100;
+      const done = async () => { await onChanged(); };
+      const ptIn = h('input', { type: 'number', step: '0.25', min: 0, value: ptTotal || '', placeholder: '0', 'aria-label': 'Total part-time hours', style: 'width:7rem;text-align:right' });
+      const ptSave = h('button', { class: 'btn sm primary', type: 'button', onclick: async () => {
+        const { error } = await savePtTotal(ctx.sb, { employeeId: L.employee_id, month, total: Number(ptIn.value) || 0, entries: pt });
+        if (!failed(error, 'Save hours')) { toast('Hours saved.'); done(); }
+      } }, 'Save total');
+      const timeRow = (e) => h('li', {}, `${e.work_date.slice(8, 10)}/${e.work_date.slice(5, 7)} · ${OT_CATEGORIES[e.category]?.label || e.category} · ${Number(e.hours)} h`,
+        e.source === 'otcf' ? h('span', { class: 'tag info', style: 'margin-left:.3rem' }, 'OTCF') : null,
+        e.source === 'manual' ? h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: () => editTimeEntry(ctx, { people: peopleCache, month, entry: e, employeeId: L.employee_id, onSaved: done }) }, 'edit') : null);
+      clear(box).append(h('h3', {}, `Inputs for ${monthLabel(D.period)}`),
+        h('div', { class: 'inputs-grid' },
+          h('div', { class: 'block' }, h('h4', {}, 'Overtime'),
+            ot.length ? h('ul', {}, ot.map(timeRow)) : h('p', { class: 'small muted' }, 'No overtime recorded.'),
+            h('div', { class: 'btn-row' },
+              h('button', { class: 'btn sm', type: 'button', onclick: () => pullOtcf(ctx, { month, people: peopleCache, entries: monthOtcf, onlyEmployeeId: L.employee_id, onSaved: done }) }, 'Pull approved OTCF'),
+              h('button', { class: 'btn sm ghost', type: 'button', onclick: () => editTimeEntry(ctx, { people: peopleCache, month, employeeId: L.employee_id, onSaved: done }) }, 'Add overtime'))),
+          hourly || pt.length ? h('div', { class: 'block' }, h('h4', {}, 'Part-time hours'),
+            h('p', { class: 'small muted', style: 'margin:0 0 .4rem' }, pt.length ? `${ptTotal} h recorded (${pt.length} entr${pt.length === 1 ? 'y' : 'ies'})` : 'No hours recorded yet.'),
+            h('div', { class: 'btn-row', style: 'align-items:center' }, h('span', { class: 'small' }, 'Total this month'), ptIn, ptSave)) : null,
+          h('div', { class: 'block' }, h('h4', {}, 'Leave this month'),
+            leave.length ? h('ul', {}, leave.map((r) => h('li', {}, `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'} · ${r.date_from === r.date_to ? r.date_from : `${r.date_from} – ${r.date_to}`}${r.status === 'cancelled' ? ' (cancelled)' : ''}`))) : h('p', { class: 'small muted' }, 'No leave recorded.'),
+            h('div', { class: 'btn-row' }, h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+              const year = Number(D.period.slice(0, 4));
+              const [LY, holidays] = await Promise.all([loadLeaveYear(ctx.sb, year), loadHolidaySet(ctx.sb, [year - 1, year, year + 1])]);
+              openLeaveForm(ctx, LY, holidays, LY.ref.policies.working_week || { rest_days: [0], off_days: [6] }, null, { employeeId: L.employee_id, onSaved: done });
+            } }, 'Record leave (unpaid, annual, sick…)'),
+            h('a', { class: 'btn sm ghost', href: `#/leave/audit?month=${month}`, target: '_blank', rel: 'noopener' }, 'Leave by month'))),
+          h('div', { class: 'block' }, h('h4', {}, 'Salary & allowances'),
+            h('p', { class: 'small muted', style: 'margin:0 0 .4rem' }, 'Salary changes are made on the employee page. Recurring items (allowances, loans…) can be added, ended or edited below.'),
+            h('div', { class: 'btn-row' }, h('a', { class: 'btn sm', href: `#/employees/${L.employee_id}?tab=pay`, target: '_blank', rel: 'noopener' }, 'Open employee (new tab)')))),
+        h('p', { class: 'small muted', style: 'margin:.5rem 0 0' }, 'Saving any of these recalculates this line straight away. Then click Apply, and Save draft when you are done.'));
+    };
+    try { await load(); } catch (e) { clear(box).append(h('p', { class: 'setup-warning' }, `Could not load this month’s inputs: ${e.message || e}`)); }
+    box.reload = load;
+    return box;
+  }
+
+  function openLine(orig) {
+    let L = JSON.parse(JSON.stringify(orig));
+    const ro = locked;
+    // a SOCSO employee total typed before the invalidity / NEI split: turn it into the two boxes
+    const hasOv = (v) => v !== null && v !== undefined && v !== '';
+    if (!ro && L.mode !== 'fixed' && hasOv(L.overrides?.socso_ee)) {
+      const c = recomputeLine(L, D);
+      L.overrides = { ...L.overrides, socso_ee_inv: statVal(c, 'socso_ee_inv'), socso_ee_nei: statVal(c, 'socso_ee_nei') };
+      delete L.overrides.socso_ee;
+    }
+    const box = h('div', {});
+    const holder = h('div', {});
+    let lastType = null;
+    const key = (x) => `${x.employee_id}|${x.company_id || 0}`;
+    const k0 = key(L);
+    /** Inputs or recurring items changed: reload them, rebuild the month and show this line again. */
+    async function refreshLine({ people = false } = {}) {
+      const i = lines.findIndex((x) => key(x) === k0);
+      if (i >= 0) lines[i] = recomputeLine(L, D);
+      Object.assign(D, await loadPayInputs(ctx.sb, D.period, D.period));
+      if (people) D.people = await loadPayPeople(ctx.sb, D.ref);
+      const res = buildRun({ ...D, existing: lines });
+      lines = res.lines; notices = res.notices || []; dirty = true;
+      const fresh = lines.find((x) => key(x) === k0);
+      if (fresh) { orig = fresh; L = JSON.parse(JSON.stringify(fresh)); }
+      draw(); drawAll(); holder.firstChild?.reload?.();
+      toast(`${L.emp_name}: line recalculated.`);
+    }
+    // edits arrive on 'change' (fired on blur); redraw on the next tick so the field being left is not removed mid-event
+    let pending = false;
+    const redraw = () => { if (pending) return; pending = true; setTimeout(() => { pending = false; draw(); }, 0); };
+    const draw = () => {
+      L = recomputeLine(L, D);
+      const g = groupItems(L.items); const inp = L.inputs || {};
+      const itemRow = (i) => {
+        const idx = L.items.indexOf(i);
+        let amountCell;
+        if (ro || L.mode === 'fixed') amountCell = h('td', { class: 'num' }, money(itemAmount(i)));
+        else if (i.auto) {
+          const x = h('input', { type: 'number', step: '0.01', value: i.override ?? '', placeholder: money(i.amount), 'aria-label': `Amount for ${i.label}`, style: 'width:8rem;text-align:right' });
+          x.addEventListener('change', () => { i.override = x.value === '' ? null : Number(x.value); redraw(); });
+          amountCell = h('td', { class: 'num' }, x, i.override !== null && i.override !== undefined ? h('div', { class: 'small muted' }, `calculated ${money(i.amount)}`) : null);
+        } else {
+          const x = h('input', { type: 'number', step: '0.01', value: i.amount, 'aria-label': `Amount for ${i.label}`, style: 'width:8rem;text-align:right' });
+          x.addEventListener('change', () => { i.amount = Number(x.value) || 0; redraw(); });
+          amountCell = h('td', { class: 'num' }, x);
+        }
+        return h('tr', {}, h('td', {}, i.label, i.auto ? null : h('span', { class: 'tag', style: 'margin-left:.4rem' }, L.mode === 'fixed' ? 'recorded' : 'added')),
+          h('td', { class: 'small muted' }, i.note || ''), amountCell,
+          h('td', {}, !ro && L.mode !== 'fixed' && !i.auto ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { L.items.splice(idx, 1); draw(); } }, 'Remove') : null));
+      };
+      const section = (title, list, sign) => list.length ? [h('tr', { class: 'sub-row' }, h('th', { colspan: 4 }, title)), ...list.map(itemRow),
+        h('tr', {}, h('td', { colspan: 2, class: 'muted' }, `Total ${title.toLowerCase()}`), h('td', { class: 'num strong' }, `${sign}${money(list.reduce((s, i) => s + itemAmount(i), 0))}`), h('td', {}))] : [];
+
+      // add item: this month only, or recurring (saved on the employee, optional end date) — PRI-003
+      let addRow = null, recurBox = null;
+      if (!ro && L.mode !== 'fixed') {
+        const canRecur = (t) => t && t.code !== 'UNPAID_LEAVE' && (t.kind === 'earning' ? t.category !== 'basic' && t.category !== 'overtime' : t.category === 'personal');
+        const typeSel = h('select', { 'aria-label': 'Payment type' }, D.typeList.filter((t) => t.is_active && t.code !== 'BASIC').map((t) => h('option', { value: t.code, selected: t.code === lastType }, `${t.name}${t.kind === 'deduction' ? ' (deduction)' : ''}`)));
+        const amt = h('input', { type: 'number', step: '0.01', placeholder: 'Amount', 'aria-label': 'Amount', style: 'width:8rem' });
+        const note = h('input', { type: 'text', placeholder: 'Note (optional)', 'aria-label': 'Note' });
+        const mode = h('select', { 'aria-label': 'How often' }, h('option', { value: 'once' }, 'This month only'), h('option', { value: 'recur' }, 'Recurring (every month)'));
+        const endsChk = h('input', { type: 'checkbox', 'aria-label': 'Ends on a date' });
+        const endsOn = h('input', { type: 'date', 'aria-label': 'Ends on', value: lastDayOfMonth(D.period), min: D.period, disabled: true });
+        const endsWrap = h('label', { class: 'check-row small', hidden: true }, endsChk, 'Ends on', endsOn);
+        endsChk.addEventListener('change', () => { endsOn.disabled = !endsChk.checked; });
+        const syncMode = () => { const t = D.types.get(typeSel.value); if (!canRecur(t) && mode.value === 'recur') mode.value = 'once'; mode.options[1].disabled = !canRecur(t) || !L.assignment_id; endsWrap.hidden = mode.value !== 'recur'; };
+        mode.addEventListener('change', syncMode); typeSel.addEventListener('change', () => { lastType = typeSel.value; syncMode(); }); syncMode();
+        const add = h('button', { class: 'btn sm', type: 'button' }, 'Add');
+        add.addEventListener('click', async () => {
+          const v = Number(amt.value); if (!(v > 0)) { toast('Enter an amount above 0.', 'error'); return; }
+          const t = D.types.get(typeSel.value);
+          if (mode.value === 'once') { L.items.push(itemFromType(t, { auto: false, amount: v, note: note.value.trim() || null })); draw(); return; }
+          const end = endsChk.checked ? endsOn.value : null;
+          if (endsChk.checked && (!end || end < D.period)) { toast('“Ends on” must be in or after this month.', 'error'); return; }
+          add.disabled = true;
+          const { error } = await ctx.sb.from('eppd_allowances').insert({ assignment_id: L.assignment_id, payment_type_id: t.id, amount: v, start_date: D.period, end_date: end, note: note.value.trim() || null });
+          add.disabled = false;
+          if (failed(error)) return;
+          toast(`${t.name}: RM${money(v)} a month from ${monthLabel(D.period)}${end ? ` until ${end}` : ''}.`);
+          await refreshLine({ people: true });
+        });
+        const newType = ctx.can(['admin']) ? h('button', { class: 'btn sm ghost', type: 'button', onclick: () => editPayType(ctx, null, D.typeList, (t) => {
+          D.typeList.push(t); D.types.set(t.code, t); D.typesById?.set?.(t.id, t); D.ref.paymentTypes.push(t); lastType = t.code; draw();
+        }) }, 'New item type') : null;
+        addRow = h('div', { class: 'add-item' }, h('b', { class: 'small' }, 'Add item:'), typeSel, amt, mode, endsWrap, note, add, newType);
+        // the person's recurring items (allowances, loans…) on this paying company
+        const asg = (D.people.find((p) => p.id === L.employee_id)?.employments || []).flatMap((e) => e.assignments).find((a) => a.id === L.assignment_id);
+        const rec = (asg?.allowances || []).slice().sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')));
+        const typeById = (id) => D.typeList.find((t) => t.id === id);
+        const status = (a) => (a.end_date && a.end_date < D.period ? ['', 'ended'] : a.start_date && a.start_date > lastDayOfMonth(D.period) ? ['info', 'starts later'] : ['ok', 'this month']);
+        const endFrom = (a) => {
+          const m = field('Last month paid', { type: 'month', value: D.period.slice(0, 7), hint: 'Paid up to and including this month, then it stops.' });
+          openModal({ title: `End ${typeById(a.payment_type_id)?.name || 'item'}`, body: h('div', {}, m), actions: [{ label: 'End it', primary: true, onClick: async (close) => {
+            const ym2 = m.getValue(); if (!ym2) { toast('Choose the month.', 'error'); return false; }
+            const endD = lastDayOfMonth(`${ym2}-01`);
+            if (a.start_date && endD < a.start_date) { toast('That is before it starts. Delete it instead.', 'error'); return false; }
+            const { error } = await ctx.sb.from('eppd_allowances').update({ end_date: endD }).eq('id', a.id);
+            if (failed(error)) return false; toast('Recurring item ended.'); close(); await refreshLine({ people: true }); return true;
+          } }] });
+        };
+        recurBox = asg ? h('details', { class: 'recur-box', open: rec.length > 0 && rec.length <= 6 },
+          h('summary', {}, `Recurring items on this company (${rec.length})`),
+          rec.length ? h('table', { class: 'data compact' }, h('thead', {}, h('tr', {}, ['Item', 'Per month', 'From', 'Until', '', ''].map((x) => h('th', {}, x)))),
+            h('tbody', {}, rec.map((a) => { const [cls, txt] = status(a); return h('tr', {},
+              h('td', {}, typeById(a.payment_type_id)?.name || '—', a.note ? h('div', { class: 'small muted' }, a.note) : null),
+              h('td', { class: 'num' }, money(a.amount)), h('td', { class: 'nowrap' }, a.start_date || '—'), h('td', { class: 'nowrap' }, a.end_date || 'ongoing'),
+              h('td', {}, h('span', { class: `tag ${cls}` }, txt)),
+              h('td', { class: 'actions nowrap' },
+                h('button', { class: 'btn sm', type: 'button', onclick: () => editAllowance(ctx, D.ref, L.assignment_id, a, () => refreshLine({ people: true })) }, 'Edit'),
+                !a.end_date || a.end_date >= D.period ? h('button', { class: 'btn sm', type: 'button', onclick: () => endFrom(a) }, 'End from…') : null,
+                h('button', { class: 'btn sm ghost', type: 'button', onclick: () => deleteRow(ctx, 'eppd_allowances', a.id, typeById(a.payment_type_id)?.name || 'item', () => refreshLine({ people: true })) }, 'Delete'))); })))
+            : h('p', { class: 'small muted' }, 'None. Choose “Recurring” above to add one (e.g. an allowance for a fixed period).'),
+          h('p', { class: 'small muted' }, 'Ending or deleting a recurring item never changes finalised months; their payslips keep what was paid.')) : null;
+      }
+
+      // statutory
+      const cellFor = (key, label) => {
+        if (!key) return h('td', { class: 'num muted' }, '—');
+        const ov = L.overrides?.[key]; const val = statVal(L, key);
+        if (ro || L.mode === 'fixed') return h('td', { class: 'num' }, money(val));
+        const x = h('input', { type: 'number', step: '0.01', value: ov ?? '', placeholder: money(val), 'aria-label': label, style: 'width:6.2rem;text-align:right' });
+        x.addEventListener('change', () => { L.overrides = { ...(L.overrides || {}) }; if (x.value === '') delete L.overrides[key]; else L.overrides[key] = Number(x.value); redraw(); });
+        return h('td', { class: 'num' }, x, ov !== undefined && ov !== null ? h('div', { class: 'small muted' }, 'typed') : null);
+      };
+      const offNote = (k) => (inp.flags && (inp.flags[`${k}_ee`] === false || inp.flags[`${k}_er`] === false)
+        ? h('div', { class: 'small muted' }, `switched off: ${[inp.flags[`${k}_ee`] === false ? 'employee' : null, inp.flags[`${k}_er`] === false ? 'employer' : null].filter(Boolean).join(' & ')}`) : null);
+      const statRows = [
+        h('tr', {}, h('td', {}, 'EPF', offNote('epf')), h('td', { class: 'num' }, money(L.epf_wage)), cellFor('epf_ee', 'EPF employee'), cellFor('epf_er', 'EPF employer')),
+        h('tr', {}, h('td', {}, 'SOCSO invalidity', offNote('socso'), inp.flags?.socso_nei_opt_out ? h('div', { class: 'small muted' }, 'NEI opt-out') : null),
+          h('td', { class: 'num' }, money(L.socso_wage)), cellFor('socso_ee_inv', 'SOCSO invalidity, employee'), cellFor('socso_er', 'SOCSO employer')),
+        h('tr', {}, h('td', { title: 'Non-employment injury' }, 'SOCSO NEI', h('div', { class: 'small muted' }, 'non-employment injury')), h('td', {}), cellFor('socso_ee_nei', 'SOCSO NEI, employee'), cellFor(null)),
+        h('tr', {}, h('td', {}, 'EIS', offNote('eis')), h('td', { class: 'num' }, money(L.eis_wage)), cellFor('eis_ee', 'EIS employee'), cellFor('eis_er', 'EIS employer')),
+      ];
+      const autoPcb = !!L.inputs?.pcb?.auto && L.mode !== 'fixed';
+      const typedPcb = L.overrides?.pcb !== undefined && L.overrides?.pcb !== null && L.overrides?.pcb !== '';
+      const pcbIn = h('input', { type: 'number', step: '0.01', value: autoPcb ? (typedPcb ? L.overrides.pcb : '') : (L.pcb || ''), placeholder: autoPcb ? money(L.pcb) : '0.00',
+        'aria-label': 'PCB', style: 'width:8rem;text-align:right', disabled: ro || L.mode === 'fixed' });
+      pcbIn.addEventListener('change', () => {
+        if (autoPcb) { L.overrides = { ...(L.overrides || {}) }; if (pcbIn.value === '') delete L.overrides.pcb; else L.overrides.pcb = Number(pcbIn.value) || 0; }
+        else L.pcb = Number(pcbIn.value) || 0;
+        redraw();
+      });
+      const pcbRes = L.inputs?.pcb?.result;
+      const pcbLabel = autoPcb ? h('div', {}, h('label', {}, typedPcb ? 'PCB (typed for this month)' : 'PCB (automatic)'),
+        typedPcb && !ro ? h('div', {}, h('button', { class: 'linkish small', type: 'button', onclick: () => { delete L.overrides.pcb; redraw(); } }, 'Use automatic PCB')) : null)
+        : h('label', {}, 'PCB (from the LHDN calculator)');
+      const pcbWorking = autoPcb && pcbRes && !typedPcb ? h('details', { class: 'pcb-calc' }, h('summary', { class: 'linkish' }, 'How PCB was worked out'),
+        h('ul', { style: 'margin:.4rem 0 0 1rem' }, pcbRes.detail.map((t) => h('li', {}, t)))) : null;
+      const excl = switchToggle(L.excluded, (v) => { L.excluded = v; }, { label: 'Leave out of this month', disabled: ro });
+      const noteIn = h('textarea', { 'aria-label': 'Note', rows: 2, disabled: ro, placeholder: 'Note for this month (optional)' }); noteIn.value = L.note || '';
+      noteIn.addEventListener('change', () => { L.note = noteIn.value.trim() || null; });
+
+      const kv = [['Pay basis', inp.basis === 'hourly' ? `Hourly · RM${money(inp.salary)} an hour` : inp.basis === 'monthly' ? `Monthly · RM${money(inp.salary)}` : '—'],
+        ['Days employed', inp.window ? `${inp.window.days} of ${inp.window.cal_days}` : (inp.workbook_row ? `Workbook row ${inp.workbook_row}` : '—')],
+        ['Daily / hourly rate', inp.orp ? `RM${money(inp.orp)} / RM${money(inp.hrp)} (${inp.normal_hours} h day)` : '—'],
+        ['Age for statutory rates', inp.age ?? '—'], ['Statutory class', inp.stat_class || '—'], ['Company', companyName(L.company_id)]];
+      clear(box).append(
+        h('div', { class: 'kv', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.6rem 1.2rem;margin-bottom:1rem' },
+          kv.map(([k, v]) => h('div', {}, h('div', { class: 'small muted' }, k), h('div', { class: 'strong' }, String(v))))),
+        (L.warnings || []).length ? h('ul', { class: 'setup-warning', style: 'margin-bottom:1rem;padding-left:1.8rem' }, L.warnings.map((w) => h('li', {}, w.text))) : null,
+        h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+          h('thead', {}, h('tr', {}, h('th', {}, 'Item'), h('th', {}, 'Details'), h('th', { class: 'num' }, 'Amount (RM)'), h('th', {}))),
+          h('tbody', {}, ...section('Earnings', g.earnings, ''), ...section('Deductions before statutory', g.deductions, '−'), ...section('Personal deductions', g.personal, '−'), ...section('Claims paid with the salary', g.claims || [], '+')))),
+        addRow, recurBox,
+        h('div', { class: 'grid-2 line-split', style: 'margin-top:1rem;gap:1.2rem;align-items:start' },
+          h('div', { style: 'min-width:0' }, h('h3', { style: 'margin-bottom:.4rem' }, 'Statutory'),
+            h('div', { class: 'table-wrap' }, h('table', { class: 'data' }, h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', { class: 'num' }, 'Wage'), h('th', { class: 'num' }, 'Employee'), h('th', { class: 'num' }, 'Employer'))), h('tbody', {}, statRows))),
+            !ro && L.mode !== 'fixed' ? h('p', { class: 'small muted', style: 'margin-top:.4rem' }, 'Leave a box empty to use the table amount. Type an amount only for a special case (e.g. a voluntary higher EPF rate). The employee pays SOCSO invalidity + NEI; typing one part leaves the other at the table amount.') : null),
+          h('div', { style: 'min-width:0' }, h('h3', { style: 'margin-bottom:.4rem' }, 'Pay'),
+            h('table', { class: 'data' }, h('tbody', {},
+              h('tr', {}, h('td', {}, 'Gross pay'), h('td', { class: 'num' }, money(L.gross))),
+              ...[['EPF (employee)', 'epf_ee'], ['SOCSO – Invalidity (employee)', 'socso_ee_inv'], ['SOCSO – NEI (employee)', 'socso_ee_nei'], ['EIS (employee)', 'eis_ee']]
+                .map(([t, k]) => h('tr', {}, h('td', {}, t), h('td', { class: 'num' }, statVal(L, k) ? `−${money(statVal(L, k))}` : money(0)))),
+              h('tr', {}, h('td', {}, pcbLabel), h('td', { class: 'num' }, pcbIn)),
+              h('tr', {}, h('td', { class: 'strong' }, 'Net pay'), h('td', { class: 'num strong' }, money(L.net))),
+              L.personal_deductions ? h('tr', {}, h('td', {}, 'Personal deductions'), h('td', { class: 'num' }, `−${money(L.personal_deductions)}`)) : null,
+              L.reimbursements ? h('tr', {}, h('td', {}, 'Claims reimbursed'), h('td', { class: 'num' }, `+${money(L.reimbursements)}`)) : null,
+              h('tr', {}, h('td', { class: 'strong' }, 'Paid to employee'), h('td', { class: 'num strong' }, money(L.net_paid))))), pcbWorking)),
+        h('div', { style: 'margin-top:1rem;display:grid;gap:.6rem' }, h('label', { class: 'check-row' }, excl, 'Leave this line out of the month (not paid, not counted)'), noteIn),
+        h('p', { class: 'small', style: 'margin-top:.6rem' }, h('a', { href: `#/employees/${L.employee_id}?tab=pay` }, 'Open employee profile ›')));
+    };
+    draw();
+    // inputs: change overtime, part-time hours or leave without leaving the payroll page; the line recalculates on save
+    if (!ro && L.mode !== 'fixed') inputsPanel(L, () => refreshLine()).then((panel) => holder.append(panel));
+    openModal({ title: `${L.emp_name} · ${monthLabel(D.period)}`, body: h('div', {}, holder, box), wide: true,
+      actions: ro ? [] : [{ label: 'Apply', primary: true, onClick: async (close) => {
+        await new Promise((r) => setTimeout(r, 0));
+        const i = lines.findIndex((x) => x === orig || (x.employee_id === L.employee_id && (x.company_id || 0) === (L.company_id || 0))); lines[i] = recomputeLine(L, D); dirty = true; close(); drawTotals(); drawLines(); drawBar(); return true;
+      } }] });
+  }
+
+  drawAll();
+}

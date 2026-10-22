@@ -3,7 +3,7 @@
 MyEden Group's Central Management System: one login and one database for every person, from application to offboarding.
 Static site (GitHub Pages) + Supabase. No build step.
 
-**Current version:** v2026.10.22-10:00 · **Phase 5 · HR operations** (Phases 0–4 live)
+**Current version:** v2026.10.22-10:10 · **Phase 6 · Payroll in the CMS** (Phases 0–4 live)
 
 ## What this version is
 Phase 0 connects the CMS to the Supabase project `vzngfswtofegimfcoigx` ("MyEden Group CMS V1.0"):
@@ -57,6 +57,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 29. `20261021_cms_letters_v2.sql` — HR Letters centre: letter steps draft → approval (never the drafter) → issue; template lifecycle (draft, pending, published, sent back, retired; on/off; changes to a published template wait for approval; retirement approval); Word templates in the private `hr-letter-sources` bucket; placeholder register editing; issued letters can be voided; MEG-EAF V2 letter write functions retired (they now point to the CMS)
 30. `20261022_cms_reports.sql` — Phase 5e Reports & Analytics: one read-only call with people (start / last day, company, department, gender, leaving reason; names only for People viewers), payroll cost per month and company (Payroll viewers only) and claims (only forms the user may see)
 31. `20261022_cms_permission_catalogue.sql` — the complete permission list (descriptions, only the actions that apply, special permissions incl. Phase 6 ones), today's settings saved as each role's default with reset, per-person extra permissions, roles created / renamed / removed by Admin, Admin and Super Admin grant roles (Super Admin only for Super Admin, locked items and the Admin role; nobody changes their own access), Account Viewer and Payroll Viewer as separate roles; letters, claim payment, payslip release, self-service, hand-over and login linking checked against their own special permissions
+32. `20261022_cms_phase6a_settings.sql` — Phase 6a: extra row-level rules so CMS users reach the MyPayroll settings tables by their CMS permissions (read: Payroll or Payroll settings view; change: Payroll settings edit), Employee IDs by "Change Employee ID", the workbook import by Super Admin
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -106,6 +107,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-10:10** — Phase 6a · **payroll settings inside the CMS**: Departments & Job Titles, Pick-lists, Payment Types, Statutory Tables, Public
+  Holidays, HR Policies, Employee IDs and Import from Workbook now open inside the CMS. They run MyPayroll V2.0's own page code (copied into `payroll/js`,
+  unchanged except the connection, messages and dialogs) on the same tables, with the CMS sign-in, look (`payroll/payroll.css`, generated from MyPayroll's
+  styles) and permissions. Database: `20261022_cms_phase6a_settings.sql`.
 - **v2026.10.22-10:00** — **Permissions for the whole CMS.** Users, Roles & Access › Roles & permissions: pick a role and see every section with
   what it covers and only the actions that apply (in the section's own words, e.g. "Add people", "Approve or disapprove"), plus special permissions
   (approve / issue / publish letters, mark each claim form as paid, release payslips, switch on self-service parts, approve profile changes and

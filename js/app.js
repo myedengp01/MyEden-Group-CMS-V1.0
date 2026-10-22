@@ -4146,6 +4146,39 @@
     draw();
   }
 
+  // ================================================================ PHASE 6 · MYPAYROLL PAGES INSIDE THE CMS
+  // The MyPayroll V2.0 page code (payroll/js) runs here unchanged on the same database, with the CMS sign-in, the CMS look and
+  // the CMS permissions: each page says which permission lets a person change things on it.
+  window.cmsToast = (m, tone) => toast(m, tone);
+  const MYP_PAGES = {
+    'settings/org': { file: 'modules/org.js', edit: () => can('payroll.settings', 'E') },
+    'settings/lists': { file: 'modules/lists.js', edit: () => can('payroll.settings', 'E') },
+    'settings/payment-types': { file: 'modules/paymenttypes.js', edit: () => can('payroll.settings', 'E') },
+    'settings/statutory': { file: 'modules/statutory.js', edit: () => can('payroll.settings', 'E') },
+    'settings/holidays': { file: 'modules/holidays.js', edit: () => can('payroll.settings', 'E') },
+    'settings/policies': { file: 'modules/policies.js', edit: () => can('payroll.settings', 'E') },
+    'people/ids': { file: 'modules/eid.js', edit: () => can('people.eid') },
+    'people/import': { file: 'modules/import.js', edit: () => isSuper() },
+  };
+  let mypCss = null;
+  const mypStyles = () => mypCss || (mypCss = new Promise((ok) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = asset(`payroll/payroll.css?v=${encodeURIComponent(window.CMS_VERSION || '')}`); l.onload = ok; l.onerror = ok; document.head.appendChild(l); }));
+  async function mypPage(item, el) {
+    const P = MYP_PAGES[item.route];
+    el.innerHTML = `${pageHead(item)}<div class="myp" id="myp-root">${loading()}</div>`;
+    const root = $('#myp-root', el);
+    let mod; try { await mypStyles(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
+    catch (e) { root.innerHTML = errorCard(`This page could not be loaded (${e.message}). Check the connection and reload.`); return; }
+    const me = { user_id: state.access?.user_id, email: state.access?.email, display_name: state.access?.name, role: P.edit() ? 'admin' : 'viewer', status: 'active' };
+    const ctx = { sb: API.sb(), can: () => P.edit(), VERSION: window.CMS_VERSION, me, modules: {}, async reloadModules() {}, session: null, brand: [], refreshBrand: async () => {} };
+    try { ctx.session = await API.session(); const { data } = await API.sb().from('eppd_policies').select('value').eq('key', 'modules').maybeSingle(); ctx.modules = data?.value || {}; } catch (e) { /* optional modules stay off */ }
+    root.innerHTML = '';
+    // links inside MyPayroll pages that point at its own employee pages go to the CMS people pages
+    root.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#/employees"]'); if (!a) return; e.preventDefault(); location.hash = '#/people'; });
+    const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
+    try { await mod.render(root, ctx, {}, q); }
+    catch (e) { root.innerHTML = errorCard(e.message); }
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -4167,7 +4200,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

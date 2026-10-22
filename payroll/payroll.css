@@ -1,0 +1,355 @@
+/* MyPayroll V2.0 page styles inside the MyEden Group CMS (generated from MyPayroll css/app.css, scoped to .myp / .myp-modal).
+   MyPayroll's colours are mapped to the CMS ones; buttons, switches and tags use the CMS styles. */
+.myp, .myp-modal { --paper: var(--bg); --surface: var(--card); --surface-2: var(--soft); --muted: var(--mute); --accent: var(--blue); --accent-ink: #fff;
+  --accent-soft: color-mix(in srgb, var(--blue) 12%, transparent); --marigold: var(--orange); --marigold-soft: color-mix(in srgb, var(--orange) 14%, transparent);
+  --danger: #c0392b; --danger-soft: color-mix(in srgb, #c0392b 12%, transparent); --ok: var(--green); --radius-lg: 14px; --radius: 10px; --radius-sm: 6px;
+  --font-head: inherit; --font-body: inherit; }
+.myp > .page-head > div:first-child { display: none; }
+.myp > .page-head { margin-bottom: 12px; }
+.myp h1, .myp-modal h1, .myp h2, .myp-modal h2, .myp h3, .myp-modal h3 {font-family: var(--font-head); line-height: 1.15; margin: 0; letter-spacing: -0.01em;}
+.myp h1, .myp-modal h1 {font-size: 1.75rem; font-weight: 700;}
+.myp h2, .myp-modal h2 {font-size: 1.2rem; font-weight: 650;}
+.myp h3, .myp-modal h3 {font-size: 1rem; font-weight: 650;}
+.myp p, .myp-modal p {margin: 0;}
+.myp a, .myp-modal a {color: var(--accent);}
+.myp :focus-visible, .myp-modal :focus-visible {outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px;}
+.myp .muted, .myp-modal .muted {color: var(--muted);}
+.myp .small, .myp-modal .small {font-size: .85rem;}
+.myp .hidden, .myp-modal .hidden {display: none !important;}
+.myp .num, .myp-modal .num {text-align: right; white-space: nowrap;}
+.myp label.field, .myp-modal label.field {display: grid; gap: .3rem; font-size: .85rem; font-weight: 600; color: var(--muted);}
+.myp input, .myp-modal input, .myp select, .myp-modal select, .myp textarea, .myp-modal textarea {font: 400 .95rem var(--font-body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .5rem .6rem; width: 100%;}
+.myp textarea, .myp-modal textarea {min-height: 6rem; resize: vertical; font-family: var(--font-body);}
+.myp input:focus, .myp-modal input:focus, .myp select:focus, .myp-modal select:focus, .myp textarea:focus, .myp-modal textarea:focus {outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent);}
+.myp .pw-wrap, .myp-modal .pw-wrap {position: relative;}
+.myp .pw-wrap input, .myp-modal .pw-wrap input {padding-right: 2.6rem;}
+.myp .pw-toggle, .myp-modal .pw-toggle {position: absolute; right: .3rem; top: 50%; transform: translateY(-50%);}
+.myp .login, .myp-modal .login {min-height: 100%; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(340px, 480px);}
+.myp .login-brand, .myp-modal .login-brand {background: #18263a; color: #e9f0ee; padding: 3rem clamp(1.5rem, 5vw, 4rem);
+  display: flex; flex-direction: column; justify-content: space-between; gap: 2rem;}
+.myp .login-brand h1, .myp-modal .login-brand h1 {font-size: clamp(2rem, 4vw, 3.1rem); max-width: 12ch;}
+.myp .login-brand .lede, .myp-modal .login-brand .lede {color: #b8c7c2; max-width: 40ch; margin-top: .8rem;}
+.myp .logo-cluster, .myp-modal .logo-cluster {display: grid; grid-template-columns: repeat(2, minmax(0, 150px)); gap: 14px;}
+.myp .logo-tile, .myp-modal .logo-tile {aspect-ratio: 1; background: #ffffff; border-radius: 18px; display: grid; place-items: center;
+  padding: 16px; overflow: hidden;}
+.myp .logo-tile img, .myp-modal .logo-tile img {max-width: 100%; max-height: 100%; object-fit: contain;}
+.myp .logo-tile.empty, .myp-modal .logo-tile.empty {background: transparent; border: 2px dashed #3d5168; color: #8da0b4;
+  font: 600 .85rem var(--font-head); text-align: center;}
+.myp .login-form, .myp-modal .login-form {background: var(--surface); padding: 3rem clamp(1.5rem, 4vw, 3rem); display: flex; flex-direction: column; justify-content: center;}
+.myp .login-form form, .myp-modal .login-form form {display: grid; gap: 1rem;}
+.myp .login-form h2, .myp-modal .login-form h2 {font-size: 1.5rem; margin-bottom: .3rem;}
+.myp .uvn, .myp-modal .uvn {font-size: .78rem; color: var(--muted);}
+.myp .login-brand .uvn, .myp-modal .login-brand .uvn {color: #8da0b4;}
+.myp .form-msg, .myp-modal .form-msg {font-size: .88rem; min-height: 1.2em;}
+.myp .form-msg.error, .myp-modal .form-msg.error {color: var(--danger);}
+.myp .form-msg.info, .myp-modal .form-msg.info {color: var(--accent);}
+.myp .linkish, .myp-modal .linkish {background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline;}
+.myp .setup-warning, .myp-modal .setup-warning {background: var(--marigold-soft); border-left: 4px solid var(--marigold); padding: .8rem 1rem; border-radius: var(--radius-sm); font-size: .9rem;}
+.myp .shell, .myp-modal .shell {display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100%;}
+.myp .sidebar, .myp-modal .sidebar {background: var(--surface); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;}
+.myp .side-brand, .myp-modal .side-brand {padding: 1.2rem 1.1rem 1rem; border-bottom: 1px solid var(--line);}
+.myp .side-logos, .myp-modal .side-logos {display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: .8rem;}
+.myp .side-logos .logo-tile, .myp-modal .side-logos .logo-tile {border-radius: 9px; padding: 5px; border: 1px solid var(--line);}
+.myp .side-logos .logo-tile.empty, .myp-modal .side-logos .logo-tile.empty {border: 1.5px dashed var(--line); color: var(--muted); font-size: .6rem;}
+.myp .side-brand strong, .myp-modal .side-brand strong {font-family: var(--font-head); font-size: 1.05rem; display: block;}
+.myp nav.menu, .myp-modal nav.menu {padding: .6rem .6rem 1rem; display: grid; gap: .1rem;}
+.myp .menu-group, .myp-modal .menu-group {font-size: .75rem; font-weight: 700; color: var(--muted); padding: .9rem .6rem .3rem;}
+.myp .menu a, .myp-modal .menu a, .myp .menu .soon, .myp-modal .menu .soon {display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .45rem .6rem; border-radius: var(--radius-sm); color: var(--ink); text-decoration: none; font-size: .92rem;
+  border-left: 3px solid transparent;}
+.myp .menu a:hover, .myp-modal .menu a:hover {background: var(--surface-2);}
+.myp .menu a.active, .myp-modal .menu a.active {background: var(--accent-soft); border-left-color: var(--accent); font-weight: 650;}
+.myp .menu .soon, .myp-modal .menu .soon {color: var(--muted); cursor: default;}
+.myp .side-foot, .myp-modal .side-foot {margin-top: auto; padding: 1rem 1.1rem; border-top: 1px solid var(--line); display: grid; gap: .6rem;}
+.myp .side-user, .myp-modal .side-user {font-size: .85rem;}
+.myp .side-user b, .myp-modal .side-user b {display: block; overflow: hidden; text-overflow: ellipsis;}
+.myp .side-actions, .myp-modal .side-actions {display: flex; gap: .4rem; flex-wrap: wrap;}
+.myp .topbar, .myp-modal .topbar {display: none;}
+.myp main.content, .myp-modal main.content {padding: 2rem clamp(1rem, 3vw, 2.5rem) 3rem; min-width: 0;}
+.myp .shell > div, .myp-modal .shell > div {min-width: 0;}
+.myp .page-head, .myp-modal .page-head {display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;}
+.myp .page-head p, .myp-modal .page-head p {color: var(--muted); margin-top: .35rem; max-width: 70ch;}
+.myp .page-actions, .myp-modal .page-actions {display: flex; gap: .5rem; flex-wrap: wrap;}
+.myp .footer-uvn, .myp-modal .footer-uvn {margin-top: 2.5rem; font-size: .78rem; color: var(--muted);}
+.myp .panel, .myp-modal .panel {background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow);}
+.myp .panel + .panel, .myp-modal .panel + .panel {margin-top: 1.25rem;}
+.myp .panel-head, .myp-modal .panel-head {display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--line); flex-wrap: wrap;}
+.myp .panel-body, .myp-modal .panel-body {padding: 1.2rem;}
+.myp .table-wrap, .myp-modal .table-wrap {overflow-x: auto;}
+.myp table.data, .myp-modal table.data {width: 100%; border-collapse: collapse; font-size: .9rem;}
+.myp table.data th, .myp-modal table.data th {text-align: left; font-weight: 650; color: var(--muted); font-size: .8rem;
+  padding: .6rem .9rem; border-bottom: 1px solid var(--line); background: var(--surface-2); position: sticky; top: 0;}
+.myp table.data th.num, .myp-modal table.data th.num {text-align: right;}
+.myp table.data td, .myp-modal table.data td {padding: .55rem .9rem; border-bottom: 1px solid var(--line); vertical-align: middle;}
+.myp table.data tr:last-child td, .myp-modal table.data tr:last-child td {border-bottom: 0;}
+.myp table.data tr.inactive td, .myp-modal table.data tr.inactive td {color: var(--muted);}
+.myp table.data tr.hit td, .myp-modal table.data tr.hit td {background: var(--marigold-soft);}
+.myp table.data .actions, .myp-modal table.data .actions {text-align: right; white-space: nowrap;}
+.myp .empty-state, .myp-modal .empty-state {padding: 2.5rem 1.2rem; text-align: center; color: var(--muted);}
+.myp .tabs, .myp-modal .tabs {display: flex; gap: .3rem; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 0 1.2rem;}
+.myp .tabs button, .myp-modal .tabs button {background: none; border: 0; border-bottom: 3px solid transparent; padding: .7rem .7rem; font: 600 .88rem var(--font-body);
+  color: var(--muted); cursor: pointer;}
+.myp .tabs button[aria-selected="true"], .myp-modal .tabs button[aria-selected="true"] {color: var(--ink); border-bottom-color: var(--accent);}
+.myp .grid-2, .myp-modal .grid-2 {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;}
+.myp .grid-2.line-split, .myp-modal .grid-2.line-split {grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);}
+.myp .grid-3, .myp-modal .grid-3 {display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem;}
+.myp .form-grid, .myp-modal .form-grid {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem 1rem;}
+.myp .form-grid .span-2, .myp-modal .form-grid .span-2 {grid-column: 1 / -1;}
+.myp .check-row, .myp-modal .check-row {display: flex; align-items: center; gap: .6rem; font-size: .9rem; font-weight: 500; color: var(--ink);}
+.myp .company-list, .myp-modal .company-list {display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem;}
+.myp .company-card, .myp-modal .company-card {display: grid; grid-template-columns: 72px 1fr; gap: 1rem; align-items: center; padding: 1rem;}
+.myp .company-card .logo-tile, .myp-modal .company-card .logo-tile {width: 72px; border: 1px solid var(--line); border-radius: 12px; padding: 8px;}
+.myp .company-card .logo-tile.empty, .myp-modal .company-card .logo-tile.empty {border: 2px dashed var(--line); color: var(--muted); font-size: .7rem;}
+.myp .company-card h3, .myp-modal .company-card h3 {font-size: .98rem;}
+.myp .company-card .meta, .myp-modal .company-card .meta {font-size: .8rem; color: var(--muted); margin-top: .2rem;}
+.myp .company-card .row, .myp-modal .company-card .row {display: flex; gap: .4rem; margin-top: .6rem; flex-wrap: wrap;}
+.myp .logo-editor, .myp-modal .logo-editor {display: flex; gap: 1rem; align-items: center;}
+.myp .logo-editor .logo-tile, .myp-modal .logo-editor .logo-tile {width: 110px; border: 1px solid var(--line); border-radius: 14px;}
+.myp .checklist, .myp-modal .checklist {list-style: none; margin: 0; padding: 0;}
+.myp .checklist li, .myp-modal .checklist li {display: grid; grid-template-columns: 26px 1fr auto; gap: .8rem; align-items: center; padding: .85rem 1.2rem; border-bottom: 1px solid var(--line);}
+.myp .checklist li:last-child, .myp-modal .checklist li:last-child {border-bottom: 0;}
+.myp .dot, .myp-modal .dot {width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 800;}
+.myp .dot.done, .myp-modal .dot.done {background: var(--accent); color: var(--accent-ink);}
+.myp .dot.todo, .myp-modal .dot.todo {background: var(--marigold-soft); color: #8a5a0f; border: 2px solid var(--marigold);}
+.myp .roadmap, .myp-modal .roadmap {display: grid; gap: .1rem;}
+.myp .roadmap div, .myp-modal .roadmap div {display: grid; grid-template-columns: 70px 1fr auto; gap: .8rem; padding: .7rem 1.2rem; border-bottom: 1px solid var(--line); align-items: center; font-size: .92rem;}
+.myp .roadmap div:last-child, .myp-modal .roadmap div:last-child {border-bottom: 0;}
+.myp .roadmap b, .myp-modal .roadmap b {font-family: var(--font-head);}
+.myp .version-list, .myp-modal .version-list {display: grid;}
+.myp .version-item, .myp-modal .version-item {display: grid; grid-template-columns: 1fr auto; gap: .5rem; padding: .75rem 1.2rem; border-bottom: 1px solid var(--line); cursor: pointer; background: none; border-left: 3px solid transparent; text-align: left; font: inherit; color: inherit; width: 100%; border-top: 0; border-right: 0;}
+.myp .version-item:hover, .myp-modal .version-item:hover {background: var(--surface-2);}
+.myp .version-item[aria-current="true"], .myp-modal .version-item[aria-current="true"] {background: var(--accent-soft); border-left-color: var(--accent);}
+.myp .calc-out, .myp-modal .calc-out {display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem;}
+.myp .calc-card, .myp-modal .calc-card {border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem; background: var(--surface-2);}
+.myp .calc-card h3, .myp-modal .calc-card h3 {font-size: .9rem; margin-bottom: .5rem;}
+.myp .calc-card dl, .myp-modal .calc-card dl {display: grid; grid-template-columns: 1fr auto; gap: .2rem .8rem; margin: 0; font-size: .9rem;}
+.myp .calc-card dt, .myp-modal .calc-card dt {color: var(--muted);}
+.myp .calc-card dd, .myp-modal .calc-card dd {margin: 0; text-align: right; font-weight: 650;}
+.myp .calc-card .src, .myp-modal .calc-card .src {margin-top: .5rem; font-size: .75rem; color: var(--muted);}
+.myp form.calc-form, .myp-modal form.calc-form, .myp .form-grid.calc-form, .myp-modal .form-grid.calc-form {grid-template-columns: repeat(4, minmax(0, 1fr));}
+.myp .stat-split, .myp-modal .stat-split {display: grid; grid-template-columns: minmax(220px, 280px) 1fr;}
+.myp .stat-split > :first-child, .myp-modal .stat-split > :first-child {border-right: 1px solid var(--line);}
+.myp-modal.modal-backdrop {position: fixed; inset: 0; background: rgba(15, 26, 36, .5); display: grid; place-items: center; padding: 1rem; z-index: 50;}
+.myp .myp-dialog, .myp-modal .myp-dialog {background: var(--surface); border-radius: var(--radius-lg); width: min(640px, 100%); max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0, 0, 0, .3);}
+.myp .myp-dialog.wide, .myp-modal .myp-dialog.wide {width: min(880px, 100%);}
+.myp .modal-head, .myp-modal .modal-head {padding: 1rem 1.2rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;}
+.myp .modal-body, .myp-modal .modal-body {padding: 1.2rem; overflow-y: auto;}
+.myp .modal-foot, .myp-modal .modal-foot {padding: .9rem 1.2rem; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: .5rem;}
+.myp .loading, .myp-modal .loading {padding: 2rem; color: var(--muted);}
+.myp .nowrap, .myp-modal .nowrap {white-space: nowrap;}
+.myp .facts, .myp-modal .facts {display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1.25rem;}
+.myp .fact, .myp-modal .fact {background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .55rem .9rem; display: flex; align-items: baseline; gap: .5rem;}
+.myp .fact b, .myp-modal .fact b {font-family: var(--font-head); font-size: 1.35rem; font-weight: 700;}
+.myp .fact span, .myp-modal .fact span {font-size: .85rem; color: var(--muted);}
+.myp .fact.bad, .myp-modal .fact.bad {border-color: var(--danger);}
+.myp .fact.bad b, .myp-modal .fact.bad b {color: var(--danger);}
+.myp .panel-head.filters, .myp-modal .panel-head.filters {align-items: stretch;}
+.myp .filter-row, .myp-modal .filter-row {display: flex; gap: .5rem; flex-wrap: wrap; flex: 1 1 420px; justify-content: flex-end;}
+.myp .filter-row input[type="search"], .myp-modal .filter-row input[type="search"] {flex: 1 1 240px;}
+.myp .filter-row select, .myp-modal .filter-row select {width: auto; max-width: 220px;}
+.myp .seg, .myp-modal .seg {display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; align-self: center;}
+.myp .seg button, .myp-modal .seg button {background: var(--surface); border: 0; border-right: 1px solid var(--line); padding: .45rem .8rem; font: 600 .85rem var(--font-body); color: var(--muted); cursor: pointer;}
+.myp .seg button:last-child, .myp-modal .seg button:last-child {border-right: 0;}
+.myp .seg button[aria-selected="true"], .myp-modal .seg button[aria-selected="true"] {background: var(--accent); color: var(--accent-ink);}
+.myp .panel-foot, .myp-modal .panel-foot {padding: .6rem 1.2rem; border-top: 1px solid var(--line);}
+.myp table.data.clickable tbody tr, .myp-modal table.data.clickable tbody tr {cursor: pointer;}
+.myp table.data.clickable tbody tr:hover td, .myp-modal table.data.clickable tbody tr:hover td {background: var(--surface-2);}
+.myp .row-link, .myp-modal .row-link {color: var(--ink); font-weight: 600; text-decoration: none;}
+.myp .row-link:hover, .myp-modal .row-link:hover {text-decoration: underline;}
+.myp .crumbs, .myp-modal .crumbs {font-size: .85rem; color: var(--muted); margin-bottom: .8rem;}
+.myp .crumbs a, .myp-modal .crumbs a {color: var(--muted);}
+.myp .profile-head, .myp-modal .profile-head {background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  padding: 1.3rem 1.4rem 1.1rem; margin-bottom: 1.25rem; display: grid; grid-template-columns: 1fr auto; gap: 1rem 1.5rem;}
+.myp .profile-title h1, .myp-modal .profile-title h1 {font-size: clamp(1.5rem, 3vw, 2.1rem);}
+.myp .profile-head > .page-actions, .myp-modal .profile-head > .page-actions {align-self: start; justify-content: flex-end;}
+.myp .profile-sub, .myp-modal .profile-sub {display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .45rem; color: var(--muted);}
+.myp .id-chip, .myp-modal .id-chip {font-weight: 700; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .1rem .5rem; letter-spacing: .02em;}
+.myp .facts-row, .myp-modal .facts-row {grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .8rem 1.2rem; margin: .2rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line);}
+.myp .facts-row dt, .myp-modal .facts-row dt {font-size: .78rem; color: var(--muted);}
+.myp .facts-row dd, .myp-modal .facts-row dd {margin: .1rem 0 0; font-weight: 600;}
+.myp .stack, .myp-modal .stack {display: grid; gap: 1.1rem;}
+.myp .blocks, .myp-modal .blocks {align-items: start;}
+.myp .block, .myp-modal .block {border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; background: var(--surface);}
+.myp .block-head, .myp-modal .block-head {display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: .8rem;}
+.myp .block-head .side-actions, .myp-modal .block-head .side-actions {align-items: center;}
+.myp .kv, .myp-modal .kv {display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .7rem 1.2rem; margin: 0;}
+.myp .kv dt, .myp-modal .kv dt {font-size: .78rem; color: var(--muted);}
+.myp .kv dd, .myp-modal .kv dd {margin: .1rem 0 0; white-space: pre-line; overflow-wrap: anywhere;}
+.myp h3.sub, .myp-modal h3.sub {font-size: .9rem; margin: 1.1rem 0 .5rem;}
+.myp .sub-head, .myp-modal .sub-head {display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem;}
+.myp .stat-toggles, .myp-modal .stat-toggles {display: flex; flex-wrap: wrap; gap: .5rem 1.4rem;}
+.myp .big-num, .myp-modal .big-num {font-family: var(--font-head); font-size: 1.25rem; font-weight: 700;}
+.myp fieldset.form-section, .myp-modal fieldset.form-section {border: 0; padding: 0; margin: 0 0 1.2rem;}
+.myp fieldset.form-section legend, .myp-modal fieldset.form-section legend {font-family: var(--font-head); font-weight: 650; font-size: 1rem; margin-bottom: .6rem; padding: 0;}
+.myp .id-box, .myp-modal .id-box {display: grid; gap: .6rem;}
+.myp .id-box input[type="text"], .myp-modal .id-box input[type="text"] {width: auto; flex: 1 1 200px;}
+.myp .id-preview, .myp-modal .id-preview {font-family: var(--font-head); color: var(--accent);}
+.myp .id-preview.big, .myp-modal .id-preview.big {font-size: 2rem; margin: 1rem 0 .3rem; letter-spacing: .02em;}
+.myp .form-grid.three, .myp-modal .form-grid.three {grid-template-columns: repeat(3, minmax(0, 1fr));}
+.myp .notice-calc, .myp-modal .notice-calc {background: var(--accent-soft); border-radius: var(--radius-sm); padding: .6rem .8rem; font-size: .9rem;}
+.myp .drop, .myp-modal .drop {display: grid; gap: .8rem; justify-items: start;}
+.myp .meter, .myp-modal .meter {height: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; max-width: 520px;}
+.myp .meter span, .myp-modal .meter span {display: block; height: 100%; background: var(--accent);}
+.myp .issue-groups, .myp-modal .issue-groups {display: grid;}
+.myp .issue-group, .myp-modal .issue-group {border-bottom: 1px solid var(--line);}
+.myp .issue-group:last-child, .myp-modal .issue-group:last-child {border-bottom: 0;}
+.myp .issue-group summary, .myp-modal .issue-group summary {padding: .7rem 1.2rem; cursor: pointer; font-weight: 600; display: flex; gap: .6rem; align-items: center;}
+.myp .issue-group summary:hover, .myp-modal .issue-group summary:hover {background: var(--surface-2);}
+.myp .issue-group ul, .myp-modal .issue-group ul {margin: 0 0 .8rem; padding: 0 1.2rem 0 2.6rem; display: grid; gap: .3rem; font-size: .88rem; color: var(--muted);}
+.myp .import-bar, .myp-modal .import-bar {position: sticky; bottom: 0; display: flex; justify-content: flex-end; align-items: center; gap: 1rem; padding: .9rem 1.2rem;
+  margin-top: 1.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow);}
+.myp td.strong, .myp-modal td.strong {font-weight: 700;}
+.myp td.neg, .myp-modal td.neg, .myp td.neg b, .myp-modal td.neg b {color: var(--danger);}
+.myp table.bal-table th.grp, .myp-modal table.bal-table th.grp {text-align: center; border-left: 1px solid var(--line);}
+.myp table.bal-table thead tr:first-child th, .myp-modal table.bal-table thead tr:first-child th {border-bottom: 0;}
+.myp table.recon td.diff, .myp-modal table.recon td.diff {background: var(--marigold-soft);}
+.myp table.recon td.num .muted, .myp-modal table.recon td.num .muted {font-size: .85em;}
+.myp table.data tr.flag td:first-child, .myp-modal table.data tr.flag td:first-child {box-shadow: inset 3px 0 0 var(--marigold);}
+.myp table.data tr.grp-row td, .myp-modal table.data tr.grp-row td {background: var(--surface);}
+.myp table.data tr.sub-row td, .myp-modal table.data tr.sub-row td {background: var(--surface-2); font-size: .88rem; padding-top: .35rem; padding-bottom: .35rem;}
+.myp .entry-line, .myp-modal .entry-line {display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; padding-left: 1rem;}
+.myp .fact.big b, .myp-modal .fact.big b {font-size: 2rem;}
+.myp .bal-box:empty, .myp-modal .bal-box:empty {display: none;}
+.myp details.legend-box, .myp-modal details.legend-box {margin-top: 1.25rem;}
+.myp details.legend-box summary, .myp-modal details.legend-box summary {padding: .9rem 1.2rem; cursor: pointer; font-weight: 600;}
+.myp details.legend-box ul, .myp-modal details.legend-box ul {margin: 0 0 1rem; padding: 0 1.2rem 0 2.6rem; display: grid; gap: .35rem; font-size: .9rem;}
+@media (max-width: 900px) {
+.myp .login, .myp-modal .login {grid-template-columns: 1fr;}
+.myp .login-brand, .myp-modal .login-brand {padding: 2rem 1.5rem;}
+.myp .logo-cluster, .myp-modal .logo-cluster {grid-template-columns: repeat(4, minmax(0, 72px)); gap: 8px;}
+.myp .logo-tile, .myp-modal .logo-tile {border-radius: 12px; padding: 8px;}
+.myp .shell, .myp-modal .shell {grid-template-columns: 1fr;}
+.myp .sidebar, .myp-modal .sidebar {position: fixed; inset: 0 auto 0 0; width: min(300px, 86vw); z-index: 40; transform: translateX(-105%); transition: transform .2s; box-shadow: var(--shadow);}
+.myp .shell.menu-open .sidebar, .myp-modal .shell.menu-open .sidebar {transform: none;}
+.myp .topbar, .myp-modal .topbar {display: flex; align-items: center; gap: .8rem; padding: .7rem 1rem; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30;}
+.myp .topbar strong, .myp-modal .topbar strong {font-family: var(--font-head);}
+.myp .grid-2, .myp-modal .grid-2, .myp .grid-2.line-split, .myp-modal .grid-2.line-split, .myp .grid-3, .myp-modal .grid-3, .myp .form-grid, .myp-modal .form-grid, .myp .form-grid.calc-form, .myp-modal .form-grid.calc-form, .myp .calc-out, .myp-modal .calc-out, .myp .stat-split, .myp-modal .stat-split {grid-template-columns: 1fr;}
+.myp .stat-split > :first-child, .myp-modal .stat-split > :first-child {border-right: 0; border-bottom: 1px solid var(--line);}
+.myp .profile-head, .myp-modal .profile-head {grid-template-columns: 1fr;}
+.myp .form-grid.three, .myp-modal .form-grid.three {grid-template-columns: 1fr;}
+.myp .filter-row, .myp-modal .filter-row {justify-content: stretch;}
+.myp .filter-row select, .myp-modal .filter-row select {max-width: none; flex: 1 1 140px;}
+.myp .seg, .myp-modal .seg {width: 100%; overflow-x: auto;}
+.myp .seg button, .myp-modal .seg button {flex: 1 0 auto;}
+.myp main.content, .myp-modal main.content {padding-top: 1.2rem;}
+}
+.myp table.data tfoot th, .myp-modal table.data tfoot th {border-top: 2px solid var(--line); border-bottom: 0; background: var(--surface-2);}
+.myp table.data tr.sub-row th, .myp-modal table.data tr.sub-row th {background: var(--surface-2); text-align: left; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: .4rem; padding-bottom: .4rem;}
+.myp table.data tr.inactive td .strong, .myp-modal table.data tr.inactive td .strong {text-decoration: line-through;}
+.myp details > summary.linkish, .myp-modal details > summary.linkish {display: inline-block; margin: .2rem 0 .8rem; list-style: none;}
+.myp details > summary.linkish::-webkit-details-marker, .myp-modal details > summary.linkish::-webkit-details-marker {display: none;}
+.myp .myp-dialog.wide table.data td input[type=number], .myp-modal .myp-dialog.wide table.data td input[type=number] {padding: .3rem .45rem;}
+.myp .myp-dialog, .myp-modal .myp-dialog {max-width: calc(100vw - 1.5rem);}
+.myp .modal-body, .myp-modal .modal-body {min-width: 0; overflow-x: auto;}
+.myp .myp-dialog .grid-2 > *, .myp-modal .myp-dialog .grid-2 > *, .myp .myp-dialog .kv > *, .myp-modal .myp-dialog .kv > * {min-width: 0;}
+@media (max-width: 640px) {
+.myp .myp-dialog .kv, .myp-modal .myp-dialog .kv {grid-template-columns: 1fr 1fr !important;}
+.myp .myp-dialog .grid-2, .myp-modal .myp-dialog .grid-2, .myp .myp-dialog .grid-2.line-split, .myp-modal .myp-dialog .grid-2.line-split {grid-template-columns: 1fr;}
+.myp .myp-dialog .filter-row > input, .myp-modal .myp-dialog .filter-row > input, .myp .myp-dialog .filter-row > select, .myp-modal .myp-dialog .filter-row > select {flex: 1 1 100%; width: 100% !important;}
+}
+.myp button.fact.linkfact, .myp-modal button.fact.linkfact {font: inherit; color: inherit; text-align: left; cursor: pointer;}
+.myp button.fact.linkfact:hover, .myp-modal button.fact.linkfact:hover {border-color: var(--accent);}
+.myp .print-bar, .myp-modal .print-bar {display: flex; align-items: center; gap: 1rem; justify-content: space-between; position: sticky; top: 0; z-index: 5;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .9rem; margin-bottom: 1rem;}
+.myp .print-doc, .myp-modal .print-doc {display: grid; gap: 1.2rem; justify-content: center;}
+.myp .sheet, .myp-modal .sheet {background: #fff; color: #111; width: 210mm; min-height: 297mm; padding: 14mm 14mm 12mm; box-shadow: 0 2px 12px rgba(0,0,0,.15);
+  font-size: 10.5pt; line-height: 1.35; display: flex; flex-direction: column; gap: 4mm;}
+.myp .sheet.list-sheet, .myp-modal .sheet.list-sheet {width: 297mm; min-height: 210mm;}
+.myp .doc-head, .myp-modal .doc-head {display: flex; align-items: center; gap: 5mm; border-bottom: 2px solid #1d5f57; padding-bottom: 3mm;}
+.myp .doc-logo, .myp-modal .doc-logo {width: 22mm; height: 22mm; object-fit: contain;}
+.myp .doc-co, .myp-modal .doc-co {flex: 1; font-size: 9pt; color: #333;}
+.myp .doc-co-name, .myp-modal .doc-co-name {font-size: 13pt; font-weight: 700; color: #111;}
+.myp .doc-title, .myp-modal .doc-title {text-align: right; font-weight: 700; font-size: 14pt; letter-spacing: .04em; color: #1d5f57;}
+.myp .doc-sub, .myp-modal .doc-sub {font-size: 10pt; color: #333; letter-spacing: 0; font-weight: 600;}
+.myp .doc-grid, .myp-modal .doc-grid {display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 8mm;}
+.myp .kv-row, .myp-modal .kv-row {display: flex; justify-content: space-between; gap: 4mm; border-bottom: 1px dotted #ccc; padding: .6mm 0;}
+.myp .kv-row span, .myp-modal .kv-row span {color: #555;}
+.myp .doc-two, .myp-modal .doc-two {display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start;}
+.myp .doc-three, .myp-modal .doc-three {display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; align-items: start;}
+.myp .doc-table, .myp-modal .doc-table {width: 100%; border-collapse: collapse;}
+.myp .doc-table th, .myp-modal .doc-table th, .myp .doc-table td, .myp-modal .doc-table td {border-bottom: 1px solid #ddd; padding: 1.2mm 1.5mm; text-align: left; vertical-align: top;}
+.myp .doc-table thead th, .myp-modal .doc-table thead th {background: #eef4f2; color: #1d5f57; font-size: 9pt; text-transform: uppercase; letter-spacing: .03em;}
+.myp .doc-table tfoot th, .myp-modal .doc-table tfoot th {border-top: 1.5px solid #1d5f57; border-bottom: 0;}
+.myp .doc-table .num, .myp-modal .doc-table .num {text-align: right; white-space: nowrap;}
+.myp .doc-table.small, .myp-modal .doc-table.small {font-size: 9pt;}
+.myp .doc-net, .myp-modal .doc-net {display: flex; justify-content: space-between; align-items: center; background: #1d5f57; color: #fff; padding: 2.5mm 4mm; border-radius: 2mm; font-size: 12pt;}
+.myp .doc-net b, .myp-modal .doc-net b {font-size: 15pt;}
+.myp .doc-foot, .myp-modal .doc-foot {margin-top: auto; display: flex; justify-content: space-between; gap: 6mm; font-size: 8.5pt; color: #555; border-top: 1px solid #ddd; padding-top: 2mm;}
+.myp .doc-sign, .myp-modal .doc-sign {margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10mm; padding-top: 14mm; font-size: 9pt; color: #555;}
+.myp .doc-sign > div, .myp-modal .doc-sign > div {border-top: 1px solid #999; padding-top: 1.5mm;}
+.myp .sheet.ea, .myp-modal .sheet.ea {font-size: 9pt; gap: 2.5mm;}
+.myp .ea-top, .myp-modal .ea-top {display: grid; grid-template-columns: 30mm 1fr 62mm; gap: 4mm; align-items: center; border-bottom: 2px solid #111; padding-bottom: 2mm;}
+.myp .ea-form, .myp-modal .ea-form {font-size: 26pt; font-weight: 800; line-height: 1;}
+.myp .ea-title, .myp-modal .ea-title {text-align: center;}
+.myp .ea-ids > div, .myp-modal .ea-ids > div {border-bottom: 1px dotted #999; padding: .6mm 0;}
+.myp .ea-h, .myp-modal .ea-h {font-size: 9pt; background: #111; color: #fff; padding: 1mm 2mm; margin: 0;}
+.myp .ea-tbl td, .myp-modal .ea-tbl td, .myp .ea-tbl th, .myp-modal .ea-tbl th {padding: .8mm 1.5mm;}
+.myp .ea-no, .myp-modal .ea-no {width: 9mm; color: #555;}
+.myp .ea-sign, .myp-modal .ea-sign {margin-top: auto; display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 6mm; border-top: 1px solid #111; padding-top: 3mm;}
+.myp .ea-sigline, .myp-modal .ea-sigline {margin-top: 12mm; border-top: 1px solid #111; padding-top: 1mm; color: #555;}
+.myp table.data.dense th, .myp-modal table.data.dense th, .myp table.data.dense td, .myp-modal table.data.dense td {padding: .4rem .55rem; font-size: .85rem;}
+@media (max-width: 900px) {
+.myp .print-doc, .myp-modal .print-doc {justify-content: start; overflow-x: auto;}
+}
+@media print {
+.myp @page, .myp-modal @page {size: A4; margin: 0;}
+.myp .sidebar, .myp-modal .sidebar, .myp .topbar, .myp-modal .topbar, .myp .no-print, .myp-modal .no-print, .myp .footer-uvn, .myp-modal .footer-uvn, .myp #toasts, .myp-modal #toasts {display: none !important;}
+.myp .shell, .myp-modal .shell {display: block !important;}
+.myp .shell > div, .myp-modal .shell > div, .myp main.content, .myp-modal main.content {padding: 0 !important; margin: 0 !important; max-width: none !important;}
+.myp .print-doc, .myp-modal .print-doc {display: block;}
+.myp .sheet, .myp-modal .sheet {box-shadow: none; margin: 0; break-after: page; page-break-after: always;}
+.myp .sheet:last-child, .myp-modal .sheet:last-child {break-after: auto; page-break-after: auto;}
+.myp .sheet.list-sheet, .myp-modal .sheet.list-sheet {width: 297mm;}
+}
+@media print and (orientation: landscape) {
+.myp @page, .myp-modal @page {size: A4 landscape;}
+}
+.myp .sheet.ea, .myp-modal .sheet.ea {font-size: 8pt; line-height: 1.25; gap: 1.6mm; padding: 10mm 12mm 9mm;}
+.myp .sheet.ea .ea-top, .myp-modal .sheet.ea .ea-top {grid-template-columns: 36mm 1fr 64mm; padding-bottom: 1.5mm;}
+.myp .sheet.ea .ea-form, .myp-modal .sheet.ea .ea-form {font-size: 22pt;}
+.myp .sheet.ea .ea-h, .myp-modal .sheet.ea .ea-h {font-size: 8pt; padding: .7mm 2mm;}
+.myp .sheet.ea .ea-tbl td, .myp-modal .sheet.ea .ea-tbl td, .myp .sheet.ea .ea-tbl th, .myp-modal .sheet.ea .ea-tbl th {padding: .45mm 1.5mm;}
+.myp .sheet.ea .ea-sign, .myp-modal .sheet.ea .ea-sign {padding-top: 2mm;}
+.myp .sheet.ea .ea-sigline, .myp-modal .sheet.ea .ea-sigline {margin-top: 8mm;}
+.myp .kv-row span, .myp-modal .kv-row span {white-space: nowrap;}
+.myp dl.kv-grid, .myp-modal dl.kv-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .5rem 1.2rem; margin: 0;}
+.myp dl.kv-grid dt, .myp-modal dl.kv-grid dt {font-size: .78rem; color: var(--muted);}
+.myp dl.kv-grid dd, .myp-modal dl.kv-grid dd {margin: 0; font-weight: 600;}
+.myp .pcb-calc, .myp-modal .pcb-calc {background: var(--surface-2); border-radius: var(--radius); padding: .6rem .8rem; font-size: .85rem; margin-top: .5rem;}
+.myp .pcb-calc li, .myp-modal .pcb-calc li {margin: .15rem 0;}
+.myp .leave-slip, .myp-modal .leave-slip {margin-top: 5mm; width: 100%;}
+.myp .leave-slip td:first-child, .myp-modal .leave-slip td:first-child {white-space: nowrap;}
+.myp .audit-cell, .myp-modal .audit-cell {cursor: pointer;}
+.myp .audit-cell:hover, .myp-modal .audit-cell:hover {text-decoration: underline;}
+.myp .corr-tag, .myp-modal .corr-tag {font-size: .7rem; margin-left: .3rem;}
+.myp .pt-table input[type=number], .myp-modal .pt-table input[type=number] {width: 7rem; text-align: right;}
+.myp .pt-table td.changed input, .myp-modal .pt-table td.changed input {border-color: var(--accent, #1a7f6e); box-shadow: 0 0 0 2px rgba(26,127,110,.15);}
+.myp .inputs-panel, .myp-modal .inputs-panel {border: 1px solid var(--line, #dfe5ec); border-radius: 12px; padding: .8rem 1rem; margin-bottom: 1rem; background: var(--soft, #f7f9fb);}
+.myp .inputs-panel h3, .myp-modal .inputs-panel h3 {margin: 0 0 .5rem; font-size: 1rem;}
+.myp .inputs-grid, .myp-modal .inputs-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem;}
+.myp .inputs-grid .block, .myp-modal .inputs-grid .block {background: var(--card, #fff); border: 1px solid var(--line, #dfe5ec); border-radius: 10px; padding: .6rem .8rem;}
+.myp .inputs-grid .block h4, .myp-modal .inputs-grid .block h4 {margin: 0 0 .35rem; font-size: .9rem;}
+.myp .inputs-grid ul, .myp-modal .inputs-grid ul {margin: 0 0 .5rem; padding-left: 1.1rem; font-size: .85rem;}
+.myp .inputs-grid .btn-row, .myp-modal .inputs-grid .btn-row {display: flex; flex-wrap: wrap; gap: .4rem;}
+.myp .seg-tabs, .myp-modal .seg-tabs {display: flex; flex-wrap: wrap; gap: .35rem;}
+.myp .leave-slip th.num.wrap, .myp-modal .leave-slip th.num.wrap {white-space: normal;}
+.myp .leave-slip, .myp-modal .leave-slip {table-layout: fixed;}
+.myp .leave-slip th:first-child, .myp-modal .leave-slip th:first-child, .myp .leave-slip td:first-child, .myp-modal .leave-slip td:first-child {width: 40%; white-space: normal;}
+.myp .rehire-box, .myp-modal .rehire-box {border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; background: var(--surface-2, transparent); margin-bottom: .4rem;}
+.myp .rehire-box.bad, .myp-modal .rehire-box.bad {border-color: var(--danger);}
+.myp .rehire-box h3, .myp-modal .rehire-box h3 {margin: 0 0 .5rem; font-size: .95rem;}
+.myp .rehire-box table, .myp-modal .rehire-box table {width: 100%; font-size: .82rem;}
+.myp .add-item, .myp-modal .add-item {display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .6rem 0 .6rem;}
+.myp .add-item .check-row, .myp-modal .add-item .check-row {display: inline-flex; align-items: center; gap: .35rem; margin: 0;}
+.myp .recur-box, .myp-modal .recur-box {margin: 0 0 1rem; border: 1px solid var(--line); border-radius: 10px; padding: .5rem .8rem;}
+.myp .recur-box summary, .myp-modal .recur-box summary {cursor: pointer; font-weight: 600; font-size: .9rem;}
+.myp .recur-box table, .myp-modal .recur-box table {width: 100%; margin-top: .5rem; font-size: .85rem;}
+.myp .treat-remark, .myp-modal .treat-remark {margin: -.2rem 0 .2rem; font-size: .82rem; color: var(--muted); background: var(--accent-soft); padding: .5rem .7rem; border-radius: 8px;}
+.myp .add-item select, .myp-modal .add-item select, .myp .add-item input, .myp-modal .add-item input {width: auto; max-width: 100%;}
+.myp .add-item select:first-of-type, .myp-modal .add-item select:first-of-type {max-width: 18rem;}
+.myp .add-item input[type=number], .myp-modal .add-item input[type=number] {width: 8rem;}
+.myp .add-item input[type=text], .myp-modal .add-item input[type=text] {flex: 1 1 10rem; min-width: 8rem;}
+.myp .rehire-box td, .myp-modal .rehire-box td {vertical-align: top;}
+.myp .rehire-box th, .myp-modal .rehire-box th {white-space: nowrap;}
