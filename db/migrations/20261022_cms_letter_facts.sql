@@ -25,7 +25,7 @@ declare
   em public.employee_master; t text := upper(coalesce(p_type, ''));
   v_today date := (now() at time zone 'Asia/Kuala_Lumpur')::date;
   v_sal boolean := public.cms_can('people.salary', 'V'); v_pay boolean := public.cms_can('payroll', 'V');
-  v_eppd bigint; v_join date; v_conf text; v_resigned date; v_rletter date; v_until date; v_last date; v_title text;
+  v_eppd bigint; v_join date; v_conf text; v_resigned date; v_rletter date; v_until date; v_last date; v_title text; v_policy text;
   v_mo int; v_svc text; pe record; ap public.cms_appraisals; inc record; v_boss text; v_unit text; v_paying text;
   v_ext jsonb; v_next int; v_items int; v_loan numeric; v_upl numeric; v_disc jsonb;
   v_ea text; v_notice text; v_req date; v_flag text; v_note text; v_days int; v_cap record;
@@ -126,9 +126,13 @@ begin
   -- leaving: resignation acceptance, termination
   if t in ('RL', 'TL') then
     v_ea := case when v_mo is null then null when v_mo < 24 then '4 weeks' when v_mo < 60 then '6 weeks' else '8 weeks' end;
+    select case when v_conf = 'UP' then (value->>'probation_weeks') || ' weeks' else (select (b->>'weeks') || ' weeks' from jsonb_array_elements(value->'bands') b
+      where extract(year from age(coalesce(v_rletter, v_today), v_join)) >= (b->>'from_years')::numeric
+        and (b->>'to_years' is null or extract(year from age(coalesce(v_rletter, v_today), v_join)) < (b->>'to_years')::numeric) limit 1) end
+      into v_policy from public.eppd_policies where key = 'notice_period';
     v_notice := case when em.notice_period_value is not null then em.notice_period_value || ' ' || coalesce(em.notice_period_unit, '') end;
-    v_req := coalesce(em.required_last_working_date, v_until, case when v_rletter is not null and coalesce(v_notice, v_ea) ~ '^\d+ weeks?$'
-      then v_rletter + (split_part(coalesce(v_notice, v_ea), ' ', 1)::int * 7) - 1 end);
+    v_req := coalesce(em.required_last_working_date, v_until, case when v_rletter is not null and coalesce(v_notice, v_policy, v_ea) ~ '^\d+ weeks?$'
+      then v_rletter + (split_part(coalesce(v_notice, v_policy, v_ea), ' ', 1)::int * 7) - 1 end);
     select count(*) into v_items from public.cms_items i where i.person_id = p_person and i.status in ('issued', 'held');
     if v_pay then
       select sum(greatest(0, l.principal - coalesce((select sum(coalesce((it->>'override')::numeric, (it->>'amount')::numeric, 0))
@@ -140,7 +144,8 @@ begin
       private.cms_fact('Resignation letter date', private.cms_ldate(v_rletter), 'resignation_date', case when t = 'RL' and v_rletter is null then 'warn' end,
         case when t = 'RL' and v_rletter is null then 'Not recorded — record the resignation on the person first.' end),
       private.cms_fact('Notice period in the contract', coalesce(v_notice, 'Not recorded'), case when v_notice is not null then 'notice_period' end),
-      private.cms_fact('Employment Act minimum (s.12)', v_ea, case when v_notice is null then 'notice_period' end, null, 'Based on ' || coalesce(v_svc, '?') || ' of service.'),
+      private.cms_fact('Notice by HR policy', v_policy, case when v_notice is null then 'notice_period' end, null, case when v_conf = 'UP' then 'On probation.' else 'Based on completed years of service.' end),
+      private.cms_fact('Employment Act minimum (s.12)', v_ea, null, null, 'Based on ' || coalesce(v_svc, '?') || ' of service.'),
       private.cms_fact('Last working day by the notice', private.cms_ldate(v_req), 'last_notice_date'),
       private.cms_fact('Last working day agreed', private.cms_ldate(v_last), 'last_working_day',
         case when v_last < v_req then 'warn' end, case when v_last < v_req then

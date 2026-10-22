@@ -98,6 +98,7 @@ window.CMS_MENU = [
     { route: 'admin/roles', label: 'Users, Roles & Access', icon: 'shield', phase: 0, desc: 'Who can see and do what, per module and action.' },
     { route: 'admin/companies', label: 'Companies & Settings', icon: 'building', phase: 0, desc: 'Companies, their codes and other spellings, centres and units. Letterheads, statutory numbers and holidays come later.' },
     { route: 'admin/audit', label: 'Audit Log', icon: 'list', phase: 0, desc: 'Every change, who made it and when.' },
+    { route: 'admin/sync', label: 'Sync Check', icon: 'check-circle', phase: 0, live: true, desc: 'Forms and MEG-EAF V2 running side by side with the CMS: what to look at, and how long each has been clean. Super Admin only.' },
     { route: 'admin/export', label: 'Export All Data', icon: 'download', phase: 0, desc: 'Your own backup copy of every table (the free plan has no automatic backups).' },
   ] },
 ];
@@ -131,5 +132,5 @@ window.CMS_MODULE_OF = {
   'leave/al-calculator': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', 'leave/audit': 'leave', 'leave/kpi': 'leave', time: 'payroll', 'time/part-time': 'payroll',
   'settings/org': 'payroll.settings', 'settings/lists': 'payroll.settings', 'settings/payment-types': 'payroll.settings',
   'settings/statutory': 'payroll.settings', 'settings/holidays': 'payroll.settings', 'settings/policies': 'payroll.settings',
-  'admin/roles': 'admin.roles', 'admin/companies': 'admin.companies', 'admin/audit': 'admin.audit', 'admin/export': 'admin.export',
+  'admin/roles': 'admin.roles', 'admin/companies': 'admin.companies', 'admin/audit': 'admin.audit', 'admin/export': 'admin.export', 'admin/sync': 'admin.export',
 };

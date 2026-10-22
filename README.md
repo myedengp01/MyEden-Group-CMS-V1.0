@@ -63,6 +63,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 35. `20261022_cms_phase6d_payslips_reports.sql` — Phase 6d: `cms_eppd_private` view (via `cms_payroll_private()`): date of birth with Payroll view, IC / passport / EPF / SOCSO / tax numbers only with "See IC", bank only with "See bank"; the Phase 6c read rule on the private table is switched off (`using (false)`)
 36. `20261022_cms_phase6e_directory.sql` — Phase 6e: loans and settlements change with "Prepare payroll"; workbook history import accepts CMS Super Admin; Employee Directory permissions (`directory`, `directory.contacts`, `directory.all`, `directory.chart`, defaults Admin / HR / Director), `cms_directory()` and `cms_directory_exported()`
 37. `20261022_cms_letter_facts.sql` — PRI-009: `cms_letter_facts(person, letter type)` with helpers `private.cms_ldate`, `private.cms_fact`, `private.cms_fact_group`
+38. `20261022_cms_sync_check.sql` — PRI-010: `cms_sync_runs`, `private.cms_sync_compute()`, `private.cms_sync_record()`, `cms_sync_check(p_run)` (Super Admin), nightly pg_cron job `cms-sync-check-nightly` (15:30 UTC)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -112,11 +113,19 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-15:05** — PRI-010 step B · **payroll moves to the CMS, Sync check**: MyPayroll V2.0 (v2026.10.22-14:55) shows a banner on
+  every page — "Payroll now runs in the MyEden Group CMS" — with a link to the same page here; it keeps working as a fallback until you
+  confirm and it is made read-only. New **Admin › Sync Check** (Super Admin): for each form (SCF, OTCF, MTCF, TEC, PRFAF) and MEG-EAF V2,
+  the records, statuses and anything that would make a record look different or go missing in the CMS (claimant not matched to a person,
+  company not recognised, unknown status, processing / payment marks with no claim, paid while still waiting for approval, completed
+  applications with no person, applications stuck in onboarding), with how long each has been clean. Runs every night at 11.30 pm and on
+  "Run check now"; every run is kept. Letter facts: notice now also shows the HR-policy notice (probation 4 weeks, then by years of service).
+  Database: `20261022_cms_sync_check.sql`.
 - **v2026.10.22-14:45** — PRI-009 · **facts for this letter**: in the HR letter workspace, as soon as the person and the letter are chosen,
   a "Facts for this letter" panel shows what matters for that letter type from the CMS records — employment (start, service, position,
   centre, status, reports to); probation (period, end / confirmation due with overdue / due-soon flags, extensions already given);
   latest approved appraisal; pay (current basic, last increment, next review, JD range and MyEden cap) for increment / promotion letters;
-  notice (resignation date, contract notice, Employment Act s.12 minimum, last day by the notice vs agreed, items to hand over, loan
+  notice (resignation date, contract notice, HR-policy notice (probation 4 weeks, then by years of service), Employment Act s.12 minimum, last day by the notice vs agreed, items to hand over, loan
   balance) for resignation / termination; earlier disciplinary letters; current employer / centre for transfers; leave balances (same
   numbers as Leave Balances) for resignation and unpaid-leave letters. Each fact that matches an editable field of the template has
   **Insert**, plus **Fill all matching**. Drafter and approver both see it; salary, leave and loan facts follow their permissions.

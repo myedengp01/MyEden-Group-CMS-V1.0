@@ -4262,6 +4262,32 @@
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
+  // ================================================================ PRI-010 · Sync check (forms and MEG-EAF V2 side by side with the CMS)
+  async function syncPage(item, el, run = false) {
+    if (!run) el.innerHTML = `${pageHead(item)}<div id="sy-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_sync_check', { p_run: run }); } catch (e) { $('#sy-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const box = $('#sy-body', el); const last = D.last;
+    const days = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 864e5);
+    const since = (code) => { const t = D.clean_since?.[code]; if (!t) return '<span class="tag warn">Not clean yet</span>';
+      const d = days(t); return `<span class="tag ok">Clean ${d < 1 ? 'since today' : `for ${d} day${d === 1 ? '' : 's'}`}</span><br><small class="muted">since ${dtShort(t)}</small>`; };
+    const res = last?.results || [];
+    const hist = (D.history || []).slice().reverse();
+    box.innerHTML = `
+      <section class="card"><div class="sy-top">
+        <div><b>${last ? `Last check ${dtShort(last.run_at)}` : 'Not checked yet'}</b>${last ? ` <span class="muted">· ${esc(last.by)} · ${last.issues ? `${last.issues} thing${last.issues === 1 ? '' : 's'} to look at` : 'nothing to fix'}</span>` : ''}
+          <p class="muted small">The forms and MEG-EAF V2 write to the same database the CMS reads, so nothing is copied. This check looks for anything that would make a record look different or go missing in the CMS. It runs every night at 11.30 pm and when you click the button; you decide when a form is stable enough to move staff to the CMS.</p></div>
+        <button type="button" class="btn primary" id="sy-run">${icon('check-circle')}Run check now</button></div></section>
+      <section class="card"><div class="table-wrap"><table class="data sy-t"><thead><tr><th>Form / system</th><th class="num">Records</th><th class="num">Last 30 days</th><th>Statuses</th><th>To look at</th><th>Stable?</th></tr></thead><tbody>
+        ${res.map((r) => `<tr class="${r.clean ? '' : 'flag'}"><td><b>${esc(r.label)}</b></td><td class="num">${num(r.total)}</td><td class="num">${num(r.last30)}</td>
+          <td class="small">${Object.entries(r.statuses || {}).map(([k, v]) => `${esc(k.replace(/_/g, ' '))} ${v}`).join(' · ') || '—'}</td>
+          <td class="small">${r.issues.length ? r.issues.map((x) => `<details class="sy-i"><summary><b>${num(x.count)}</b> ${esc(x.label)}</summary>${(x.sample || []).length ? `<ul>${x.sample.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>${x.count > x.sample.length ? `<span class="muted">… and ${x.count - x.sample.length} more</span>` : ''}` : ''}</details>`).join('') : '<span class="ok-t">Nothing</span>'}</td>
+          <td class="small">${since(r.code)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No check has run yet.</td></tr>'}
+      </tbody></table></div>
+      <p class="muted small sy-help"><b>Claimant not matched</b>: the name on the form does not match a person in the Employee Master (e.g. a short name or an email), so the claim is not linked to that person in the CMS — use the person's full name on the form, or link the login. <b>Company not recognised</b>: people whose role covers only some companies will not see it. <b>Marks with no claim</b>: processing or payment ticks left on a claim that was deleted or put back to draft.</p></section>
+      ${hist.length > 1 ? `<section class="card"><h3>Last ${hist.length} checks</h3><div class="sy-hist">${res.map((r) => `<div class="sy-row"><span class="small">${esc(r.label)}</span><span class="sy-dots">${hist.map((h) => { const b = h.by_source?.[r.code]; return `<i class="${!b ? 'na' : b.clean ? 'ok' : 'bad'}" title="${esc(dtShort(h.run_at))}${b ? ` · ${b.clean ? 'clean' : `${b.n} to look at`}` : ''}"></i>`; }).join('')}</span></div>`).join('')}</div></section>` : ''}`;
+    $('#sy-run', box).addEventListener('click', async (e) => { e.target.disabled = true; e.target.lastChild.textContent = 'Checking…'; await syncPage(item, el, true); toast('Check finished'); });
+  }
+
   // ================================================================ Employee Directory (Phase 4 page, built with 6e)
   // HR and above by default. Phone / email, other companies and the org chart are separate permissions (directory.*).
   async function directoryPage(item, el) {
@@ -4365,7 +4391,7 @@
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
-    'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
+    'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
     careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
@@ -4413,7 +4439,7 @@
     page.classList.remove('enter'); void page.offsetWidth; page.classList.add('enter');
     document.title = `${item.label} · MyEden Group CMS V1.0`;
     window.scrollTo(0, 0);
-    if (!canRoute(item.route) || (item.route === 'admin/export' && !isSuper())) { noAccessPage(holder); return; }
+    if (!canRoute(item.route) || ((item.route === 'admin/export' || item.route === 'admin/sync') && !isSuper())) { noAccessPage(holder); return; }
     try { await (LIVE[item.route] || modulePage)(item, holder); }
     catch (e) { if (id === state.renderId) { holder.innerHTML = errorCard(e.message); wireRetry(holder); } }
   }

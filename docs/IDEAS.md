@@ -14,7 +14,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-007 | 2026-10-21 | Staff timeline (recruitment → onboarding → changes → offboarding) and Career Paths: per role, the career path with current position and the next levels with salary caps from the JD; sub-menu "Career Paths" listing every employee | **Built in v2026.10.21-15:45** |
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | **Built in v2026.10.21-15:45** |
 | PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | **Built in v2026.10.22-14:45** |
-| PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Recorded |
+| PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Step B built in v2026.10.22-15:05 (banner + Sync Check); switch-over waits for CLC |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -193,7 +193,12 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - Facts that match a placeholder can be filled in with one click; HR can still change them before submitting.
 - Facts the user may not see (salary, IC) follow the existing permissions.
 
-## PRI-010 · Run side by side until stable, then redirect — recorded 2026-10-22
+## PRI-010 · Run side by side until stable, then redirect — step B built in v2026.10.22-15:05
+- **Agreed (2026-10-22):** CLC runs payroll in the CMS from November 2026; "stable" applies to the forms and MEG-EAF V2; order: payroll,
+  then the forms, then EAF; MyPayroll stays open with a banner (not read-only) until CLC confirms.
+- **How step B was built:** MyPayroll V2.0 shows "Payroll now runs in the MyEden Group CMS" on every page with a link to the same CMS page.
+  Admin › Sync Check (Super Admin) checks every form and MEG-EAF V2 nightly at 11.30 pm and on demand, keeps every run, and shows how
+  long each source has been clean.
 - No one-way copy: the forms (SCF, OTCF, MTCF, TEC, PRFAF), MyPayroll V2.0, MEG-EAF V2 and the CMS already read and write the
   same database, so a change in one shows in the others straight away.
 - Side-by-side period: both stay open; parity checks (payroll recalculation vs saved months, claim counts, leave balances)
