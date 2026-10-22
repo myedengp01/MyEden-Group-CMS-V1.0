@@ -10,6 +10,7 @@
     trend: '<path d="M4 19.5h16"/><path d="m5 15 4.5-4.5 3.5 3.5L20 7"/><path d="M15.5 7H20v4.5"/>',
     box: '<path d="M12 3.2 20 7.5v9L12 20.8 4 16.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v8.8"/>',
     mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/>',
+    phone: '<path d="M6.6 3.5h2.6l1.4 4.1-2 1.4a12 12 0 0 0 6.4 6.4l1.4-2 4.1 1.4v2.6a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z"/>',
     scale: '<path d="M12 4v16M7.5 20h9"/><path d="M5 7.5h14"/><path d="m5 7.5-2.5 6a3.2 3.2 0 0 0 5 0zM19 7.5l-2.5 6a3.2 3.2 0 0 0 5 0z"/>',
     'check-circle': '<circle cx="12" cy="12" r="8.5"/><path d="m8.3 12.3 2.5 2.5 5-5.3"/>',
     chart: '<path d="M4 20h16"/><rect x="5.5" y="11" width="3" height="7" rx=".8"/><rect x="10.5" y="6" width="3" height="12" rx=".8"/><rect x="15.5" y="13.5" width="3" height="4.5" rx=".8"/>',

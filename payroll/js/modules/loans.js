@@ -6,6 +6,7 @@ import { todayIso } from '../engines/employee.js';
 
 export async function render(el, ctx, params, query) {
   const ref = await loadRef(ctx.sb);
+  const canEdit = ctx.can(['admin', 'hr']);  // CMS: "Prepare payroll"
   const [loans, people, lines] = await Promise.all([
     fetchAll(() => ctx.sb.from('eppd_loans').select('*').order('id', { ascending: false })),
     fetchAll(() => ctx.sb.from('eppd_employee_list').select('id,emp_id,full_name,resigned_date').order('full_name')),
@@ -27,8 +28,8 @@ export async function render(el, ctx, params, query) {
   const showClosed = query.all === '1';
   const list = loans.filter((ln) => showClosed || ln.status === 'active');
   el.append(pageHead('Company loans', 'Each active loan is deducted from net pay every month (from its first month) until it is repaid. Change an instalment for one month in the payroll line; final settlement recovers the whole balance.',
-    h('a', { class: 'btn', href: showClosed ? '#/loans' : '#/loans?all=1' }, showClosed ? 'Active loans only' : 'Show closed loans too'),
-    h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add loan')));
+    h('a', { class: 'btn', href: showClosed ? '#/payroll/loans' : '#/payroll/loans?all=1' }, showClosed ? 'Active loans only' : 'Show closed loans too'),
+    canEdit ? h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add loan') : null));
   const act = loans.filter((ln) => ln.status === 'active');
   el.append(h('div', { class: 'facts' }, [[act.length, 'active loans'], [money(act.reduce((s, ln) => s + Number(ln.principal), 0)), 'lent (RM)'],
     [money(act.reduce((s, ln) => s + balance(ln), 0)), 'still owed (RM)'], [money(act.reduce((s, ln) => s + Math.min(Number(ln.monthly_instalment), balance(ln)), 0)), 'next month’s instalments (RM)']]
@@ -44,7 +45,7 @@ export async function render(el, ctx, params, query) {
         h('td', { class: 'num' }, money(ln.principal)), h('td', { class: 'num' }, money(ln.monthly_instalment)), h('td', { class: 'nowrap' }, monthLabel(ln.start_period)),
         h('td', { class: 'num' }, h('button', { class: 'linkish', type: 'button', onclick: () => history(ln) }, money(repaid(ln)))), h('td', { class: 'num strong' }, money(bal)),
         h('td', {}, ln.status === 'closed' ? h('span', { class: 'tag' }, 'Closed') : bal === 0 ? h('span', { class: 'tag ok' }, 'Repaid') : h('span', { class: 'tag info' }, 'Active')),
-        h('td', { class: 'nowrap' }, ln.status === 'active' ? [h('button', { class: 'btn sm', type: 'button', onclick: () => edit(ln) }, 'Edit'), ' ',
+        h('td', { class: 'nowrap' }, ln.status === 'active' && canEdit ? [h('button', { class: 'btn sm', type: 'button', onclick: () => edit(ln) }, 'Edit'), ' ',
           h('button', { class: 'btn sm', type: 'button', onclick: () => closeLoan(ln, bal) }, 'Close')] : null));
     }) : h('tr', {}, h('td', { colspan: 10, class: 'muted' }, 'No loans.')))))));
 

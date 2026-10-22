@@ -4167,6 +4167,9 @@
     'leave/year-end': { file: 'modules/yearclose.js', edit: () => can('leave', 'E') },
     'leave/import': { file: 'modules/leaveimportpage.js', edit: () => isSuper() },
     time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
+    'payroll/loans': { file: 'modules/loans.js', edit: () => can('payroll.prepare') },
+    'payroll/settlement': { file: 'modules/settlements.js', edit: () => can('payroll.prepare') },
+    'payroll/import': { file: 'modules/payimportpage.js', edit: () => isSuper() },
     'payroll/reports': { file: 'modules/reports.js', edit: () => can('payroll.settings', 'E'),
       can: (roles) => (roles?.length === 1 && roles[0] === 'admin' ? can('payroll.settings', 'E') : can('payroll', 'V')) },
     payroll: { file: 'modules/payroll.js', edit: () => can('payroll.prepare'),
@@ -4201,6 +4204,89 @@
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
+  // ================================================================ Employee Directory (Phase 4 page, built with 6e)
+  // HR and above by default. Phone / email, other companies and the org chart are separate permissions (directory.*).
+  async function directoryPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="dir-body">${loading()}</div>`;
+    let D; try { D = await API.rpc('cms_directory'); } catch (e) { $('#dir-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const box = $('#dir-body', el);
+    const P = D.people || [];
+    const byId = new Map(P.map((x) => [x.id, x]));
+    const qs = new URLSearchParams(location.hash.split('?')[1] || '');
+    const f = { q: '', co: 'all', unit: 'all', view: D.can_chart && qs.get('view') === 'chart' ? 'chart' : 'cards' };
+    const canPeople = can('people');
+    const cos = [...new Set(P.map((x) => x.company).filter(Boolean))].sort();
+    const unitOf = (x) => x.unit_name || x.unit || x.department || 'No centre / department';
+    const units = [...new Set(P.map(unitOf))].sort();
+    const isNew = (x) => x.status === 'onboarding' || (x.start && (Date.now() - new Date(x.start).getTime()) < 45 * 864e5);
+    const tags = (x) => [isNew(x) ? '<span class="tag new">New</span>' : '', x.confirmation === 'UP' ? '<span class="tag warn">On probation</span>' : '',
+      x.confirmation && x.confirmation !== 'UP' && x.confirmation !== 'C' && CONF[x.confirmation] ? `<span class="tag">${esc(CONF[x.confirmation])}</span>` : ''].join('');
+    const match = (x) => {
+      if (f.co !== 'all' && x.company !== f.co) return false;
+      if (f.unit !== 'all' && unitOf(x) !== f.unit) return false;
+      if (!f.q) return true;
+      const t = f.q.toLowerCase();
+      return [x.name, x.employee_id, x.title, x.department, x.unit_name, x.unit, x.reports_to_name, x.company_name, D.can_contacts ? x.email : '', D.can_contacts ? x.phone : ''].some((v) => String(v || '').toLowerCase().includes(t));
+    };
+    const card = (x) => `<article class="dir-card">
+        <span class="avatar">${esc(initials(x.name))}</span>
+        <div class="dir-main"><b>${canPeople ? `<a href="#/people?q=${encodeURIComponent(x.employee_id || x.name)}">${esc(x.name)}</a>` : esc(x.name)}</b>
+          <span class="dir-title">${esc(x.title || 'Position not set')}${x.level ? ` · ${esc(x.level)}` : ''}</span>
+          <span class="muted small">${esc(unitOf(x))} · ${esc(x.company_name || coShort(x.company) || x.company || '')}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</span>
+          ${x.reports_to_name ? `<span class="small">Reports to <b>${esc(x.reports_to_name)}</b></span>` : ''}
+          ${D.can_contacts && (x.phone || x.email) ? `<span class="dir-contact small">${x.phone ? `<a href="tel:${esc(String(x.phone).replace(/[^\d+]/g, ''))}">${icon('phone')}${esc(x.phone)}</a>` : ''}${x.email ? `<a href="mailto:${esc(x.email)}">${icon('mail')}${esc(x.email)}</a>` : ''}</span>` : ''}
+          <span class="dir-tags">${tags(x)}</span></div></article>`;
+    function cards(list) {
+      const groups = new Map(); list.forEach((x) => { const k = unitOf(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); });
+      return [...groups.keys()].sort().map((k) => `<section class="dir-group"><h3>${esc(k)} <span class="muted">${groups.get(k).length}</span></h3><div class="dir-grid">${groups.get(k).map(card).join('')}</div></section>`).join('');
+    }
+    function chart(list) {
+      const shown = new Set(list.map((x) => x.id));
+      const kids = new Map(); list.forEach((x) => { const b = x.reports_to; if (b && shown.has(b) && b !== x.id) { if (!kids.has(b)) kids.set(b, []); kids.get(b).push(x); } });
+      const roots = list.filter((x) => !x.reports_to || !shown.has(x.reports_to) || x.reports_to === x.id);
+      const tops = roots.filter((x) => kids.has(x.id)); const loose = roots.filter((x) => !kids.has(x.id));
+      const seen = new Set();
+      const node = (x, d) => { if (seen.has(x.id) || d > 30) return ''; seen.add(x.id); const ch = (kids.get(x.id) || []).sort((a, b) => a.name.localeCompare(b.name));
+        return `<li><div class="oc-node"><span class="avatar">${esc(initials(x.name))}</span><div><b>${esc(x.name)}</b><small>${esc(x.title || '')}${ch.length ? ` · ${ch.length} report${ch.length === 1 ? '' : 's'}` : ''}</small></div></div>${ch.length ? `<ul>${ch.map((c) => node(c, d + 1)).join('')}</ul>` : ''}</li>`; };
+      return `${tops.length ? `<ul class="oc-tree">${tops.sort((a, b) => a.name.localeCompare(b.name)).map((x) => node(x, 0)).join('')}</ul>` : '<p class="muted">Nobody here has people reporting to them yet. Set who each person reports to in People › Self-service Access.</p>'}
+        ${loose.length ? `<details class="card oc-loose"><summary><b>${loose.length}</b> people with no one reporting to them and no manager set${f.co !== 'all' || f.unit !== 'all' || f.q ? ' (in this filter)' : ''}</summary><p class="small muted">${loose.map((x) => esc(x.name)).join(' · ')}</p></details>` : ''}`;
+    }
+    async function exportXlsx(list) {
+      try {
+        if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+        const head = ['Name', 'Employee ID', 'Position', 'Level', 'Centre / department', 'Company', 'Reports to', 'Status', 'Start date', ...(D.can_contacts ? ['Phone', 'Email'] : [])];
+        const rows = list.map((x) => [x.name, x.employee_id || '', x.title || '', x.level || '', unitOf(x), x.company_name || x.company || '', x.reports_to_name || '',
+          x.status === 'onboarding' ? 'Onboarding' : (CONF[x.confirmation] || 'Active'), x.start || '', ...(D.can_contacts ? [x.phone || '', x.email || ''] : [])]);
+        const ws = window.XLSX.utils.aoa_to_sheet([head, ...rows]); ws['!cols'] = head.map((h) => ({ wch: Math.max(12, h.length + 2) })); ws['!cols'][0] = { wch: 28 };
+        const wb = window.XLSX.utils.book_new(); window.XLSX.utils.book_append_sheet(wb, ws, 'Directory');
+        window.XLSX.writeFile(wb, `MyEden-Directory_${new Date().toISOString().slice(0, 10)}.xlsx`, { compression: true });
+        API.rpc('cms_directory_exported', { p_count: list.length }).catch(() => {});
+      } catch (e) { toast(e.message || String(e), 'error'); }
+    }
+    function draw() {
+      const list = P.filter(match);
+      $('#dir-out', box).innerHTML = !P.length ? `<div class="card empty">${D.can_all ? 'No current staff found.' : 'No one to show: without "See all companies in the directory", the directory shows your own company, and your login is not linked to a person yet.'}</div>`
+        : !list.length ? '<div class="card empty">No one matches this search.</div>' : f.view === 'chart' ? chart(list) : cards(list);
+      $('#dir-count', box).textContent = `${list.length} of ${P.length} people`;
+    }
+    box.innerHTML = `<section class="card dir-bar no-print"><div class="toolbar">
+        <label class="search-in">${icon('search')}<input id="dir-q" type="search" placeholder="Search name, position${D.can_contacts ? ", phone" : ""}…" aria-label="Search the directory" autocomplete="off"></label>
+        ${cos.length > 1 ? `<select id="dir-co" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c) || c)}</option>`).join('')}</select>` : ''}
+        <select id="dir-unit" aria-label="Centre or department"><option value="all">All centres &amp; departments</option>${units.map((u) => `<option>${esc(u)}</option>`).join('')}</select>
+        ${D.can_chart ? `<div class="seg"><button type="button" data-view="cards" class="${f.view === 'cards' ? 'on' : ''}">Cards</button><button type="button" data-view="chart" class="${f.view === 'chart' ? 'on' : ''}">Org chart</button></div>` : ''}
+        ${D.can_export ? `<button type="button" class="btn ghost" id="dir-x">${icon('download')}Excel</button>` : ''}
+        <span class="muted small" id="dir-count"></span></div></section>
+      ${!D.can_all ? `<p class="note">Showing ${esc(coShort(D.my_company) || D.my_company || 'your company')} only.</p>` : ''}
+      ${!D.can_contacts ? '<p class="note">Phone numbers and emails are hidden (permission "See phone and email in the directory").</p>' : ''}
+      <div id="dir-out"></div>`;
+    $('#dir-q', box).addEventListener('input', (e) => { f.q = e.target.value.trim(); draw(); });
+    $('#dir-co', box)?.addEventListener('change', (e) => { f.co = e.target.value; draw(); });
+    $('#dir-unit', box).addEventListener('change', (e) => { f.unit = e.target.value; draw(); });
+    $$('[data-view]', box).forEach((b) => b.addEventListener('click', () => { f.view = b.dataset.view; $$('[data-view]', box).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    $('#dir-x', box)?.addEventListener('click', () => exportXlsx(P.filter(match)));
+    draw();
+  }
+
   // ================================================================ module placeholder pages
   function modulePage(item, el) {
     const plan = item.plan || []; const base = item.source && window.CMS_SOURCES[item.source]; const url = base && item.myp ? `${base}#/${item.myp}` : base;
@@ -4222,7 +4308,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

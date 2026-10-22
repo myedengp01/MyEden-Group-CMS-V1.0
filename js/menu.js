@@ -35,7 +35,7 @@ window.CMS_MENU = [
       { route: 'people/ids', label: 'Employee IDs', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'The Employee ID register: format, next number and who holds which ID.' },
       { route: 'people/import', label: 'Import from Workbook', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'Bring staff in from the MEG-EPPD payroll workbook.' },
       { route: 'people/selfservice', label: 'Self-service Access', phase: 4, live: true, desc: 'What each person can see in their own self-service: switch parts on per person, release payslips and EA forms, set who each person reports to, and approve profile changes.' },
-      { route: 'people/directory', label: 'Employee Directory', phase: 4, desc: 'Who is who, by centre and department, with contact details staff are allowed to see.' },
+      { route: 'people/directory', label: 'Employee Directory', phase: 4, live: true, desc: 'Who is who: position, centre and department, company and who each person reports to. Phone and email, other companies, the org chart and Excel export each follow their own permission.' },
       { route: 'org', label: 'Organisation Structure', phase: 0, desc: 'Companies, centres and departments, and the positions in each.', plan: ['Myeden Group · Myeden Edu Hub · Happy Dino · Aborne Project', 'Centres: Taska Genius Eden, PJK Eden, Tadika Genius Eden, Tadika Happy Dino, HQ', 'Department codes E1–E11, E3+, HQ'] },
       { route: 'documents', label: 'Employee Documents', phase: 5, live: true, desc: 'Contracts, IC copies, certificates, signed letters and other files per employee (shared with MEG-EAF V2): upload, replace and open.' },
     ] },
@@ -71,9 +71,9 @@ window.CMS_MENU = [
       { route: 'payroll/reports', label: 'Payslips & Reports', phase: 6, live: true, desc: 'From finalised months: payslips, monthly summary, payment list, EPF, SOCSO & EIS and PCB lists, year to date and EA forms. Print, save as PDF or download Excel.' },
       { route: 'payroll/companies', label: 'Paying Companies', phase: 2, live: true, desc: 'Which company pays each person: transfers from a payroll month, joint payment by two companies, ending one, the main company and corrections.' },
       { route: 'payroll/increments', label: 'Increments & Reviews', phase: 2, live: true, desc: 'Each person\'s last increment and when their next salary review is due, by review interval (6, 9, 12 months or your own); record increments from a payroll month.' },
-      { route: 'payroll/loans', label: 'Company Loans', phase: 6, source: 'MyPayroll V2.0', myp: 'loans', desc: 'Company loans to staff and their monthly deductions.' },
-      { route: 'payroll/settlement', label: 'Final Settlement', phase: 6, source: 'MyPayroll V2.0', myp: 'settlements', desc: 'Final pay for leavers: notice, leave and loan balances.' },
-      { route: 'payroll/import', label: 'Import Past Months', phase: 6, source: 'MyPayroll V2.0', myp: 'payroll/import', desc: 'Bring past pay runs in from the workbook.' },
+      { route: 'payroll/loans', label: 'Company Loans', phase: 6, live: true, desc: 'Company loans to staff: amount, monthly instalment and first month; repayments come off net pay in each finalised month. Adding or changing a loan needs "Prepare payroll".' },
+      { route: 'payroll/settlement', label: 'Final Settlement', phase: 6, live: true, desc: 'Final pay for leavers: notice pay or in lieu, unused annual leave and the loan balance, carried into their last payroll month. Changing it needs "Prepare payroll".' },
+      { route: 'payroll/import', label: 'Import Past Months', phase: 6, live: true, desc: 'Bring finalised months in from the payroll workbook so year-to-date and EA totals are complete. Super Admin only; months made in the CMS are never replaced.' },
     ] },
     { group: 'Performance & Growth', icon: 'trend', items: [
       { route: 'careers', label: 'Career Paths', phase: 5, live: true, desc: 'Every employee on their JD level: time in level, salary against the cap, and the next level with its cap. MyEden salary caps are set here beside the JD (market) ranges; each person\'s timeline from application to today.' },
@@ -124,7 +124,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'directory', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',

@@ -908,3 +908,29 @@ table.data tr.tot td { border-top: 2px solid var(--line); background: var(--soft
 /* ---------- Phase 6d · payroll print views ---------- */
 @page land { size: A4 landscape; margin: 0; }
 @media print { body.doc-mode .myp .sheet.list-sheet { page: land; } body.doc-mode .crumbs { display: none !important; } }
+
+/* ---------- Employee Directory ---------- */
+.dir-bar { margin-bottom: 14px; } .dir-bar .toolbar { margin: 0; padding: 0; border: 0; }
+#dir-body > .note { margin: 0 0 12px; }
+#dir-count { margin-left: auto; white-space: nowrap; }
+.dir-group + .dir-group { margin-top: 20px; }
+.dir-group h3 { font-size: 15px; margin: 0 0 10px; display: flex; gap: 8px; align-items: baseline; }
+.dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.dir-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); min-width: 0; }
+.dir-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dir-main b a { color: inherit; text-decoration: none; } .dir-main b a:hover { color: var(--blue); text-decoration: underline; }
+.dir-title { font-size: 13.5px; }
+.dir-contact { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.dir-contact a { display: inline-flex; gap: 6px; align-items: center; color: var(--blue); text-decoration: none; overflow-wrap: anywhere; }
+.dir-contact a svg { width: 14px; height: 14px; flex: none; }
+.dir-tags { display: flex; gap: 6px; flex-wrap: wrap; } .dir-tags:empty { display: none; }
+.tag.new { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--blue); border-color: transparent; }
+.oc-tree, .oc-tree ul { list-style: none; margin: 0; padding: 0; }
+.oc-tree ul { margin-left: 22px; padding-left: 16px; border-left: 2px solid var(--line); }
+.oc-tree li { padding: 6px 0 0; position: relative; }
+.oc-tree ul > li::before { content: ''; position: absolute; left: -16px; top: 26px; width: 14px; border-top: 2px solid var(--line); }
+.oc-tree > li + li { margin-top: 14px; }
+.oc-node { display: inline-flex; gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); max-width: 100%; }
+.oc-node small { display: block; color: var(--mute); }
+.oc-loose { margin-top: 16px; }
+@media (max-width: 700px) { .oc-tree ul { margin-left: 8px; padding-left: 10px; } #dir-count { margin-left: 0; } }

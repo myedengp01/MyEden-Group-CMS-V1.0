@@ -12,6 +12,7 @@ const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400
 
 export async function render(el, ctx) {
   const ref = await loadRef(ctx.sb);
+  const canEdit = ctx.can(['admin', 'hr']);  // CMS: "Prepare payroll"
   const today = todayIso();
   const from = addDays(today, -120), to = addDays(today, 150);
   const [people, settlements, runs, loans, payLines] = await Promise.all([
@@ -77,7 +78,7 @@ export async function render(el, ctx) {
         h('td', { class: 'num' }, alTxt), h('td', { class: 'small' }, ntc), h('td', { class: 'num' }, r.loanBal ? money(r.loanBal) : ''),
         h('td', {}, r.st ? h('span', { class: 'tag info' }, 'Set by HR') : h('span', { class: 'tag' }, 'Default')),
         h('td', {}, r.period ? h('a', { href: `#/payroll/${r.period.slice(0, 7)}` }, monthLabel(r.period)) : '—', status ? h('div', { class: 'small muted' }, status === 'finalised' ? 'Finalised' : 'Draft') : null),
-        h('td', {}, status === 'finalised' ? null : h('button', { class: 'btn sm', type: 'button', onclick: () => edit(r, days) }, 'Edit')));
+        h('td', {}, status === 'finalised' || !canEdit ? null : h('button', { class: 'btn sm', type: 'button', onclick: () => edit(r, days) }, 'Edit')));
     }))))),
     h('p', { class: 'small muted', style: 'margin-top:.8rem' }, 'Days are paid at the daily rate (basic ÷ 26). Suggested notice days count working days (6-day week) between the last working day and the end of the notice period.'));
 

@@ -61,6 +61,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 33. `20261022_cms_phase6b_leave_time.sql` — Phase 6b: row-level rules for leave records, adjustments, year closes and KPI grades (Leave view / edit), hours and OTCF links (Payroll view / edit), payroll months (Payroll view) and approved OTCF claims (Overtime claims view); year close, OTCF pull and leave import accept the CMS permissions
 34. `20261022_cms_phase6c_payroll.sql` — Phase 6c: Payroll "view" may read pay lines, claims, date of birth, salary history, tax profiles, loans and settlements; "Prepare payroll" may change allowances and delete a draft month; save / finalise / reopen accept Prepare / Finalise / Reopen payroll
 35. `20261022_cms_phase6d_payslips_reports.sql` — Phase 6d: `cms_eppd_private` view (via `cms_payroll_private()`): date of birth with Payroll view, IC / passport / EPF / SOCSO / tax numbers only with "See IC", bank only with "See bank"; the Phase 6c read rule on the private table is switched off (`using (false)`)
+36. `20261022_cms_phase6e_directory.sql` — Phase 6e: loans and settlements change with "Prepare payroll"; workbook history import accepts CMS Super Admin; Employee Directory permissions (`directory`, `directory.contacts`, `directory.all`, `directory.chart`, defaults Admin / HR / Director), `cms_directory()` and `cms_directory_exported()`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -110,6 +111,13 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.22-14:20** — Phase 6e · **loans, final settlement and past months inside the CMS**, plus the **Employee Directory**.
+  Company Loans and Final Settlement open inside the CMS (read with Payroll "view"; add / change with "Prepare payroll"); Import Past Months opens
+  inside the CMS for Super Admin. Every MyPayroll V2.0 page now has its CMS version. Employee Directory (the Phase 4 page): who is who by centre
+  and department, position, company, who each person reports to, probation / new-joiner tags, search and filters. New permission section
+  "Employee Directory" (view, export to Excel) with three special permissions — "See phone and email in the directory", "See all companies in the
+  directory" (without it: your own company only) and "Org chart in the directory". Admin, HR and Director get all of it by default; anyone else only
+  when you grant it in Users, Roles & Access. Database: `20261022_cms_phase6e_directory.sql`.
 - **v2026.10.22-13:00** — Phase 6d · **payslips & reports inside the CMS**: Payslips & Reports (payslips, monthly summary, payment list, EPF,
   SOCSO & EIS and PCB lists, year to date, EA forms) now open inside the CMS, from finalised months only; print / save as PDF hides the CMS frame,
   lists print landscape, Excel downloads as before. Needs Payroll "view"; saving the default EA signatory needs Payroll settings "edit".
