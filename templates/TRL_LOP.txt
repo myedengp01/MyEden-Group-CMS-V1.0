@@ -1,0 +1,62 @@
+Date: {{letter_date}}
+PRIVATE & CONFIDENTIAL
+
+To:
+{{employee_name}}
+{{address_line1}}
+{{address_line2}}
+{{postcode_town}}
+{{state}}
+
+Subject: Letter of Transfer and Promotion
+Dear {{employee_name}},
+We refer to our discussion on {{discussion_date}}. Management proposes your transfer and promotion on the terms below, effective {{effective_date}}, subject to your acceptance of this letter and the revised terms in Appendix B.
+
+Item | Current | Revised
+Position | {{current_position}} | {{new_position}}
+Department | {{current_department}} | {{new_department}}
+Work location | {{current_location}} | {{new_location}}
+Reporting to | {{current_reporting_manager}} | {{new_reporting_manager}}
+
+Reason for transfer: {{transfer_reason}}
+Transfer arrangement: {{transfer_type}}
+Please complete the agreed handover by {{handover_date}}. Your responsibilities and requirements for the new position are set out in Appendix A, JD reference {{jd_reference}}, version {{jd_version}}.
+
+[b]Monthly basic salary on transfer and promotion[/b]
+Description | Current | Increment | Increment (%) | Revised
+Monthly basic salary | RM {{current_basic}} | RM {{basic_increment}} | {{basic_increment_pct}} % | RM {{revised_basic}}
+Where salary is maintained, the increment is RM 0.00 (0.00%) and the revised basic salary equals the current basic salary. Allowances and other remuneration changes, if any: {{approved_remuneration_or_allowance_changes}}
+
+[b]Probationary assessment for the new position[/b]
+Assessment period: {{promotion_probation_period}}, from {{promotion_probation_start}} to {{promotion_probation_end}}.
+Assessment criteria: {{promotion_assessment_criteria}}
+Management will communicate the assessment outcome in writing. This assessment concerns the new position; it does not restart your original employment commencement date or service period. Any further change to your appointment or terms will be documented separately.
+
+[b]Salary arrangement after assessment[/b]
+{{post_probation_salary_arrangement}}
+
+[b]Revised terms and agreement[/b]
+The specific revised terms are recorded in Appendix B below. All other existing employment terms continue unless expressly replaced by this agreement. A change of legal employer requires a separate documented agreement and does not take effect solely through this letter.
+Please review this letter, Appendix A and Appendix B before signing your acceptance.
+
+Yours faithfully,
+For and on behalf of {{company_name}}
+
+__________________________________
+Authorised Signatory
+Name: {{authorized_signatory}}
+Designation: {{authorized_designation}}
+
+
+[b]Employee Agreement and Acceptance[/b]
+I have read and agree to the transfer, new position and department, salary arrangements, assessment period, Job Description in Appendix A and revised terms in Appendix B. I understand the effective date and acknowledge receipt of a copy of this agreement and both appendices.
+
+
+Signature: __________________________________
+Name: __________________________________
+NRIC: __________________________________
+Date: __________________________________
+
+Appendix B — Revised Terms and Conditions
+Agreement reference: {{new_agreement_reference}}
+{{new_terms_and_conditions}}

@@ -1,0 +1,35 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile} from 'node:fs/promises';import assert from 'node:assert/strict';import vm from 'node:vm';
+const read=p=>readFile(new URL(p,import.meta.url),'utf8');const db=new PGlite();
+const admin='00000000-0000-4000-8000-000000000001',employee='00000000-0000-4000-8000-000000000002',jd='00000000-0000-4000-8000-000000000003',entity='00000000-0000-4000-8000-000000000004',dept='00000000-0000-4000-8000-000000000005';
+try{
+await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+create function public.eaf_v2_is_admin(uuid) returns boolean language sql as $$select $1='${admin}'::uuid$$;
+create function private.cms_canon(text) returns text language sql as $$select upper($1)$$;
+create function private.cms_require(text,text,text default null) returns void language plpgsql as $$begin if auth.uid()<>'${admin}'::uuid then raise exception 'Denied' using errcode='42501';end if;end$$;
+create function public.cms_can(text,text,text default null) returns boolean language sql as $$select auth.uid()='${admin}'::uuid$$;
+create function private.cms_my_name() returns text language sql as $$select 'Dummy admin'::text$$;
+create function private.cms_log(text,text,text,text,text,jsonb) returns void language plpgsql as $$begin end$$;
+create function private.cms_letter_context(uuid) returns jsonb language sql as $$select '{"current_basic":"2000.00","employee_name":"Dummy Employee","company_name":"Dummy Co","current_position":"Tester","current_department":"Testing"}'::jsonb$$;`);
+await db.exec(await read('fixtures/trl-lop-jd-schema.sql'));
+await db.exec(`alter table hr_letter_placeholders add primary key(key);alter table hr_letter_records alter column id set default gen_random_uuid();alter table hr_letter_records add primary key(id);alter table hr_letter_templates add primary key(code);`);
+await db.exec(await read('../db/migrations/20261023040646_cms_letter_jd_transfer_promotion.sql'));
+await db.query(`select set_config('test.uid',$1,false)`,[admin]);
+await db.query('insert into employee_master(id,employee_name,company_code) values($1,$2,$3)',[employee,'Dummy Employee','MEG']);
+await db.query("insert into jd_entities(id,code,name,is_active) values($1,'MEG','Dummy Co',true)",[entity]);await db.query("insert into jd_departments(id,entity_id,name,is_active) values($1,$2,'Teaching',true)",[dept,entity]);
+await db.query("insert into jd_positions(id,entity_id,department_id,reference,job_title,version,status,purpose,location,reports_to,working_conditions) values($1,$2,$3,'JD-TEST','Senior Teacher','v1','approved','Teach safely','Test Centre','Head Teacher','[\"Weekdays\"]')",[jd,entity,dept]);
+const get=async()=>(await db.query('select cms_letter_jd_get($1,$2) j',[employee,jd])).rows[0].j;
+let snapshot=await get();assert.match(snapshot.text,/Teach safely/);assert.equal(snapshot.fields.new_position,'Senior Teacher');assert.ok(!('current_basic' in snapshot.fields));
+const payload={person_id:employee,template:'TRL_LOP',fields:{_jd_position_id:jd,_jd_fingerprint:snapshot.fingerprint,basic_increment:'100',_post_probation_mode:'agreed',post_probation_increment:'50',post_probation_effective_date:'1 January 2027',new_position:'SPOOF'},text:'SPOOF',submit:false};
+const save=async(p)=>(await db.query('select cms_letter_save($1) id',[JSON.stringify(p)])).rows[0].id;
+const id=await save(payload);let row=(await db.query('select * from hr_letter_records where id=$1',[id])).rows[0];assert.equal(row.fields.new_position,'Senior Teacher');assert.equal(row.fields.revised_basic,'2100.00');assert.equal(row.source_snapshot.jd.version,'v1');assert.match(row.source_snapshot.text,/2150.00/);assert.ok(row.source_snapshot.text.indexOf('Appendix A — Approved Job Description')<row.source_snapshot.text.indexOf('Appendix B — Revised Terms'));assert.equal(row.source_snapshot.testing_only,true);
+await db.query("update jd_positions set purpose='Changed responsibilities' where id=$1",[jd]);await assert.rejects(()=>save({...payload,id}),/JD changed/);assert.equal((await db.query('select source_snapshot from hr_letter_records where id=$1',[id])).rows[0].source_snapshot.jd.text,snapshot.text);
+await db.query("update hr_letter_records set status='approved' where id=$1",[id]);await assert.rejects(()=>db.query('select cms_letter_issue($1)',[id]),/issuance is disabled/);
+snapshot=await get();await assert.rejects(()=>save({...payload,submit:true,fields:{...payload.fields,_jd_fingerprint:snapshot.fingerprint,_jd_position_id:''}}),/Select an approved JD/);
+await db.query("update jd_positions set status='draft' where id=$1",[jd]);await assert.rejects(get,/approved JD/);await db.query("update jd_positions set status='approved' where id=$1",[jd]);
+await db.query("update jd_entities set code='HD' where id=$1",[entity]);await assert.rejects(get,/legal company/);await db.query("update jd_entities set code='MEG',is_active=false where id=$1",[entity]);await assert.rejects(get,/approved JD/);await db.query('update jd_entities set is_active=true where id=$1',[entity]);
+await db.query("select set_config('test.uid',$1,false)",[employee]);await assert.rejects(get,e=>e.code==='42501');await assert.rejects(()=>db.query('select cms_letter_jd_options($1)',[employee]),e=>e.code==='42501');await assert.rejects(()=>save(payload),e=>e.code==='42501');
+assert.equal((await db.query('select approved_job_title from employee_master where id=$1',[employee])).rows[0].approved_job_title,null);
+new vm.Script(await read('../js/app.js'));
+console.log('PASS: same-company approved JD, authoritative role and salary data, frozen snapshot, stale JD detection, missing/inactive/cross-company/non-admin rejection, issuance blocked, employee unchanged and app syntax.');
+}finally{await db.close();}
