@@ -35,6 +35,7 @@ window.CMS_MENU = [
       { route: 'people/ids', label: 'Employee IDs', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'The Employee ID register: format, next number and who holds which ID.' },
       { route: 'people/import', label: 'Import from Workbook', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'Bring staff in from the MEG-EPPD payroll workbook.' },
       { route: 'people/selfservice', label: 'Self-service Access', phase: 4, live: true, desc: 'What each person can see in their own self-service: switch parts on per person, release payslips and EA forms, set who each person reports to, and approve profile changes.' },
+      { route: 'person', label: 'Employee Profile', phase: 4, live: true, hidden: true, desc: 'Everything about one person.' },
       { route: 'people/directory', label: 'Employee Directory', phase: 4, live: true, desc: 'Who is who: position, centre and department, company and who each person reports to. Phone and email, other companies, the org chart and Excel export each follow their own permission.' },
       { route: 'org', label: 'Organisation Structure', phase: 0, desc: 'Companies, centres and departments, and the positions in each.', plan: ['Myeden Group · Myeden Edu Hub · Happy Dino · Aborne Project', 'Centres: Taska Genius Eden, PJK Eden, Tadika Genius Eden, Tadika Happy Dino, HQ', 'Department codes E1–E11, E3+, HQ'] },
       { route: 'documents', label: 'Employee Documents', phase: 5, live: true, desc: 'Contracts, IC copies, certificates, signed letters and other files per employee (shared with MEG-EAF V2): upload, replace and open.' },
@@ -125,7 +126,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'directory', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',

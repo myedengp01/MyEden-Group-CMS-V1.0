@@ -128,7 +128,7 @@
   function visibleMenu() {
     return window.CMS_MENU.map((sec) => ({
       ...sec,
-      items: sec.items.map((it) => it.group ? { ...it, items: it.items.filter((s) => canRoute(s.route)) } : it)
+      items: sec.items.map((it) => it.group ? { ...it, items: it.items.filter((s) => !s.hidden && canRoute(s.route)) } : it)
         .filter((it) => it.group ? it.items.length : canRoute(it.route)),
     })).filter((sec) => sec.items.length);
   }
@@ -312,7 +312,7 @@
   function closePalette() { const p = $('#palette'); if (p) p.hidden = true; }
   function drawPalette(q) {
     const t = q.trim().toLowerCase();
-    const pages = [...PAGES.values()].filter((p) => canRoute(p.route))
+    const pages = [...PAGES.values()].filter((p) => !p.hidden && canRoute(p.route))
       .filter((p) => !t || `${p.label} ${p.group || ''} ${p.source || ''} ${p.desc || ''}`.toLowerCase().includes(t)).slice(0, t ? 8 : 12)
       .map((p) => ({ href: '#/' + p.route, ic: p.icon || p.groupIcon || 'sparkle', title: p.label, sub: `${p.group || p.section}${p.source ? ` · now in ${p.source}` : ''}`, tag: (p.phase === 0 || p.live) ? 'Live' : window.CMS_PHASES[p.phase] }));
     const people = (t.length >= 2 && state.people) ? state.people.filter((x) => `${x.name} ${x.employee_id || ''} ${x.previous_id || ''} ${x.job_title || ''}`.toLowerCase().includes(t)).slice(0, 8)
@@ -899,7 +899,7 @@
       const list = rows.filter((r) => (f.noReason ? noReason(r) : inStatus(r, f.status)) && (f.co === 'all' || r.company_code === f.co)
         && (!t || `${r.name} ${r.employee_id || ''} ${r.previous_id || ''} ${r.job_title || ''} ${r.department || ''} ${r.unit_code || ''}`.toLowerCase().includes(t)));
       $('#ptable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="${clickable || exitRow(r) ? 'click' : ''}" ${clickable || exitRow(r) ? 'tabindex="0"' : ''}>
-        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b>${esc(r.name)}</b>${r.login_email ? ` <span class="tag ok xs" title="CMS login: ${esc(r.login_email)}">login</span>` : ''}</td>
+        <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b><a class="plink" href="#/person?id=${esc(r.id)}">${esc(r.name)}</a></b>${r.login_email ? ` <span class="tag ok xs" title="CMS login: ${esc(r.login_email)}">login</span>` : ''}</td>
         <td>${esc(coShort(r.company_code))}</td>
         <td>${paidByCell(r)}</td>
         <td>${esc(r.unit_code || '—')}</td>
@@ -951,7 +951,7 @@
       });
       if (ok) { toast(`Saved ${r.name}`); draw(); }
     };
-    $('#ptable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) edit(tr.dataset.id); });
+    $('#ptable tbody', el).addEventListener('click', (e) => { if (e.target.closest('a')) return; const tr = e.target.closest('tr[data-id]'); if (tr) edit(tr.dataset.id); });
     $('#ptable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') edit(tr.dataset.id); });
   }
 
@@ -4311,6 +4311,238 @@
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
+  // ================================================================ PRI-011 · Employee profile: everything about a person on one page
+  const PROFILE_TABS = [['overview', 'Overview'], ['personal', 'Personal'], ['family', 'Family'], ['background', 'Background'], ['employment', 'Employment'],
+    ['pay', 'Pay'], ['leave', 'Leave'], ['documents', 'Photo & documents'], ['records', 'Letters & reviews'], ['timeline', 'Timeline']];
+  const IMG_KINDS = [['photo', 'Passport-size photo'], ['ic_front', 'IC — front'], ['ic_back', 'IC — back'], ['passport', 'Passport page']];
+  const profileImgCache = new Map();
+  async function profileImage(pid, kind, info) {
+    if (!info) return null;
+    const key = `${pid}|${kind}|${info.path || 'app'}`;
+    if (profileImgCache.has(key)) return profileImgCache.get(key);
+    let url = null;
+    if (info.source === 'upload') { const { data, error } = await API.sb().storage.from('cms-profile-images').createSignedUrl(info.path, 900); if (error) throw error; url = data.signedUrl; }
+    else url = await API.rpc('cms_person_eaf_image', { p_person: pid, p_kind: kind });
+    profileImgCache.set(key, url); return url;
+  }
+  // shrink a picture before upload (max 1600 px, JPEG)
+  async function shrinkImage(file, max = 1600) {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('That file is not a picture.')); i.src = URL.createObjectURL(file); });
+    const k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.86));
+  }
+  async function profilePage(item, el) {
+    const qs = new URLSearchParams(location.hash.split('?')[1] || ''); const pid = qs.get('id');
+    let tab = PROFILE_TABS.some(([k]) => k === qs.get('tab')) ? qs.get('tab') : 'overview';
+    el.innerHTML = loading();
+    if (!pid) { el.innerHTML = errorCard('Choose a person in View People.'); return; }
+    let D; try { D = await API.rpc('cms_person_profile', { p_person: pid }); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const H = D.head; const C = D.can;
+    const v = (x) => (x == null || x === '' ? '<span class="muted">—</span>' : esc(x));
+    const kv = (rows) => `<dl class="pf-kv">${rows.filter(Boolean).map(([k, x]) => `<dt>${esc(k)}</dt><dd>${x}</dd>`).join('')}</dl>`;
+    const locked = (what) => `<div class="note">${icon('lock')}<div>${esc(what)} needs the “${esc(what === 'Personal details' ? 'See personal details' : what)}” permission. Ask an Admin.</div></div>`;
+    const age = (dob) => { if (!dob) return ''; const b = new Date(dob); const n = new Date(); let y = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) y -= 1; return isNaN(y) ? '' : ` (${y})`; };
+    const svc = (a) => { if (!a) return ''; const d0 = new Date(a); const n = new Date(); let m = (n.getFullYear() - d0.getFullYear()) * 12 + n.getMonth() - d0.getMonth(); if (n.getDate() < d0.getDate()) m -= 1; if (m < 0) return ''; return m < 12 ? `${m} mo` : `${Math.floor(m / 12)} y ${m % 12} mo`; };
+    const stTag = { active: 'ok', onboarding: 'warn', former: '' }[H.status] ?? '';
+    const addr = (a) => (a ? [a.line1, a.line2, a.line3, a.postcode_town, a.state].filter(Boolean).map(esc).join('<br>') : '');
+    const go = (t) => { tab = t; const u = new URLSearchParams(location.hash.split('?')[1] || ''); u.set('tab', t); history.replaceState(null, '', `#/person?${u}`); draw(); };
+    el.innerHTML = `
+      <div class="crumbs"><a href="#/${homeRoute()}">${esc(PAGES.get(homeRoute()).label)}</a> / <a href="#/people">View People</a> / <span>${esc(H.name)}</span></div>
+      <section class="card pf-head">
+        <div class="pf-photo" id="pf-photo">${C.photos ? '' : ''}<span class="avatar xl">${esc(initials(H.name))}</span></div>
+        <div class="pf-id">
+          <h1>${esc(H.name)}${H.chinese_name ? ` <span class="pf-cn">${esc(H.chinese_name)}</span>` : ''}</h1>
+          <p class="pf-sub">${esc(H.title || 'Position not set')}${H.level ? ` · ${esc(H.level)}` : ''}</p>
+          <div class="pf-tags"><code>${esc(H.employee_id || 'No Employee ID')}</code><span class="tag ${stTag}">${esc(H.status || '')}</span>
+            ${H.confirmation ? `<span class="tag">${esc(H.confirmation === 'confirmed' ? 'Confirmed' : H.confirmation === 'probation' ? 'On probation' : H.confirmation)}</span>` : ''}
+            <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)} (${svc(H.start)})` : ''}</span></div>
+          <p class="small">${H.boss ? `Reports to <a href="#/person?id=${esc(H.boss_id)}"><b>${esc(H.boss)}</b></a>` : '<span class="muted">Reports to: not set</span>'}${D.edited ? ` <span class="muted">· details last changed by ${esc(D.edited.by || '')} ${dShort(D.edited.at)}</span>` : ''}</p>
+        </div>
+        <div class="pf-acts">${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
+      </section>
+      <div class="seg pf-tabs" role="tablist">${PROFILE_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div id="pf-body"></div>`;
+    // header photo
+    (async () => { try { const u = await profileImage(pid, 'photo', D.images?.photo); if (u) $('#pf-photo', el).innerHTML = `<img src="${esc(u)}" alt="Photo of ${esc(H.name)}">`; } catch (e) { /* initials stay */ } })();
+    $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { $$('[data-tab]', el).forEach((x) => x.classList.toggle('on', x === b)); go(b.dataset.tab); }));
+    const body = $('#pf-body', el);
+    const P = D.personal || {}; const F = D.family || {}; const B = D.background || {}; const E = D.employment || {};
+    const table = (head, rows, empty) => (rows.length ? `<div class="table-wrap"><table class="data"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="muted small">${esc(empty)}</p>`);
+    const editBtn = (what) => (C.edit ? `<button type="button" class="btn sm" data-edit="${what}">${icon('plus')}Edit</button>` : '');
+    const secHead = (t, extra = '') => `<div class="pf-sh"><h3>${esc(t)}</h3>${extra}</div>`;
+    function overview() {
+      const lt = D.leave_taken || {};
+      return `<div class="pf-grid">
+        <section class="card">${secHead('Employment')}${kv([['Employer', v(H.company_name)], ['Paid by', v(H.paying ? coShort(H.paying) || H.paying : '')], ['Centre / department', v(H.unit_name || H.unit || H.department)],
+          ['Start date', H.start ? `${dShort(H.start)} <span class="muted">· ${svc(H.start)}</span>` : v('')], ['Probation ends', E.probation_end ? `${dShort(E.probation_end)}${E.probation_source === 'assumed' ? ' <span class="muted">(assumed 3 months)</span>' : ''}` : v('')],
+          ['Reports to', v(H.boss)], H.previous_id ? ['Previous Employee ID', `<code>${esc(H.previous_id)}</code>`] : null])}</section>
+        ${C.personal ? `<section class="card">${secHead('Contact')}${kv([['Phone', P.phone ? `<a href="tel:${esc(String(P.phone).replace(/[^\d+]/g, ''))}">${esc(P.phone)}</a>` : v('')], ['Email', P.email ? `<a href="mailto:${esc(P.email)}">${esc(P.email)}</a>` : v('')],
+          ['Address', addr(P.address) || v('')], ['Emergency contact', F.emergency ? `${esc(F.emergency.name || '')}${F.emergency.relation ? ` (${esc(F.emergency.relation)})` : ''}${F.emergency.phone ? ` · ${esc(F.emergency.phone)}` : ''}` : v('')]])}</section>` : ''}
+        ${D.pay ? `<section class="card">${secHead('Pay')}${kv([['Basic salary', D.pay.history[0] ? `RM ${m2(D.pay.history[0].amount)}${D.pay.history[0].basis !== 'monthly' ? ` / ${esc(D.pay.history[0].basis.replace('ly', ''))}` : ''} <span class="muted">from ${dShort(D.pay.history[0].from)}</span>` : v('')],
+          ['Allowances', D.pay.allowances.length ? D.pay.allowances.map((a) => `${esc(a.name || 'Allowance')} RM ${m2(a.amount)}`).join('<br>') : v('')]])}</section>` : ''}
+        ${D.leave_taken ? `<section class="card">${secHead(`Leave taken ${new Date().getFullYear()}`)}${Object.keys(lt).length ? kv(Object.entries(lt).map(([k, n]) => [({ AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', RL: 'Replacement', UPL: 'Unpaid', CPL: 'Compassionate', MTL: 'Maternity', PTL: 'Paternity' })[k] || k, `${n} day${Number(n) === 1 ? '' : 's'}`])) : '<p class="muted small">None this year.</p>'}</section>` : ''}
+        ${D.application ? `<section class="card">${secHead('Application')}${kv([['Applied for', v(D.application.position)], ['Submitted', dShort(D.application.submitted_at)], ['Stage', v(String(D.application.stage || '').replace(/_/g, ' '))]])}
+          <p class="small muted">Details, photo and IC images come from this MEG-EAF V2 application unless changed in the CMS.</p></section>`
+          : '<section class="card"><p class="muted small">No MEG-EAF V2 application is linked (staff from the payroll workbook). Personal details, photo and IC images are added here.</p></section>'}
+      </div>`;
+    }
+    function personal() {
+      if (!C.personal) return locked('Personal details');
+      return `<section class="card">${secHead('Personal details', editBtn('personal'))}${kv([['Full name', v(H.name)], ['Chinese name', v(H.chinese_name)], ['Gender', v(P.gender)],
+        ['Date of birth', P.dob ? `${dShort(P.dob)}${age(P.dob)}` : v('')], C.ic ? ['NRIC', v(P.nric)] : ['NRIC', '<span class="muted">hidden (See IC)</span>'], C.ic ? ['Passport', v(P.passport)] : null,
+        ['Nationality', v(P.nationality)], ['Race', v(P.race)], ['Religion', v(P.religion)], ['Marital status', v(P.marital)],
+        ['Phone', v(P.phone)], ['Email', v(P.email)], ['Address', addr(P.address) || v('')]])}</section>`;
+    }
+    function family() {
+      if (!C.personal) return locked('Personal details');
+      return `<section class="card">${secHead('Family', editBtn('family'))}
+          ${table(['Name', 'Age', 'Study / work', 'Relationship'], (F.members || []).map((m) => [v(m.name), v(m.age), v(m.status), v(m.relation)]), 'No family members recorded.')}
+          ${kv([['Children', v(F.children)], F.spouse ? ['Spouse', v(F.spouse)] : null])}</section>
+        <section class="card">${secHead('Emergency contact', editBtn('family'))}${F.emergency ? kv([['Name', v(F.emergency.name)], ['Relationship', v(F.emergency.relation)], ['Phone', v(F.emergency.phone)]]) : '<p class="muted small">Not recorded.</p>'}</section>`;
+    }
+    function background() {
+      if (!C.personal) return locked('Personal details');
+      return `<section class="card">${secHead('Education', editBtn('background'))}${table(['Level', 'School / college', 'Location', 'From', 'To', 'Graduated'],
+          (B.education || []).map((x) => [v(x.level), v(x.school), v(x.location), v(x.from), v(x.to), v(x.graduated)]), 'No education recorded.')}</section>
+        <section class="card">${secHead('Work history', editBtn('background'))}${(B.work || []).length ? B.work.map((w) => `<div class="pf-job"><b>${v(w.title)}</b> · ${v(w.employer)} <span class="muted small">${esc([w.from, w.to].filter(Boolean).join(' – '))}</span>
+            ${w.duties ? `<p class="small">${esc(w.duties)}</p>` : ''}<p class="small muted">${[w.address, w.contact ? `tel ${w.contact}` : '', w.salary ? `last salary RM ${w.salary}` : '', w.reason ? `left: ${w.reason}` : ''].filter(Boolean).map(esc).join(' · ')}</p></div>`).join('') : '<p class="muted small">No work history recorded.</p>'}</section>
+        <section class="card">${secHead('Languages & skills', editBtn('background'))}${kv([['Spoken', v(B.spoken)], ['Written', v(B.written)], ['Special skills', v(B.skills)]])}</section>
+        ${B.declarations ? `<section class="card">${secHead('Declarations in the application')}${kv(B.declarations.map((x) => [x.q, x.a === 'Yes' ? `<b class="warn-txt">Yes</b>` : v(x.a)]))}</section>` : ''}`;
+    }
+    function employment() {
+      return `<section class="card">${secHead('Employment periods')}${table(['Joined', 'Left', 'Position', 'Centre', 'Status', 'Job', 'Hours', 'Paid by', 'Leaving'],
+          (E.periods || []).map((x) => [dShort(x.join), x.resigned ? dShort(x.resigned) : (x.notice_until ? `notice to ${dShort(x.notice_until)}` : '<span class="tag ok xs">current</span>'), v(x.title), v(x.department),
+            v(CONF[x.confirmation] || x.confirmation), v(x.job_status), v(x.hours), (x.paid_by || []).map((c) => `${esc(c.company)}${c.to ? ` <span class="muted">to ${dShort(c.to)}</span>` : ''}`).join('<br>') || v(''),
+            v([x.leaving_reason, x.rehire ? `rehire: ${x.rehire}` : ''].filter(Boolean).join(' · '))]), 'No payroll record yet.')}</section>
+        <section class="card">${kv([['Probation ends', E.probation_end ? `${dShort(E.probation_end)} <span class="muted">(${esc(E.probation_source || '')})</span>` : v('')], ['Confirmed', H.confirmation_date ? dShort(H.confirmation_date) : v('')],
+          ['Notice period', v(E.notice)], ['Group start date', H.group_start ? dShort(H.group_start) : v('')], E.exit?.reason ? ['Exit reason', v(E.exit.reason)] : null, E.exit?.clearance ? ['Clearance', v(E.exit.clearance)] : null])}</section>`;
+    }
+    function pay() {
+      const I = D.ids || {};
+      return `${D.pay ? `<section class="card">${secHead('Salary history')}${table(['From', 'Amount', 'Basis', 'Paid by', 'Reason'], D.pay.history.map((x) => [dShort(x.from), `RM ${m2(x.amount)}`, v(x.basis), v(x.company), v(x.reason)]), 'No salary recorded.')}</section>
+        <section class="card">${secHead('Current allowances')}${table(['Item', 'Amount', 'From', 'To'], D.pay.allowances.map((x) => [v(x.name), `RM ${m2(x.amount)}`, x.from ? dShort(x.from) : v(''), x.to ? dShort(x.to) : 'ongoing']), 'None.')}</section>` : locked('See salaries')}
+        ${C.bank || C.ic ? `<section class="card">${secHead('Bank & statutory numbers')}${kv([C.bank ? ['Bank', v(I.bank || I.bank_code)] : null, C.bank ? ['Account no.', v(I.account)] : null,
+          C.ic ? ['EPF no.', v(I.epf)] : null, C.ic ? ['SOCSO no.', v(I.socso)] : null, C.ic ? ['Income tax no.', v(I.tax)] : null])}<p class="small muted">Changed on the payroll record (Payroll pages).</p></section>` : ''}`;
+    }
+    async function leave(box) {
+      if (!C.leave) { box.innerHTML = locked('Leave'); return; }
+      if (!H.eppd_employee_id) { box.innerHTML = '<section class="card"><p class="muted small">No payroll record, so no leave records.</p></section>'; return; }
+      box.innerHTML = loading();
+      try {
+        const lib = await mypImport('leave-data.js'); const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+        const L = await lib.loadLeaveYear(mypSb(), Number(today.slice(0, 4))); const pp = L.people.find((x) => x.id === H.eppd_employee_id);
+        if (!pp) { box.innerHTML = '<section class="card"><p class="muted small">No leave this year.</p></section>'; return; }
+        const b = lib.balancesFor(pp, L, today); const n = (x) => (x == null ? '—' : String(Math.round(x * 100) / 100));
+        const recs = L.records.filter((r) => r.employee_id === pp.id && r.status !== 'cancelled').sort((x, y) => String(y.date_from).localeCompare(String(x.date_from)));
+        box.innerHTML = `<section class="card">${secHead(`Balances at ${dShort(today)}`)}${table(['Leave', 'Entitled', 'Taken', 'Balance'], [
+            ['Annual', `${n((b.AL.entitled || 0) + (b.AL.carried || 0))}${b.AL.carried ? ` <span class="muted">(incl. ${n(b.AL.carried)} carried)</span>` : ''}`, n(b.AL.taken), `<b>${n(b.AL.balance)}</b>`],
+            ['Sick', n(b.SL?.entitled), n(b.SL?.taken), n(b.SL?.balance)], ['Hospitalisation', n(b.HPL?.entitled), n(b.HPL?.taken), n(b.HPL?.balance)],
+            ['Replacement', n(b.RL?.earned), n(b.RL?.taken), n(b.RL?.balance)], ['Unpaid', '—', n(b.UPL?.taken), '—']], '')}
+          <p class="small muted">Same numbers as Time &amp; Leave › Leave Balances.</p></section>
+          <section class="card">${secHead('Leave this year')}${table(['From', 'To', 'Type', 'Days', 'Note'], recs.map((r) => [dShort(r.date_from), dShort(r.date_to), v(r.leave_type), v(r.days), v(r.note)]), 'No leave this year.')}</section>`;
+      } catch (e) { box.innerHTML = errorCard(e.message); }
+    }
+    async function documents(box) {
+      const kinds = IMG_KINDS.filter(([k]) => k === 'photo' || C.ic);
+      box.innerHTML = `<section class="card">${secHead('Photo & ID images')}<div class="pf-imgs">${kinds.map(([k, l]) => {
+          const info = D.images?.[k];
+          return `<figure class="pf-img" data-k="${k}"><div class="pf-frame" id="pf-img-${k}">${info ? loading() : `<span class="muted small">Not uploaded</span>`}</div>
+            <figcaption><b>${esc(l)}</b><span class="muted small">${info ? (info.source === 'upload' ? `uploaded ${dShort(info.at)}${info.by ? ` by ${esc(info.by)}` : ''}` : 'from the application') : ''}</span>
+            ${C.photos ? `<label class="btn sm">${icon('plus')}${info ? 'Replace' : 'Upload'}<input type="file" accept="image/*" data-up="${k}" hidden></label>` : ''}</figcaption></figure>`; }).join('')}</div>
+          ${!C.ic ? '<p class="small muted">IC and passport images need “See IC and passport numbers”.</p>' : ''}</section>
+        ${C.documents ? `<section class="card">${secHead('Documents', `<a class="btn sm ghost" href="#/documents">Employee Documents ›</a>`)}<div id="pf-docs">${loading()}</div></section>` : ''}`;
+      kinds.forEach(async ([k, l]) => {
+        const info = D.images?.[k]; if (!info) return; const fr = $(`#pf-img-${k}`, box);
+        try { const u = await profileImage(pid, k, info); fr.innerHTML = u ? `<a href="${esc(u)}" target="_blank" rel="noopener" data-view="${k}"><img src="${esc(u)}" alt="${esc(l)}"></a>` : '<span class="muted small">Not found</span>'; }
+        catch (e) { fr.innerHTML = `<span class="muted small">${esc(e.message)}</span>`; }
+      });
+      $$('[data-view]', box).forEach(() => {});
+      box.addEventListener('click', (e) => { const a = e.target.closest('a[data-view]'); if (!a || !a.href.startsWith('data:')) return; e.preventDefault();
+        modal({ title: IMG_KINDS.find(([k]) => k === a.dataset.view)?.[1] || 'Image', ok: null, cancel: 'Close', wide: true, body: `<img class="pf-big" src="${esc(a.href)}" alt="">` }); });
+      $$('[data-up]', box).forEach((inp) => inp.addEventListener('change', async () => {
+        const file = inp.files?.[0]; if (!file) return; const k = inp.dataset.up;
+        try {
+          const blob = await shrinkImage(file); const path = `${pid}/${k}/${Date.now()}.jpg`;
+          const { error } = await API.sb().storage.from('cms-profile-images').upload(path, blob, { contentType: 'image/jpeg', upsert: false }); if (error) throw error;
+          await API.rpc('cms_person_image_set', { p_person: pid, p_kind: k, p_path: path });
+          toast(`${IMG_KINDS.find(([x]) => x === k)[1]} saved`); profilePage(item, el);
+        } catch (e) { toast(API.friendly ? API.friendly(e) : e.message, 'err'); }
+      }));
+      if (C.documents) {
+        try { const R = await API.rpc('cms_documents', { p_person: pid }); const docs = (R.documents || []).filter((d) => d.person_id === pid);
+          $('#pf-docs', box).innerHTML = table(['Document', 'Type', 'Date', 'Expires'], docs.map((d) => [v(d.label || d.file_name), v(String(d.type || '').replace(/_/g, ' ')), d.date ? dShort(d.date) : v(''), d.expiry ? dShort(d.expiry) : v('')]), 'No documents uploaded.');
+        } catch (e) { $('#pf-docs', box).innerHTML = `<p class="muted small">${esc(e.message)}</p>`; }
+      }
+    }
+    function records() {
+      const LS = { draft: 'Draft', pending_approval: 'Waiting for approval', approved: 'Approved', issued: 'Issued', void: 'Cancelled' };
+      return `${D.letters ? `<section class="card">${secHead('HR letters', C.letters ? `<a class="btn sm" href="#/letters?ws=new&person=${esc(pid)}">${icon('plus')}New letter</a>` : '')}${table(['Letter', 'Status', 'Date'],
+          D.letters.map((x) => [`<a href="#/letters?ws=${esc(x.id)}">${esc(x.title)}</a>`, v(LS[x.status] || x.status), dShort(x.at)]), 'No letters.')}</section>` : ''}
+        ${D.appraisals ? `<section class="card">${secHead('Appraisals')}${table(['Review', 'Year', 'Status', 'Rating', 'Date'], D.appraisals.map((x) => [v(String(x.kind || '').replace(/_/g, ' ')), v(x.year), v(x.status), v(x.rating), dShort(x.at)]), 'No appraisals.')}</section>` : ''}
+        ${D.items ? `<section class="card">${secHead('Company items')}${table(['Item', 'Tag', 'Status', 'Issued', 'Returned'], D.items.map((x) => [v(x.description || x.type), v(x.tag), v(x.status), x.issued ? dShort(x.issued) : v(''), x.returned ? dShort(x.returned) : v('')]), 'No items.')}</section>` : ''}
+        ${!D.letters && !D.appraisals && !D.items ? '<section class="card"><p class="muted small">You cannot see letters, appraisals or items.</p></section>' : ''}`;
+    }
+    async function timeline(box) {
+      box.innerHTML = loading();
+      try { const tl = await API.rpc('cms_person_timeline', { p_person: pid });
+        box.innerHTML = `<section class="card"><ol class="pf-tl">${(tl || []).map((x) => `<li class="k-${esc(x.kind || '')}"><span class="muted small">${dShort(x.at)}</span><b>${esc(x.title || '')}${x.amount != null ? ` · RM ${m2(x.amount)}${x.basis === 'hourly' ? ' /h' : ''}` : ''}</b>${x.note ? `<span class="small muted">${esc(x.note)}</span>` : ''}</li>`).join('') || '<li class="muted">Nothing recorded yet.</li>'}</ol></section>`;
+      } catch (e) { box.innerHTML = errorCard(e.message); }
+    }
+    async function draw() {
+      const map = { overview, personal, family, background, employment, pay, records };
+      if (map[tab]) body.innerHTML = map[tab](); else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body);
+      $$('[data-edit]', body).forEach((b) => b.addEventListener('click', () => editProfile(b.dataset.edit)));
+    }
+    // ---- editing (stored in the CMS; the application stays as it was)
+    const rowsEditor = (name, cols, rows) => `<div class="pf-rows" data-rows="${name}">${(rows.length ? rows : [{}]).map((r) => `<div class="pf-row">${cols.map(([k, l, w]) => `<input data-c="${k}" placeholder="${esc(l)}" value="${esc(r[k] || '')}" style="flex:${w || 1}">`).join('')}<button type="button" class="lnk" data-del>Remove</button></div>`).join('')}</div>
+      <button type="button" class="btn sm ghost" data-add="${name}">${icon('plus')}Add</button>`;
+    const readRows = (form, name) => $$(`[data-rows="${name}"] .pf-row`, form).map((r) => Object.fromEntries($$('[data-c]', r).map((i) => [i.dataset.c, i.value.trim()]))).filter((r) => Object.values(r).some(Boolean));
+    const FAM = [['name', 'Name', 2], ['age', 'Age', 0.6], ['status', 'Study / work', 1.2], ['relation', 'Relationship', 1.2]];
+    const EDU = [['level', 'Level', 1.2], ['school', 'School / college', 2], ['location', 'Location', 1], ['from', 'From', 0.8], ['to', 'To', 0.8], ['graduated', 'Graduated', 0.8]];
+    const WORK = [['from', 'From', 0.8], ['to', 'To', 0.8], ['employer', 'Employer', 1.6], ['title', 'Job title', 1.4], ['duties', 'Duties', 2], ['reason', 'Reason for leaving', 1.4]];
+    async function editProfile(what) {
+      const a = P.address || {};
+      const bodies = {
+        personal: `<div class="fld-2"><label class="fld"><span>Chinese name</span><input name="chinese_name" value="${esc(H.chinese_name || '')}"></label>
+            <label class="fld"><span>Nationality</span><input name="nationality" value="${esc(P.nationality || '')}"></label>
+            <label class="fld"><span>Race</span><input name="race" value="${esc(P.race || '')}"></label><label class="fld"><span>Religion</span><input name="religion" value="${esc(P.religion || '')}"></label>
+            <label class="fld"><span>Marital status</span><input name="marital" value="${esc(P.marital || '')}"></label>${C.ic ? `<label class="fld"><span>Passport no.</span><input name="passport" value="${esc(P.passport || '')}"></label>` : ''}
+            <label class="fld"><span>Phone</span><input name="phone" value="${esc(P.phone || '')}"></label><label class="fld"><span>Email</span><input name="email" type="email" value="${esc(P.email || '')}"></label>
+            <label class="fld fld-2"><span>Address</span><input name="a1" value="${esc(a.line1 || '')}" placeholder="Line 1"></label><label class="fld"><span>&nbsp;</span><input name="a2" value="${esc(a.line2 || '')}" placeholder="Line 2"></label>
+            <label class="fld"><span>&nbsp;</span><input name="a3" value="${esc(a.line3 || '')}" placeholder="Line 3"></label><label class="fld"><span>Postcode & town</span><input name="pt" value="${esc(a.postcode_town || '')}"></label>
+            <label class="fld"><span>State</span><input name="st" value="${esc(a.state || '')}"></label></div>`,
+        family: `<h4 class="sec-h">Family members</h4>${rowsEditor('family', FAM, F.members || [])}
+            <div class="fld-2"><label class="fld"><span>Children</span><input name="children" value="${esc(F.children || '')}"></label></div>
+            <h4 class="sec-h">Emergency contact</h4><div class="fld-2"><label class="fld"><span>Name</span><input name="en" value="${esc(F.emergency?.name || '')}"></label>
+            <label class="fld"><span>Relationship</span><input name="er" value="${esc(F.emergency?.relation || '')}"></label><label class="fld"><span>Phone</span><input name="ep" value="${esc(F.emergency?.phone || '')}"></label></div>`,
+        background: `<h4 class="sec-h">Education</h4>${rowsEditor('education', EDU, B.education || [])}<h4 class="sec-h">Work history</h4>${rowsEditor('work', WORK, B.work || [])}
+            <div class="fld-2"><label class="fld"><span>Languages spoken</span><input name="spoken" value="${esc(B.spoken || '')}"></label><label class="fld"><span>Languages written</span><input name="written" value="${esc(B.written || '')}"></label>
+            <label class="fld fld-2"><span>Special skills</span><input name="skills" value="${esc(B.skills || '')}"></label></div>`,
+      };
+      const ok = await modal({ title: `${{ personal: 'Personal details', family: 'Family & emergency contact', background: 'Background' }[what]} · ${H.name}`, wide: true, ok: 'Save',
+        body: `${bodies[what]}<label class="fld"><span>Reason / note (optional)</span><input name="note" maxlength="200"></label>
+          <p class="small muted">Saved in the CMS and logged; the MEG-EAF V2 application is not changed. Clearing a field shows the application or payroll value again.</p>`,
+        onOpen: (box) => {
+          box.addEventListener('click', (e) => { const add = e.target.closest('[data-add]'); const del = e.target.closest('[data-del]');
+            if (add) { const wrap = $(`[data-rows="${add.dataset.add}"]`, box); const first = $('.pf-row', wrap); const n = first.cloneNode(true); $$('input', n).forEach((i) => { i.value = ''; }); wrap.append(n); }
+            if (del) { const wrap = del.closest('[data-rows]'); if ($$('.pf-row', wrap).length > 1) del.closest('.pf-row').remove(); else $$('input', del.closest('.pf-row')).forEach((i) => { i.value = ''; }); } });
+        },
+        onOk: async (form) => {
+          let data;
+          if (what === 'personal') data = { chinese_name: form.chinese_name.value.trim(), nationality: form.nationality.value.trim(), race: form.race.value.trim(), religion: form.religion.value.trim(),
+            marital: form.marital.value.trim(), phone: form.phone.value.trim(), email: form.email.value.trim(), ...(C.ic ? { passport: form.passport.value.trim() } : {}),
+            address: [form.a1, form.a2, form.a3, form.pt, form.st].some((i) => i.value.trim()) ? Object.fromEntries([['line1', form.a1], ['line2', form.a2], ['line3', form.a3], ['postcode_town', form.pt], ['state', form.st]].filter(([, i]) => i.value.trim()).map(([k, i]) => [k, i.value.trim()])) : '' };
+          if (what === 'family') data = { family: readRows(form, 'family'), children: form.children.value.trim(),
+            emergency: form.en.value.trim() || form.ep.value.trim() ? { name: form.en.value.trim(), relation: form.er.value.trim(), phone: form.ep.value.trim() } : '' };
+          if (what === 'background') data = { education: readRows(form, 'education'), work: readRows(form, 'work'), spoken: form.spoken.value.trim(), written: form.written.value.trim(), skills: form.skills.value.trim() };
+          await API.rpc('cms_person_profile_save', { p_person: pid, p_data: data, p_note: form.note.value.trim() || null });
+        } });
+      if (ok) { toast('Saved'); profilePage(item, el); }
+    }
+    draw();
+  }
+
   // ================================================================ People › Add Person (person + payroll record together)
   async function addPersonPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="ap-body">${loading()}</div>`;
@@ -4440,7 +4672,7 @@
     };
     const card = (x) => `<article class="dir-card">
         <span class="avatar">${esc(initials(x.name))}</span>
-        <div class="dir-main"><b>${canPeople ? `<a href="#/people?q=${encodeURIComponent(x.employee_id || x.name)}">${esc(x.name)}</a>` : esc(x.name)}</b>
+        <div class="dir-main"><b>${canPeople ? `<a href="#/person?id=${esc(x.id)}">${esc(x.name)}</a>` : esc(x.name)}</b>
           <span class="dir-title">${esc(x.title || 'Position not set')}${x.level ? ` · ${esc(x.level)}` : ''}</span>
           <span class="muted small">${esc(unitOf(x))} · ${esc(x.company_name || coShort(x.company) || x.company || '')}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</span>
           ${x.reports_to_name ? `<span class="small">Reports to <b>${esc(x.reports_to_name)}</b></span>` : ''}
@@ -4518,7 +4750,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

@@ -65,6 +65,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 37. `20261022_cms_letter_facts.sql` — PRI-009: `cms_letter_facts(person, letter type)` with helpers `private.cms_ldate`, `private.cms_fact`, `private.cms_fact_group`
 38. `20261022_cms_sync_check.sql` — PRI-010: `cms_sync_runs`, `private.cms_sync_compute()`, `private.cms_sync_record()`, `cms_sync_check(p_run)` (Super Admin), nightly pg_cron job `cms-sync-check-nightly` (15:30 UTC)
 39. `20261022_cms_add_person.sql` — People › Add Person: `cms_hire` takes `manual: true` (no application; People "add"), an existing Employee ID, Chinese name and nationality, refuses a duplicate NRIC, records `source_type = manual_entry`; `cms_hire_prefill()` with no arguments gives the lists
+40. `20261022_cms_person_profile.sql` — PRI-011: specials `people.personal`, `people.personal_edit`, `people.photos`; tables `cms_person_profile`, `cms_person_images`; private bucket `cms-profile-images` with its read / upload rules; `cms_person_profile`, `cms_person_eaf_image`, `cms_person_profile_save`, `cms_person_image_set`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -114,6 +115,15 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.25-23:20** — PRI-011 · **employee profile**: a person's name in View People or the Employee Directory opens one page with
+  everything about them — header with the passport-size photo, name / Chinese name, Employee ID, position, status, centre, company,
+  service and reports-to; tabs Overview, Personal, Family (and emergency contact), Background (education, work history, languages,
+  skills, application declarations), Employment (periods, paying companies, probation, notice, leaving), Pay (salary history,
+  allowances, bank, EPF / SOCSO / tax), Leave (balances, same numbers as Leave Balances, and this year's records), Photo & documents
+  (photo, IC front / back, passport page, uploaded documents), Letters & reviews, Timeline. Photo and IC images and personal details come
+  from the MEG-EAF V2 application where there is one; HR can upload images and edit personal details (kept in the CMS and logged; the
+  application is not changed). New special permissions, HR and above by default and assignable: "See personal details", "Edit personal
+  details", "Upload photo and ID images"; IC images follow "See IC and passport numbers". Database: `20261022_cms_person_profile.sql`.
 - **v2026.10.22-15:50** — **People › Add Person** inside the CMS (it still pointed to MyPayroll V2.0, whose Add employee creates only the
   payroll record): one form creates the person in the Employee Master and their payroll record together — identity (NRIC fills the date
   of birth), employer and paying company, centre, job title, statuses, working hours, starting salary — with the next Employee ID, or an

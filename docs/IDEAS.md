@@ -15,7 +15,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-008 | 2026-10-21 | MyEden Group salary cap per JD level, editable, shown beside the JD (market-based) salary range | **Built in v2026.10.21-15:45** |
 | PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | **Built in v2026.10.22-14:45** |
 | PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Step B built in v2026.10.22-15:05 (banner + Sync Check); switch-over waits for CLC |
-| PRI-011 | 2026-10-22 | One page per employee with everything about them: personal details, passport-size photo from the MEG-EAF application, IC (front / back) photos, passport, and all other details | Recorded |
+| PRI-011 | 2026-10-22 | One page per employee with everything about them: personal details, passport-size photo from the MEG-EAF application, IC (front / back) photos, passport, and all other details | **Built in v2026.10.25-23:20** |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -208,7 +208,12 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   redirected to the CMS for all transactions.
 - MEG-EAF V2 applicant and HR system pages move into the CMS in a later phase.
 
-## PRI-011 · Employee profile — everything about a person on one page — recorded 2026-10-22
+## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
+- **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call
+  (`cms_person_profile`) merges the Employee Master, the payroll record and the linked MEG-EAF V2 application, section by section
+  according to the viewer's permissions; edits are stored in `cms_person_profile` (CMS value first, then payroll, then application);
+  images uploaded in the CMS go to the private bucket `cms-profile-images`, application images are fetched only when shown.
+  Agreed 2026-10-22: seeing / editing personal details and uploading images are HR and above by default, assignable to others.
 - Today the CMS shows a person in pieces (View People row, payroll record in Payroll, documents, letters, timeline).
 - Wanted: one profile page per person with tabs or sections — photo and summary; personal (name, Chinese name, NRIC / passport,
   date of birth, gender, race, religion, marital status, nationality, address, phone, email); family and emergency contact;
