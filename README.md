@@ -118,6 +118,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-18:35** — **Company letterhead on Word letters.** A Word template with no picture in its page header (e.g. "All Companies"
+  templates) now gets the company letterhead (MEG / HD / ABP / MEH) added to the header automatically: the employee's company in the letter
+  workspace and in the issued Word file, the template's company in the template editor and review (MyEden Group when "Any company").
+  Templates that carry their own letterhead are left as they are. No database change.
 - **v2026.10.26-17:10** — **One letter template for every JD level.** Every letter now gets its own reference number when the draft is first
   saved (`{{letter_reference}}`, e.g. MEG/HR/LOC_LOI/2026/0001 — company / HR / letter type / year / running number), fixed for good and
   usable in the footer. More JD placeholders from the same approved JD as `{{jd_title}}`: department, level, reports to, purpose, effective

@@ -3434,6 +3434,46 @@
       });
       return r.bytes;
     },
+    // the company letterhead, put in the page header of a Word letter that has no picture in its header (e.g. "All Companies" templates)
+    async letterhead(bytes, code) {
+      const src = LETTERHEADS[code] || LETTERHEADS.MEG; const z = await W.zip(bytes); const put = (n, d) => z.file(n, d, { createFolders: false });
+      const docPath = 'word/document.xml'; let doc = await z.file(docPath).async('string');
+      const relsPath = 'word/_rels/document.xml.rels'; let rels = z.file(relsPath) ? await z.file(relsPath).async('string') : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+      const relTarget = (id) => (rels.match(new RegExp(`<Relationship\\b[^>]*\\bId="${id}"[^>]*>`)) || [''])[0].match(/Target="([^"]+)"/)?.[1];
+      const sects = doc.match(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/g) || [];
+      const heads = [...new Set(sects.flatMap((x) => [...x.matchAll(/<w:headerReference\b[^>]*w:type="(default|first)"[^>]*r:id="([^"]+)"|<w:headerReference\b[^>]*r:id="([^"]+)"[^>]*w:type="(default|first)"/g)].map((m) => relTarget(m[2] || m[3]))).filter(Boolean))].map((t) => `word/${t.replace(/^\/?word\//, '')}`);
+      for (const h of heads) { const x = z.file(h) ? await z.file(h).async('string') : ''; if (/<w:drawing\b|<w:pict\b|<v:imagedata\b/.test(x)) return bytes; }   // the file has its own letterhead
+      const blob = await (await fetch(asset(src))).blob(); let ratio = 333 / 1600;
+      try { const bm = await createImageBitmap(blob); ratio = bm.height / bm.width; bm.close?.(); } catch (e) { /* use the usual letterhead shape */ }
+      const sect = sects[sects.length - 1] || ''; const num = (re, d) => Number((sect.match(re) || [])[1] || d);
+      const textW = num(/<w:pgSz\b[^>]*w:w="(\d+)"/, 11906) - num(/<w:pgMar\b[^>]*w:left="(\d+)"/, 1440) - num(/<w:pgMar\b[^>]*w:right="(\d+)"/, 1440);
+      const cx = Math.round(textW * 635); const cy = Math.round(cx * ratio);
+      const media = 'media/cms-letterhead.jpg'; put(`word/${media}`, await blob.arrayBuffer());
+      const pic = `<w:p><w:pPr><w:spacing w:before="0" w:after="160"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="9101" name="Company letterhead"/>`
+        + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + `<pic:nvPicPr><pic:cNvPr id="0" name="letterhead.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdCmsHead"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+        + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+      const NS = { w: 'http://schemas.openxmlformats.org/wordprocessingml/2006/main', r: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', wp: 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' };
+      const withNs = (x) => x.replace(/<w:hdr\b([^>]*)>/, (m, a) => `<w:hdr${a}${Object.entries(NS).filter(([k]) => !new RegExp(`xmlns:${k}=`).test(a)).map(([k, v]) => ` xmlns:${k}="${v}"`).join('')}>`);
+      const imgRel = `<Relationship Id="rIdCmsHead" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${media}"/>`;
+      const addImgRel = async (h) => { const rp = h.replace(/^word\//, 'word/_rels/') + '.rels'; let r = z.file(rp) ? await z.file(rp).async('string') : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+        if (!r.includes('Id="rIdCmsHead"')) r = r.replace('</Relationships>', `${imgRel}</Relationships>`); put(rp, r); };
+      if (heads.length) {   // the header exists but is empty: put the letterhead at its top
+        for (const h of heads) { let x = withNs(await z.file(h).async('string')); x = x.replace(/(<w:hdr\b[^>]*>)/, `$1${pic}`); put(h, x); await addImgRel(h); }
+      } else {               // no header: add one to every section
+        const h = 'word/header-cms.xml';
+        put(h, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="${NS.w}" xmlns:r="${NS.r}" xmlns:wp="${NS.wp}">${pic}</w:hdr>`); await addImgRel(h);
+        if (!rels.includes('Id="rIdCmsHdr"')) rels = rels.replace('</Relationships>', '<Relationship Id="rIdCmsHdr" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header-cms.xml"/></Relationships>');
+        put(relsPath, rels);
+        doc = doc.replace(/<w:sectPr\b([^>]*)>/g, (m) => `${m}<w:headerReference w:type="default" r:id="rIdCmsHdr"/>`); put(docPath, doc);
+        let ct = await z.file('[Content_Types].xml').async('string');
+        if (!ct.includes('/word/header-cms.xml')) ct = ct.replace('</Types>', '<Override PartName="/word/header-cms.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>');
+        put('[Content_Types].xml', ct);
+      }
+      let ct = await z.file('[Content_Types].xml').async('string');
+      if (!/<Default\b[^>]*Extension="jpg"/i.test(ct)) { ct = ct.replace(/(<Types\b[^>]*>)/, '$1<Default Extension="jpg" ContentType="image/jpeg"/>'); put('[Content_Types].xml', ct); }
+      return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME, compression: 'DEFLATE' });
+    },
     // a plain-text template from the Word file: paragraphs as lines, bold / italic / underline as [b] [i] [u]
     async toText(bytes) {
       const z = await W.zip(bytes); const d = W.xml(await z.file('word/document.xml').async('string'));
@@ -3639,7 +3679,7 @@
       onOpen: async (w) => {
         $('[data-back]', w).addEventListener('click', async () => { const n = $('input[name=note]', w).value.trim(); if (!n) { toast('Write the reason in the note first.', 'err'); return; }
           try { await API.rpc('cms_letter_template_review', { p_code: x.code, p_approve: false, p_note: n }); back = true; toast('Sent back'); $('[data-x]', w).click(); } catch (e) { toast(e.message, 'err'); } });
-        if (what !== 'retire' && fmt === 'docx') { try { wv = await W.render(await getDocx(what === 'change' ? x.pending.source_path : x.source_path), $('#rv-prev', w)); } catch (e) { $('#rv-prev', w).innerHTML = errorCard(e.message); } }
+        if (what !== 'retire' && fmt === 'docx') { try { wv = await W.render(await W.letterhead(await getDocx(what === 'change' ? x.pending.source_path : x.source_path), (what === 'change' ? x.pending.company : null) || x.company), $('#rv-prev', w)); } catch (e) { $('#rv-prev', w).innerHTML = errorCard(e.message); } }
       },
       onOk: async (f) => { await API.rpc('cms_letter_template_review', { p_code: x.code, p_approve: true, p_note: f.note.value.trim() || null }); } });
     if (ok) toast(what === 'retire' ? 'Template retired' : 'Template published — switch it on to use it');
@@ -3749,7 +3789,7 @@
       try {
         let bytes;
         if (status === 'issued' && rec.docx_path) bytes = await getDocx(rec.docx_path);
-        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.fill(srcBytes, vals, labelOf); }
+        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(srcBytes, vals, labelOf), coCode || co?.code); }
         view = await W.render(bytes, pv, { marks: missing().map((k) => `[${labelOf(k)}]`), stamp: stamp() }); view.frame.addEventListener('load', () => setTimeout(applyZoom, 30));
       } catch (e) { pv.innerHTML = errorCard(e.message); }
     };
@@ -3872,7 +3912,7 @@
     const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
     const doIssue = async () => {
       const t = tpl(); let path = null;
-      if (t.format === 'docx') { const src = await getDocx(t.source_path); const bytes = await W.fill(src, rec.fields || vals, labelOf); path = await putDocx('issued', bytes, rec.id); }
+      if (t.format === 'docx') { const src = await getDocx(t.source_path); const bytes = await W.letterhead(await W.fill(src, rec.fields || vals, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
     $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
@@ -3997,7 +4037,7 @@
         <section class="card lw-pv-card"><div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="wi-st">blue = placeholder</span></div><div class="lw-pv" id="wi-pv"><div class="empty small"><p>${t ? 'Loading…' : 'Choose the Word file.'}</p></div></div></section>
       </form></div>`;
     const f = $('#wi-f', el); wireTypeField(el); const pv = $('#wi-pv', el);
-    const show = async () => { try { view = await W.render(bytes, pv); } catch (e) { pv.innerHTML = errorCard(e.message); } };
+    const show = async () => { try { view = await W.render(await W.letterhead(bytes, f.co.value), pv); } catch (e) { pv.innerHTML = errorCard(e.message); } };
     const drawManual = () => {
       const unk = info.fields.filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
       $('#wi-manual', el).innerHTML = `<h4 class="sec-h">3 · Make a placeholder yourself</h4>
