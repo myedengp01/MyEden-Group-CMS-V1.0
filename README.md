@@ -66,6 +66,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 38. `20261022_cms_sync_check.sql` — PRI-010: `cms_sync_runs`, `private.cms_sync_compute()`, `private.cms_sync_record()`, `cms_sync_check(p_run)` (Super Admin), nightly pg_cron job `cms-sync-check-nightly` (15:30 UTC)
 39. `20261022_cms_add_person.sql` — People › Add Person: `cms_hire` takes `manual: true` (no application; People "add"), an existing Employee ID, Chinese name and nationality, refuses a duplicate NRIC, records `source_type = manual_entry`; `cms_hire_prefill()` with no arguments gives the lists
 40. `20261022_cms_person_profile.sql` — PRI-011: specials `people.personal`, `people.personal_edit`, `people.photos`; tables `cms_person_profile`, `cms_person_images`; private bucket `cms-profile-images` with its read / upload rules; `cms_person_profile`, `cms_person_eaf_image`, `cms_person_profile_save`, `cms_person_image_set`
+41. `20261026_cms_payroll_reimport_months.sql` — Import Past Months: the reason and the imported months are written to the payroll log and the CMS Audit Log
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -115,6 +116,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-11:45** — **Import Past Months: choose the months.** After reading the workbook, every month has a tick box (none
+  ticked to start); only the ticked months are imported, and the button names them ("Import 2 months (Mar, Jul)"). Each month shows
+  whether it is new, imported before (replaced — with the lines that change and the gross / net difference per person) or made /
+  reopened in the payroll (cannot be ticked). A reason is required; it goes into the payroll log and the Audit Log. Replaced months keep
+  no old copy. No SQL reset is needed to re-import. Database: `20261026_cms_payroll_reimport_months.sql`.
 - **v2026.10.25-23:20** — PRI-011 · **employee profile**: a person's name in View People or the Employee Directory opens one page with
   everything about them — header with the passport-size photo, name / Chinese name, Employee ID, position, status, centre, company,
   service and reports-to; tabs Overview, Personal, Family (and emergency contact), Background (education, work history, languages,

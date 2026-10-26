@@ -1,5 +1,5 @@
 // One-time import of past payroll months (PayrollSMRY2026) as finalised months, with an engine comparison (admin)
-import { h, clear, pageHead, toast, failed, confirmDialog, money } from '../ui.js';
+import { h, clear, pageHead, toast, failed, confirmDialog, money, openModal, field } from '../ui.js';
 import { fetchAll, loadRef, loadStatTables } from '../data.js';
 import { loadPayPeople, loadPayTypes, loadPayInputs } from '../pay-data.js';
 import { buildPayHistory, historyPayload, compareMonth, PAYROLL_SHEET } from '../engines/payimport.js';
@@ -18,12 +18,18 @@ function loadSheetJS() {
 export async function render(el, ctx) {
   const ref = await loadRef(ctx.sb);
   const [people, types, tables, runs] = await Promise.all([loadPayPeople(ctx.sb, ref), loadPayTypes(ctx.sb), loadStatTables(ctx.sb),
-    fetchAll(() => ctx.sb.from('eppd_pay_runs').select('period,status,source').order('period'))]);
+    fetchAll(() => ctx.sb.from('eppd_pay_runs').select('id,period,status,source,reopened_at').order('period'))]);
   el.append(pageHead('Import past payroll months', `Brings January–September 2026 in from ${PAYROLL_SHEET} as finalised months, exactly as the workbook calculated them, so year-to-date totals are complete. Each month is also run through the new engine so you can see where the new rules differ.`));
   if (!people.length) { el.append(h('div', { class: 'empty-state' }, 'Import employees first (People › Import from workbook).')); return; }
   const imported = runs.filter((r) => r.source === 'import'); const appRuns = runs.filter((r) => r.source === 'app');
-  if (imported.length) el.append(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `${imported.length} month(s) were imported before. Importing again replaces them.`));
-  if (appRuns.length) el.append(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `Months already made in the app (${appRuns.map((r) => monthLabel(r.period)).join(', ')}) are never replaced; if the workbook has the same month, the import stops.`));
+  // CMS: choose which months to (re)import; months made or reopened in the app are never replaced
+  if (imported.length) el.append(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `${imported.length} month(s) were imported before. Tick only the months you want to import again; the others stay as they are.`));
+  if (appRuns.length) el.append(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `Months made in the payroll (${appRuns.map((r) => monthLabel(r.period)).join(', ')}) cannot be replaced from the workbook.`));
+  const runBy = new Map(runs.map((r) => [String(r.period).slice(0, 10), r]));
+  const stateOf = (period) => { const r = runBy.get(period); if (!r) return { k: 'new', label: 'Not in payroll yet' };
+    if (r.source !== 'import') return { k: 'blocked', label: 'Made in the payroll — cannot be replaced' };
+    if (r.reopened_at) return { k: 'blocked', label: 'Reopened and changed — cannot be replaced' };
+    return { k: 'replace', label: 'Imported before — will be replaced' }; };
   const fileIn = h('input', { type: 'file', accept: '.xlsm,.xlsx', class: 'hidden' });
   const pick = h('button', { class: 'btn primary', type: 'button', onclick: () => fileIn.click() }, 'Choose workbook file');
   const status = h('p', { class: 'small muted', role: 'status' });
@@ -43,13 +49,28 @@ export async function render(el, ctx) {
       const D = { people, types: types.byCode, typesById: types.byId, tables, policies: ref.policies, confMeta: ref.confMeta, ...inputs };
       const cmp = new Map(res.months.map((m) => [m.period, compareMonth(m, D)]));
       status.textContent = `${f.name} read.`;
-      preview(res, cmp, f.name);
+      await preview(res, cmp, f.name);
     } catch (e) { status.textContent = ''; toast(e.message || String(e), 'error', 7000); }
     finally { pick.disabled = false; fileIn.value = ''; }
   });
 
-  function preview(res, cmp, fileName) {
+  async function preview(res, cmp, fileName) {
     const s = res.summary;
+    const chosen = new Set();
+    // lines already in the payroll for months imported before, to show what a re-import changes
+    const oldPeriods = res.months.map((m) => m.period).filter((p) => stateOf(p).k === 'replace');
+    const oldLines = oldPeriods.length ? await fetchAll(() => ctx.sb.from('eppd_pay_lines').select('employee_id,emp_name,gross,net_paid,excluded,eppd_pay_runs!inner(period)')
+      .in('eppd_pay_runs.period', oldPeriods).order('id')) : [];
+    const changesFor = (m) => {
+      const old = new Map(oldLines.filter((l) => String(l.eppd_pay_runs.period).slice(0, 10) === m.period).map((l) => [l.employee_id, l]));
+      const out = []; const seen = new Set();
+      for (const l of m.lines) { seen.add(l.employee_id); const o = old.get(l.employee_id);
+        if (!o) out.push({ name: l.emp_name, what: 'new line', gross: l.gross, net: l.net_paid });
+        else if (Math.abs((+o.gross || 0) - (+l.gross || 0)) > 0.005 || Math.abs((+o.net_paid || 0) - (+l.net_paid || 0)) > 0.005 || !!o.excluded !== !!l.excluded)
+          out.push({ name: l.emp_name, what: 'changed', gross: (+l.gross || 0) - (+o.gross || 0), net: (+l.net_paid || 0) - (+o.net_paid || 0), from: o, to: l }); }
+      for (const [id, o] of old) if (!seen.has(id)) out.push({ name: o.emp_name, what: 'removed', gross: -(+o.gross || 0), net: -(+o.net_paid || 0) });
+      return out;
+    };
     const facts = h('div', { class: 'facts' });
     const drawFacts = () => clear(facts).append(...[[s.months, 'months'], [s.lines, 'pay lines'], [res.months.flatMap((m) => m.lines).filter((l) => l.excluded).length, 'lines held back'],
       [s.unmatched, 'unmatched names'], [s.mismatched, 'lines that do not add up']]
@@ -59,7 +80,13 @@ export async function render(el, ctx) {
     const drawMonths = () => clear(monthsBody).append(...res.months.map((m) => {
       const T = runTotals(m.lines).all; const c = cmp.get(m.period) || [];
       const same = c.filter((x) => !x.diffs.length).length;
-      return h('tr', {}, h('td', {}, monthLabel(m.period)), h('td', { class: 'num' }, T.lines), h('td', { class: 'num' }, money(T.gross)),
+      const st = stateOf(m.period); const ch = st.k === 'replace' ? changesFor(m) : null;
+      const cb = h('input', { type: 'checkbox', disabled: st.k === 'blocked', checked: chosen.has(m.period), 'aria-label': `Import ${monthLabel(m.period)}` });
+      cb.addEventListener('change', () => { if (cb.checked) chosen.add(m.period); else chosen.delete(m.period); drawGo(); });
+      const chTxt = ch ? (ch.length ? h('details', { class: 'small' }, h('summary', { class: 'linkish' }, `${ch.length} line${ch.length === 1 ? '' : 's'} change`),
+        h('ul', {}, ch.map((x) => h('li', {}, `${x.name}: ${x.what}${x.what === 'changed' ? ` · gross ${x.gross >= 0 ? '+' : ''}${money(x.gross)}, net ${x.net >= 0 ? '+' : ''}${money(x.net)}` : ` · gross ${money(x.gross)}`}`)))) : h('span', { class: 'small muted' }, 'no change')) : null;
+      return h('tr', { class: st.k === 'blocked' ? 'muted' : '' }, h('td', {}, cb), h('td', {}, h('b', {}, monthLabel(m.period)), h('div', { class: `small ${st.k === 'blocked' ? 'bad-t' : 'muted'}` }, st.label), chTxt),
+        h('td', { class: 'num' }, T.lines), h('td', { class: 'num' }, money(T.gross)),
         ...STAT_COLS.map(([k]) => h('td', { class: 'num' }, money(statVal(T, k)))),
         h('td', { class: 'num' }, money(T.pcb)), h('td', { class: 'num strong' }, money(T.net_paid)), h('td', { class: 'num' }, `${same} of ${c.length}`));
     }));
@@ -106,27 +133,43 @@ export async function render(el, ctx) {
           h('tbody', {}, diffs.map((d) => h('tr', {}, h('td', { class: 'nowrap' }, monthLabel(d.period)), h('td', {}, d.line.emp_name), h('td', { class: 'small' }, CAUSES[causeOf(d)][0]),
             h('td', { class: 'small' }, d.diffs.map((x) => `${x.label} ${money(x.wb)} → ${money(x.app)}`).join(' · ')))))))) : null);
 
-    const go = h('button', { class: 'btn primary', type: 'button' }, 'Import past months');
-    go.addEventListener('click', async () => {
-      const keep = res.months.flatMap((m) => m.lines).filter((l) => l.excluded).length;
-      if (!(await confirmDialog('Import past months', `Import ${s.months} months (${s.lines} lines${keep ? `, ${keep} left out` : ''}) from ${fileName} as finalised months? Months imported before are replaced.`, 'Import'))) return;
-      go.disabled = true;
-      const { data, error } = await ctx.sb.rpc('eppd_import_pay_history', { p: historyPayload(res.months) });
-      go.disabled = false;
-      if (failed(error, 'Import')) return;
+    const go = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Tick the months to import');
+    const shortM = (p) => new Date(`${p}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+    const pickedMonths = () => res.months.filter((m) => chosen.has(m.period));
+    const drawGo = () => { const ms = pickedMonths(); go.disabled = !ms.length;
+      go.textContent = ms.length ? `Import ${ms.length} month${ms.length === 1 ? '' : 's'} (${ms.map((m) => shortM(m.period)).join(', ')})` : 'Tick the months to import'; };
+    const allBox = h('input', { type: 'checkbox', 'aria-label': 'Tick all months that can be imported' });
+    allBox.addEventListener('change', () => { res.months.forEach((m) => { if (stateOf(m.period).k !== 'blocked') { if (allBox.checked) chosen.add(m.period); else chosen.delete(m.period); } }); drawMonths(); drawGo(); });
+    go.addEventListener('click', () => {
+      const ms = pickedMonths(); if (!ms.length) return;
+      const lines = ms.reduce((n, m) => n + m.lines.length, 0); const keep = ms.flatMap((m) => m.lines).filter((l) => l.excluded).length;
+      const rep2 = ms.filter((m) => stateOf(m.period).k === 'replace');
+      const reason = field('Reason (required)', { type: 'textarea', required: true, placeholder: 'e.g. September corrected in the workbook (PCB for 3 staff)' });
+      openModal({ title: 'Import past months', body: h('div', {},
+          h('p', {}, `Import ${ms.map((m) => monthLabel(m.period)).join(', ')} (${lines} lines${keep ? `, ${keep} left out` : ''}) from ${fileName} as finalised months?`),
+          rep2.length ? h('p', { class: 'setup-warning' }, `${rep2.map((m) => monthLabel(m.period)).join(', ')} ${rep2.length === 1 ? 'is' : 'are'} replaced; the old figures are not kept.`) : null,
+          h('p', { class: 'small muted' }, 'Months you did not tick are not touched. The reason goes into the audit log.'), reason),
+        actions: [{ label: 'Import', primary: true, onClick: async (close) => {
+          const why = reason.getValue(); if (!why || why.length < 5) { toast('Give the reason for this import.', 'error'); return false; }
+          const p = historyPayload(ms); p.reason = why;
+          const { data, error } = await ctx.sb.rpc('eppd_import_pay_history', { p });
+          if (failed(error, 'Import')) return false;
+          close(); done(data, ms); return true; } }] });
+    });
+    const done = (data, ms) => {
       clear(out).append(h('section', { class: 'panel' }, h('div', { class: 'panel-body' }, h('h2', {}, 'Import complete'),
-        h('p', { style: 'margin:.5rem 0 1rem' }, `${data.months} months and ${data.lines} pay lines imported and finalised.`),
+        h('p', { style: 'margin:.5rem 0 1rem' }, `${data.months} month${data.months === 1 ? '' : 's'} (${ms.map((m) => monthLabel(m.period)).join(', ')}) and ${data.lines} pay lines imported and finalised.`),
         h('div', { class: 'side-actions' }, h('a', { class: 'btn primary', href: '#/payroll' }, 'Open monthly payroll')))));
       toast('Payroll history imported.');
-    });
+    };
 
     clear(out).append(facts,
       h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Months found')),
         h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
-          h('thead', {}, h('tr', {}, ['Month', 'Lines', 'Gross', ...STAT_COLS.map((c) => c[1]), 'PCB', 'Net paid', 'Engine identical'].map((x, i) => h('th', { class: i ? 'num' : '' }, x)))), monthsBody)),
+          h('thead', {}, h('tr', {}, h('th', {}, allBox), ...['Month', 'Lines', 'Gross', ...STAT_COLS.map((c) => c[1]), 'PCB', 'Net paid', 'Engine identical'].map((x, i) => h('th', { class: i ? 'num' : '' }, x)))), monthsBody)),
         h('p', { class: 'small muted', style: 'margin-top:.6rem' }, `${STAT_LEGEND}. The workbook keeps one employee SOCSO figure; it is split into invalidity and NEI using the SOCSO table for that month.`)),
       heldPanel, cmpPanel,
       res.issues.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-body' }, h('h2', {}, 'Not imported'), h('ul', {}, res.issues.map((i) => h('li', {}, i.message))))) : null,
-      h('div', { class: 'import-bar' }, h('p', { class: 'small muted' }, 'Nothing has been saved yet.'), go));
+      h('div', { class: 'import-bar' }, h('p', { class: 'small muted' }, 'Nothing has been saved yet. Only the ticked months are imported.'), go));
   }
 }
