@@ -68,6 +68,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 40. `20261022_cms_person_profile.sql` — PRI-011: specials `people.personal`, `people.personal_edit`, `people.photos`; tables `cms_person_profile`, `cms_person_images`; private bucket `cms-profile-images` with its read / upload rules; `cms_person_profile`, `cms_person_eaf_image`, `cms_person_profile_save`, `cms_person_image_set`
 41. `20261026_cms_payroll_reimport_months.sql` — Import Past Months: the reason and the imported months are written to the payroll log and the CMS Audit Log
 42. `20261026_cms_letter_jd_placeholders.sql` — placeholders `jd_title`, `jd_responsibilities` (+ `jd_reference`, `jd_version` from records); `cms_letter_jd_lookup(person, title, position)`
+43. `20261026_cms_letter_reference_jd_appendix.sql` — `hr_letter_records.reference` + `{{letter_reference}}` (given on first save, e.g. MEG/HR/LOC_LOI/2026/0001); placeholders `jd_department`, `jd_level`, `jd_reports_to`, `jd_purpose`, `jd_effective_date`, `jd_qualifications`, `jd_experience`; `cms_letter_jd_titles(person)`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -117,6 +118,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-17:10** — **One letter template for every JD level.** Every letter now gets its own reference number when the draft is first
+  saved (`{{letter_reference}}`, e.g. MEG/HR/LOC_LOI/2026/0001 — company / HR / letter type / year / running number), fixed for good and
+  usable in the footer. More JD placeholders from the same approved JD as `{{jd_title}}`: department, level, reports to, purpose, effective
+  date, minimum qualifications and required experience — so a single template can carry the full JD of any position in an appendix. The
+  New position field offers the approved JD titles of the person's company, all levels. Database: `20261026_cms_letter_reference_jd_appendix.sql`.
 - **v2026.10.26-13:40** — **HR letters: duties, JD reference and version from the JD Manual.** New placeholders `{{jd_title}}` and
   `{{jd_responsibilities}}` (one lettered line per responsibility: "a. Title — Description"); `{{jd_reference}}` and `{{jd_version}}` are now
   filled too. The JD is the approved one of the employee's own company for the position in the letter (`{{new_position}}` /

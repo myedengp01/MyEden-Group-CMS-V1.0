@@ -3758,7 +3758,8 @@
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
     // duties, JD reference and version from the JD Manual, by job title: the position in the letter (transfer / promotion), else the current one
-    const JD_KEYS = ['jd_title', 'jd_responsibilities', 'jd_reference', 'jd_version'];
+    const JD_KEYS = ['jd_title', 'jd_responsibilities', 'jd_reference', 'jd_version', 'jd_department', 'jd_level', 'jd_reports_to', 'jd_purpose', 'jd_effective_date', 'jd_qualifications', 'jd_experience'];
+    let jdTitles = null; let jdTitlesFor = '';
     let jdLook = null; let jdLookSeq = 0;
     const jdNote = () => { const box = $('#lw-jdnote', el); if (!box) return; const want = tpl() && personId && keys().some((k) => JD_KEYS.includes(k));
       box.innerHTML = !want || !jdLook ? '' : jdLook.found ? `<p class="note ok small">${icon('check-circle')}<span>Duties, JD reference and version from the JD Manual: <b>${esc(jdLook.jd_title)}</b> · ${esc(jdLook.jd_reference)} v${esc(jdLook.jd_version)} <span class="muted">(${esc(jdLook.from)})</span></span></p>`
@@ -3769,20 +3770,27 @@
       const args = { p_person: personId, p_title: posKey ? String(vals[posKey]).trim() : null, p_position: isJD() && vals._jd_position_id ? vals._jd_position_id : null };
       const n = ++jdLookSeq;
       try { const r = await API.rpc('cms_letter_jd_lookup', args); if (n !== jdLookSeq) return; jdLook = r;
-        if (r.found) JD_KEYS.forEach((k) => { if (r[k] != null && (force || vals[k] == null || String(vals[k]).trim() === '')) vals[k] = r[k]; });
+        if (r.found) JD_KEYS.forEach((k) => { const v = r[k] != null && String(r[k]).trim() !== '' ? r[k] : '—'; if (force || vals[k] == null || String(vals[k]).trim() === '') vals[k] = v; });
         jdNote(); drawFields(); later();
       } catch (e) { jdLook = null; jdNote(); }
     };
+    const loadJdTitles = async () => {   // approved JD titles of the person's company, every level, offered for the new position
+      if (!personId || !editable || !keys().some((k) => ['new_position', 'revised_position'].includes(k)) || jdTitlesFor === personId) return;
+      const who = personId; jdTitlesFor = who;
+      try { const r = await API.rpc('cms_letter_jd_titles', { p_person: who }); if (who !== personId) return; jdTitles = r; drawFields(); } catch (e) { jdTitlesFor = ''; }
+    };
     const drawFields = () => {
       const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; return; }
+      if (jdTitlesFor !== personId) { jdTitles = null; loadJdTitles(); }
       box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k));
         const kind = p.kind || (LONG_KEYS.test(k) ? 'paragraph' : 'text'); const v = esc(vals[k] ?? '');
         const inp = kind === 'paragraph' || LONG_KEYS.test(k) ? `<textarea data-k="${k}" rows="3" ${ro ? 'readonly' : ''}>${v}</textarea>`
           : kind === 'date' ? `<span class="lw-dt"><input data-k="${k}" value="${v}" placeholder="e.g. 14 November 2026" ${ro ? 'readonly' : ''}>${ro ? '' : `<input type="date" data-pick="${k}" aria-label="Pick a date for ${esc(p.label || k)}">`}</span>`
-          : `<input data-k="${k}" value="${v}" ${kind === 'money' ? 'data-money inputmode="decimal"' : kind === 'number' || kind === 'percentage' ? 'inputmode="decimal"' : ''} ${ro ? 'readonly' : ''}>`;
+          : `<input data-k="${k}" value="${v}" ${kind === 'money' ? 'data-money inputmode="decimal"' : kind === 'number' || kind === 'percentage' ? 'inputmode="decimal"' : ''} ${ro ? 'readonly' : ''}${k === 'letter_reference' && !v ? ' placeholder="Given when the draft is first saved"' : ''}${['new_position', 'revised_position'].includes(k) && !ro ? ' list="lw-jdtitles" autocomplete="off"' : ''}>`;
         return `<label class="fld ${ro ? 'ro' : ''}"><span>${esc(p.label || k.replace(/_/g, ' '))}${p.source === 'employee' || p.protected ? ' <small class="muted">from records</small>' : p.source === 'calculation' ? ' <small class="muted">calculated</small>' : p.required === false ? ' <small class="muted">optional</small>' : ''}</span>${inp}</label>`; }).join('')
         || '<p class="muted small">This letter has no fields to fill.</p>'}
-        ${editable && ctx?._home_address ? '<button type="button" class="lnk small" data-addr>Use the saved home address again</button>' : ''}`;
+        ${editable && ctx?._home_address ? '<button type="button" class="lnk small" data-addr>Use the saved home address again</button>' : ''}
+        <datalist id="lw-jdtitles">${(jdTitles || []).map((x) => `<option value="${esc(x.title)}">${esc([x.level, x.department].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`;
       $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); });
         if (['new_position', 'revised_position'].includes(i.dataset.k)) i.addEventListener('change', () => { vals[i.dataset.k] = i.value; fillJD(true); }); });
       $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; later(); }));
