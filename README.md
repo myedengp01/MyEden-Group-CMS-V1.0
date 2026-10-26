@@ -67,6 +67,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 39. `20261022_cms_add_person.sql` — People › Add Person: `cms_hire` takes `manual: true` (no application; People "add"), an existing Employee ID, Chinese name and nationality, refuses a duplicate NRIC, records `source_type = manual_entry`; `cms_hire_prefill()` with no arguments gives the lists
 40. `20261022_cms_person_profile.sql` — PRI-011: specials `people.personal`, `people.personal_edit`, `people.photos`; tables `cms_person_profile`, `cms_person_images`; private bucket `cms-profile-images` with its read / upload rules; `cms_person_profile`, `cms_person_eaf_image`, `cms_person_profile_save`, `cms_person_image_set`
 41. `20261026_cms_payroll_reimport_months.sql` — Import Past Months: the reason and the imported months are written to the payroll log and the CMS Audit Log
+42. `20261026_cms_letter_jd_placeholders.sql` — placeholders `jd_title`, `jd_responsibilities` (+ `jd_reference`, `jd_version` from records); `cms_letter_jd_lookup(person, title, position)`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -116,6 +117,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-13:40** — **HR letters: duties, JD reference and version from the JD Manual.** New placeholders `{{jd_title}}` and
+  `{{jd_responsibilities}}` (one lettered line per responsibility: "a. Title — Description"); `{{jd_reference}}` and `{{jd_version}}` are now
+  filled too. The JD is the approved one of the employee's own company for the position in the letter (`{{new_position}}` /
+  `{{revised_position}}`, or the position chosen in the transfer & promotion letter), else the employee's current position (Career Paths
+  JD first, then the job title on record). A note above the fields says which JD was used, or that none was found. In Word letters a
+  paragraph holding only `{{jd_responsibilities}}` becomes one paragraph per duty in the same style. Database: `20261026_cms_letter_jd_placeholders.sql`.
 - **v2026.10.26-11:45** — **Import Past Months: choose the months.** After reading the workbook, every month has a tick box (none
   ticked to start); only the ticked months are imported, and the button names them ("Import 2 months (Mar, Jul)"). Each month shows
   whether it is new, imported before (replaced — with the lines that change and the gross / net difference per person) or made /

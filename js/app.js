@@ -3417,6 +3417,14 @@
     },
     async fill(bytes, values, labelOf) {
       const r = await W.edit(bytes, (p, text, d) => {
+        const only = text.trim().match(/^\{\{([a-z0-9_]+)\}\}$/); const multi = only && values[only[1]] != null && String(values[only[1]]).includes('\n');
+        if (multi) {   // e.g. {{jd_responsibilities}}: one paragraph per line, each a copy of the template paragraph
+          const lines = String(values[only[1]]).split(/\r?\n/).filter((l) => l.trim() !== ''); const at = text.indexOf('{{'); const tmpl = p.cloneNode(true);
+          const rg = (t) => [{ start: at, end: at + only[0].length, text: t }];
+          W.splice(p, rg(lines[0] || '')); let after = p;
+          lines.slice(1).forEach((ln) => { const c = tmpl.cloneNode(true); W.splice(c, rg(ln)); after.parentNode.insertBefore(c, after.nextSibling); after = c; });
+          return 1;
+        }
         const ranges = [...text.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => { const v = values[m[1]]; return { start: m.index, end: m.index + m[0].length, text: v != null && String(v).trim() !== '' ? String(v) : `[${labelOf(m[1])}]` }; });
         if (!ranges.length) return 0; W.splice(p, ranges);
         // typed line breaks become Word line breaks
@@ -3672,7 +3680,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-fields"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-fields"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -3718,7 +3726,7 @@
       dept.onchange=()=>{const p=jdOptions.find(p=>p.id===sel.value);if(p&&dept.value&&p.department!==dept.value){sel.value='';sel.dispatchEvent(new Event('change'));}filter();};search.oninput=filter;filter();
       sel.onchange=async()=>{const id=sel.value,request=++jdSeq,personKey=personId;jdSnapshot=null;delete vals._jd_position_id;delete vals._jd_fingerprint;jdFields.forEach(k=>delete vals[k]);drawFields();later();
         if(!id){$('[data-jd-info]',box).textContent='No JD selected.';return;}
-        try{const jd=await API.rpc('cms_letter_jd_get',{p_person:personKey,p_position:id});if(request!==jdSeq||personKey!==personId||!isJD())return;jdSnapshot=jd;Object.assign(vals,jd.fields,{_jd_position_id:id,_jd_fingerprint:jd.fingerprint});$('[data-jd-info]',box).textContent=jd.reference+' · version '+jd.version+' · Appendix A included below';drawFields();later();}catch(e){$('[data-jd-info]',box).textContent=e.message;}
+        try{const jd=await API.rpc('cms_letter_jd_get',{p_person:personKey,p_position:id});if(request!==jdSeq||personKey!==personId||!isJD())return;jdSnapshot=jd;Object.assign(vals,jd.fields,{_jd_position_id:id,_jd_fingerprint:jd.fingerprint});$('[data-jd-info]',box).textContent=jd.reference+' · version '+jd.version+' · Appendix A included below';drawFields();later();fillJD(true);}catch(e){$('[data-jd-info]',box).textContent=e.message;}
       };
       const mode=$('[data-post-mode]',box);mode.value=vals._post_probation_mode||'';mode.onchange=()=>{vals._post_probation_mode=mode.value;$('[data-post-extra]',box).hidden=mode.value!=='agreed';postSalary();drawFields();later();};
       $('[data-post-inc]',box).oninput=e=>{vals.post_probation_increment=e.target.value;postSalary();later();};$('[data-post-date]',box).oninput=e=>{vals.post_probation_effective_date=e.target.value;postSalary();later();};
@@ -3749,6 +3757,22 @@
     const calc = () => { if (!('basic_increment' in vals) && !keys().includes('basic_increment')) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
+    // duties, JD reference and version from the JD Manual, by job title: the position in the letter (transfer / promotion), else the current one
+    const JD_KEYS = ['jd_title', 'jd_responsibilities', 'jd_reference', 'jd_version'];
+    let jdLook = null; let jdLookSeq = 0;
+    const jdNote = () => { const box = $('#lw-jdnote', el); if (!box) return; const want = tpl() && personId && keys().some((k) => JD_KEYS.includes(k));
+      box.innerHTML = !want || !jdLook ? '' : jdLook.found ? `<p class="note ok small">${icon('check-circle')}<span>Duties, JD reference and version from the JD Manual: <b>${esc(jdLook.jd_title)}</b> · ${esc(jdLook.jd_reference)} v${esc(jdLook.jd_version)} <span class="muted">(${esc(jdLook.from)})</span></span></p>`
+        : `<p class="note warn small">${icon('help')}<span>No approved JD found for <b>${esc(jdLook.title || 'this job title')}</b> in ${esc(coShort(jdLook.company) || jdLook.company || 'this company')} — the JD fields stay to be filled.</span></p>`; };
+    const fillJD = async (force) => {
+      const t = tpl(); if (!t || !personId || !editable || !keys().some((k) => JD_KEYS.includes(k))) { jdLook = null; jdNote(); return; }
+      const posKey = keys().find((k) => ['new_position', 'revised_position'].includes(k) && String(vals[k] ?? '').trim());
+      const args = { p_person: personId, p_title: posKey ? String(vals[posKey]).trim() : null, p_position: isJD() && vals._jd_position_id ? vals._jd_position_id : null };
+      const n = ++jdLookSeq;
+      try { const r = await API.rpc('cms_letter_jd_lookup', args); if (n !== jdLookSeq) return; jdLook = r;
+        if (r.found) JD_KEYS.forEach((k) => { if (r[k] != null && (force || vals[k] == null || String(vals[k]).trim() === '')) vals[k] = r[k]; });
+        jdNote(); drawFields(); later();
+      } catch (e) { jdLook = null; jdNote(); }
+    };
     const drawFields = () => {
       const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; return; }
       box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k));
@@ -3759,7 +3783,8 @@
         return `<label class="fld ${ro ? 'ro' : ''}"><span>${esc(p.label || k.replace(/_/g, ' '))}${p.source === 'employee' || p.protected ? ' <small class="muted">from records</small>' : p.source === 'calculation' ? ' <small class="muted">calculated</small>' : p.required === false ? ' <small class="muted">optional</small>' : ''}</span>${inp}</label>`; }).join('')
         || '<p class="muted small">This letter has no fields to fill.</p>'}
         ${editable && ctx?._home_address ? '<button type="button" class="lnk small" data-addr>Use the saved home address again</button>' : ''}`;
-      $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); }); });
+      $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); });
+        if (['new_position', 'revised_position'].includes(i.dataset.k)) i.addEventListener('change', () => { vals[i.dataset.k] = i.value; fillJD(true); }); });
       $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; later(); }));
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
     };
@@ -3773,7 +3798,7 @@
         L.placeholders.forEach((p) => { if (p.default && (vals[p.key] == null || vals[p.key] === '')) vals[p.key] = p.default; });
         calc();
       }
-      drawFields(); drawJD(); preview(); loadFacts();
+      drawFields(); drawJD(); preview(); loadFacts(); fillJD(!!fresh);
     };
     // PRI-009 · facts for this letter: what matters for this letter type, with one-click insert into matching fields
     let facts = null; let factsFor = '';
@@ -3865,7 +3890,7 @@
     const pq = $('#lw-pq', el); const psel = $('#lw-p', el);
     pq?.addEventListener('input', () => { const t = pq.value.trim().toLowerCase(); let first = null; $$('option', psel).forEach((o) => { const hit = !o.value || !t || o.textContent.toLowerCase().includes(t); o.hidden = !hit; if (hit && o.value && !first) first = o; }); if (t && first && psel.value !== first.value) { psel.value = first.value; psel.dispatchEvent(new Event('change')); } });
     psel.addEventListener('change', () => { personId = psel.value; ++jdSeq; jdSnapshot = null; jdPerson = ''; Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(true); });
-    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; ++jdSeq; drawFields(); drawJD(); later(); loadFacts(); });
+    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; ++jdSeq; drawFields(); drawJD(); later(); loadFacts(); fillJD(false); });
     $('#lw-zoom', el).addEventListener('change', (e) => { zoom = e.target.value; applyZoom(); });
     $('#lw-full', el).addEventListener('click', () => { const c = $('#lw-pv-card', el); c.classList.toggle('lw-fullscreen'); $('#lw-full', el).lastChild.textContent = c.classList.contains('lw-fullscreen') ? 'Close full screen' : 'Full screen'; requestAnimationFrame(applyZoom); });
     window.addEventListener('resize', () => { if (zoom === 'fit') applyZoom(); });
