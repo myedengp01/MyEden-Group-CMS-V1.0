@@ -69,6 +69,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 41. `20261026_cms_payroll_reimport_months.sql` — Import Past Months: the reason and the imported months are written to the payroll log and the CMS Audit Log
 42. `20261026_cms_letter_jd_placeholders.sql` — placeholders `jd_title`, `jd_responsibilities` (+ `jd_reference`, `jd_version` from records); `cms_letter_jd_lookup(person, title, position)`
 43. `20261026_cms_letter_reference_jd_appendix.sql` — `hr_letter_records.reference` + `{{letter_reference}}` (given on first save, e.g. MEG/HR/LOC_LOI/2026/0001); placeholders `jd_department`, `jd_level`, `jd_reports_to`, `jd_purpose`, `jd_effective_date`, `jd_qualifications`, `jd_experience`; `cms_letter_jd_titles(person)`
+44. `20261026_cms_person_master_edit.sql` — Super Admin only: `cms_person_master(person)`, `cms_person_master_save(person, changes, reason)` (identity, Employee ID, master company, centre, job title, employment status, confirmation / probation dates; join date locked; Employee Master + payroll record together; logged)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -118,6 +119,12 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-20:45** — **Super Admin: edit master record.** On the employee profile, a Super Admin can correct the full name, Chinese
+  name, gender, date of birth, NRIC, nationality, Employee ID, master company (employer of record), centre / department, job title,
+  employment status, confirmation date and probation end date. Changing the company suggests the matching Employee ID (same running
+  number); the old ID is kept as the previous ID. The join date is locked. A reason is required; the before / after list is shown before
+  saving and kept in the audit log and the Timeline. The Employee Master and the payroll record change together. Database:
+  `20261026_cms_person_master_edit.sql`.
 - **v2026.10.26-18:35** — **Company letterhead on Word letters.** A Word template with no picture in its page header (e.g. "All Companies"
   templates) now gets the company letterhead (MEG / HD / ABP / MEH) added to the header automatically: the employee's company in the letter
   workspace and in the issued Word file, the template's company in the template editor and review (MyEden Group when "Any company").

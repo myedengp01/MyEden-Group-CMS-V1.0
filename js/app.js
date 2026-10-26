@@ -4432,13 +4432,14 @@
             <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)} (${svc(H.start)})` : ''}</span></div>
           <p class="small">${H.boss ? `Reports to <a href="#/person?id=${esc(H.boss_id)}"><b>${esc(H.boss)}</b></a>` : '<span class="muted">Reports to: not set</span>'}${D.edited ? ` <span class="muted">· details last changed by ${esc(D.edited.by || '')} ${dShort(D.edited.at)}</span>` : ''}</p>
         </div>
-        <div class="pf-acts">${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
+        <div class="pf-acts">${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
       </section>
       <div class="seg pf-tabs" role="tablist">${PROFILE_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="pf-body"></div>`;
     // header photo
     (async () => { try { const u = await profileImage(pid, 'photo', D.images?.photo); if (u) $('#pf-photo', el).innerHTML = `<img src="${esc(u)}" alt="Photo of ${esc(H.name)}">`; } catch (e) { /* initials stay */ } })();
     $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { $$('[data-tab]', el).forEach((x) => x.classList.toggle('on', x === b)); go(b.dataset.tab); }));
+    $('[data-master]', el)?.addEventListener('click', () => editMaster());
     const body = $('#pf-body', el);
     const P = D.personal || {}; const F = D.family || {}; const B = D.background || {}; const E = D.employment || {};
     const table = (head, rows, empty) => (rows.length ? `<div class="table-wrap"><table class="data"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="muted small">${esc(empty)}</p>`);
@@ -4612,6 +4613,66 @@
           await API.rpc('cms_person_profile_save', { p_person: pid, p_data: data, p_note: form.note.value.trim() || null });
         } });
       if (ok) { toast('Saved'); profilePage(item, el); }
+    }
+    // ---- Super Admin: the master record (identity, Employee ID, master company, employment); the join date stays locked
+    async function editMaster() {
+      let M; try { M = await API.rpc('cms_person_master', { p_person: pid }); } catch (e) { toast(e.message, 'err'); return; }
+      const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([val, l]) => `<option value="${esc(val)}" ${String(cur ?? '') === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+      const coName = (c) => (M.companies.find((x) => x.code === c) || {}).name || c;
+      const sugg = (c) => (M.companies.find((x) => x.code === c) || {}).suggested_id || '';
+      const LBL = { name: 'Full name', chinese_name: 'Chinese name', gender: 'Gender', dob: 'Date of birth', nric: 'NRIC', nationality: 'Nationality', employee_id: 'Employee ID', company: 'Master company',
+        department_id: 'Centre / department', job_title_id: 'Job title', emp_status: 'Employment status', confirmation_date: 'Confirmation date', probation_end: 'Probation end date' };
+      const show = (k, x) => { if (x == null || x === '') return '—'; if (k === 'department_id') { const d = M.departments.find((y) => String(y.id) === String(x)); return d ? `${d.code} · ${d.name}` : x; }
+        if (k === 'job_title_id') return (M.titles.find((y) => String(y.id) === String(x)) || {}).name || x; if (k === 'emp_status') return (M.statuses.find((y) => y.code === x) || {}).label || x;
+        if (k === 'company') return coName(x); if (k === 'gender') return x === 'F' ? 'Female' : x === 'M' ? 'Male' : x; if (['dob', 'confirmation_date', 'probation_end'].includes(k)) return dShort(x); return x; };
+      const read = (f) => ({ name: f.name.value.trim(), chinese_name: f.cn.value.trim(), gender: f.gender.value, nationality: f.nat.value.trim(), employee_id: f.eid.value.trim().toUpperCase(), company: f.co.value,
+        ...(f.nric ? { nric: f.nric.value.trim(), dob: f.dob.value } : {}), ...(M.has_payroll ? { department_id: f.dept.value, job_title_id: f.title.value, emp_status: f.st.value } : {}),
+        confirmation_date: f.cdate.value, probation_end: f.pend.value });
+      const diff = (f) => Object.entries(read(f)).filter(([k, x]) => (k === 'name' || k === 'employee_id' ? String(x || '').toUpperCase() !== String(M[k] ?? '').toUpperCase() : String(x ?? '') !== String(M[k] ?? '')));
+      const ok = await modal({ title: `Edit master record · ${H.name}`, wide: true, ok: 'Save changes',
+        body: `<p class="note">${icon('lock')}<span>Super Admin only. Changes the Employee Master and the payroll record together and is logged with the reason. The join date (${M.start ? dShort(M.start) : '—'}) stays locked; leaving and rehire have their own steps; the paying company is changed in Payroll. Finalised payslips and issued letters keep the details they were issued with.</span></p>
+          <h4 class="sec-h">Identity</h4><div class="fld-2">
+            <label class="fld fld-2"><span>Full name (as on NRIC)</span><input name="name" value="${esc(M.name || '')}" required></label>
+            <label class="fld"><span>Chinese name</span><input name="cn" value="${esc(M.chinese_name || '')}" ${M.has_payroll ? '' : 'disabled'}></label>
+            <label class="fld"><span>Gender</span><select name="gender">${opt([['F', 'Female'], ['M', 'Male']], M.gender)}</select></label>
+            ${C.ic ? `<label class="fld"><span>NRIC</span><input name="nric" value="${esc(M.nric || '')}" autocomplete="off" ${M.has_payroll ? '' : 'disabled'}></label>
+            <label class="fld"><span>Date of birth</span><input type="date" name="dob" value="${esc(M.dob || '')}" ${M.has_payroll ? '' : 'disabled'}></label>` : ''}
+            <label class="fld"><span>Nationality</span><input name="nat" value="${esc(M.nationality || '')}" ${M.has_payroll ? '' : 'disabled'}></label></div>
+          <h4 class="sec-h">Employee ID and master company</h4><div class="fld-2">
+            <label class="fld"><span>Master company <small class="muted">— employer of record: letterhead, company name in letters, which HR sees them</small></span><select name="co">${opt(M.companies.map((c) => [c.code, c.name]), M.company)}</select></label>
+            <label class="fld"><span>Employee ID</span><input name="eid" value="${esc(M.employee_id || '')}" ${M.legacy_id ? 'readonly' : ''} autocomplete="off"></label></div>
+          <p class="small" id="mr-idnote"></p><p class="small" id="mr-paynote"></p>
+          <h4 class="sec-h">Employment</h4><div class="fld-2">
+            ${M.has_payroll ? `<label class="fld"><span>Centre / department</span><select name="dept">${opt(M.departments.map((d) => [d.id, `${d.code} · ${d.name}${d.company ? ` (${d.company})` : ''}`]), M.department_id, 'Not set')}</select></label>
+            <label class="fld"><span>Job title</span><select name="title">${opt(M.titles.map((t) => [t.id, t.name]), M.job_title_id, 'Not set')}</select></label>
+            <label class="fld"><span>Employment status</span><select name="st">${opt(M.statuses.map((x) => [x.code, x.label]), M.emp_status, 'Not set')}</select></label>` : '<p class="muted small fld-2">No payroll record yet: centre, job title and status are set when the payroll record is made.</p>'}
+            <label class="fld"><span>Confirmation date</span><input type="date" name="cdate" value="${esc(M.confirmation_date || '')}"></label>
+            <label class="fld"><span>Probation end date</span><input type="date" name="pend" value="${esc(M.probation_end || '')}"></label>
+            <label class="fld"><span>Join date <small class="muted">— locked</small></span><input value="${esc(M.start ? dShort(M.start) : '—')}" disabled></label></div>
+          <div id="mr-diff" class="mr-diff"></div>
+          <label class="fld"><span>Reason for the change <small class="muted">— required, kept in the audit log</small></span><input name="why" maxlength="300" required></label>`,
+        onOpen: (box) => {
+          const f = $('form', box); let lastSugg = sugg(M.company);
+          const notes = () => {
+            const co = f.co.value; const s = sugg(co); const id = f.eid.value.trim().toUpperCase();
+            $('#mr-idnote', box).innerHTML = M.legacy_id ? `<span class="muted">${esc(M.employee_id)} is a fixed director ID.</span>`
+              : s && id !== s ? `${icon('help')} The usual ID for ${esc(coName(co))} is <code>${esc(s)}</code> <button type="button" class="lnk" data-useid>Use it</button>${M.paid ? ' <span class="muted">· this person already has payslips; those keep the old ID</span>' : ''}`
+              : id !== String(M.employee_id || '').toUpperCase() ? `<span class="muted">The old ID <code>${esc(M.employee_id || '')}</code> is kept as the previous ID, so searching for it still finds this person.</span>` : '';
+            $('#mr-paynote', box).innerHTML = M.paying && !String(M.paying).split(', ').includes(co) ? `<span class="tag warn">Check</span> Paid by <b>${esc(M.paying)}</b> in Payroll, but the master company is <b>${esc(co)}</b>.` : '';
+            const d = diff(f);
+            $('#mr-diff', box).innerHTML = d.length ? `<h4 class="sec-h">Changes to save</h4><ul class="small">${d.map(([k, x]) => `<li><b>${esc(LBL[k])}</b>: ${esc(k === 'nric' ? String(M[k] || '—') : show(k, M[k]))} → <b>${esc(show(k, x))}</b></li>`).join('')}</ul>` : '<p class="muted small">No changes yet.</p>';
+          };
+          f.co.addEventListener('change', () => { const id = f.eid.value.trim().toUpperCase(); if (!M.legacy_id && (id === String(M.employee_id || '').toUpperCase() || id === lastSugg)) f.eid.value = sugg(f.co.value) || f.eid.value; lastSugg = sugg(f.co.value); notes(); });
+          box.addEventListener('click', (e) => { if (e.target.closest('[data-useid]')) { f.eid.value = sugg(f.co.value); notes(); } });
+          f.addEventListener('input', notes); f.addEventListener('change', notes); notes();
+          setTimeout(() => f.name.focus(), 30);
+        },
+        onOk: async (f) => {
+          const d = diff(f); if (!d.length) throw new Error('Nothing was changed.');
+          if (f.why.value.trim().length < 5) throw new Error('Give the reason for the change (at least 5 characters).');
+          await API.rpc('cms_person_master_save', { p_person: pid, p: Object.fromEntries(d), p_reason: f.why.value.trim() });
+        } });
+      if (ok) { toast('Master record saved'); state.people = null; profilePage(item, el); }
     }
     draw();
   }
