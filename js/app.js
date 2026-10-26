@@ -4645,7 +4645,7 @@
           <h4 class="sec-h">Employment</h4><div class="fld-2">
             ${M.has_payroll ? `<label class="fld"><span>Centre / department</span><select name="dept">${opt(M.departments.map((d) => [d.id, `${d.code} · ${d.name}${d.company ? ` (${d.company})` : ''}`]), M.department_id, 'Not set')}</select></label>
             <label class="fld"><span>Job title</span><select name="title">${opt(M.titles.map((t) => [t.id, t.name]), M.job_title_id, 'Not set')}</select></label>
-            <label class="fld"><span>Employment status</span><select name="st">${opt(M.statuses.map((x) => [x.code, x.label]), M.emp_status, 'Not set')}</select></label>` : '<p class="muted small fld-2">No payroll record yet: centre, job title and status are set when the payroll record is made.</p>'}
+            <label class="fld"><span>Employment status${['R', 'TR', 'DM'].includes(M.emp_status) ? ' <small class="muted">— set by Leaving; use Rehire to change</small>' : ''}</span><select name="st" ${['R', 'TR', 'DM'].includes(M.emp_status) ? 'disabled' : ''}>${opt(M.statuses.map((x) => [x.code, x.label]), M.emp_status, M.emp_status ? '' : 'Not set')}</select></label>` : '<p class="muted small fld-2">No payroll record yet: centre, job title and status are set when the payroll record is made.</p>'}
             <label class="fld"><span>Confirmation date</span><input type="date" name="cdate" value="${esc(M.confirmation_date || '')}"></label>
             <label class="fld"><span>Probation end date</span><input type="date" name="pend" value="${esc(M.probation_end || '')}"></label>
             <label class="fld"><span>Join date <small class="muted">— locked</small></span><input value="${esc(M.start ? dShort(M.start) : '—')}" disabled></label></div>

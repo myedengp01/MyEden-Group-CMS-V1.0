@@ -119,6 +119,8 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.26-22:30** — Fix: Edit master record failed for former staff ("confirmation_status … not-null"). Their Resigned /
+  Terminated / Dismissed status is now shown and locked (changed only through Leaving / Rehire), and the status can no longer be cleared.
 - **v2026.10.26-20:45** — **Super Admin: edit master record.** On the employee profile, a Super Admin can correct the full name, Chinese
   name, gender, date of birth, NRIC, nationality, Employee ID, master company (employer of record), centre / department, job title,
   employment status, confirmation date and probation end date. Changing the company suggests the matching Employee ID (same running

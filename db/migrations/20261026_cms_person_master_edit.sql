@@ -53,7 +53,7 @@ begin
                     from public.eppd_departments d left join public.eppd_companies c on c.id = d.company_id where d.is_active or d.id = m.department_id),
     'titles', (select jsonb_agg(jsonb_build_object('id', t.id, 'name', t.name) order by t.sort_order, t.name) from public.eppd_job_titles t where t.is_active or t.id = m.job_title_id),
     'statuses', (select jsonb_agg(jsonb_build_object('code', l.code, 'label', l.label) order by l.sort_order) from public.eppd_lookups l
-                 where l.category = 'confirmation_status' and l.code in ('UP', 'C', 'CT', 'PT', 'INT')));
+                 where l.category = 'confirmation_status' and (l.code in ('UP', 'C', 'CT', 'PT', 'INT') or l.code = m.confirmation_status)));
 end $f$;
 revoke all on function public.cms_person_master(uuid) from public, anon;
 grant execute on function public.cms_person_master(uuid) to authenticated;
@@ -109,6 +109,9 @@ begin
     select * into t from public.eppd_job_titles where id = (nxt->>'job_title_id')::bigint;
     if t.id is null then raise exception 'Choose the job title.'; end if;
   end if;
+  if nxt ? 'emp_status' and nxt->>'emp_status' is null then raise exception 'The employment status cannot be cleared.'; end if;
+  if nxt ? 'emp_status' and cur->>'emp_status' in ('R', 'TR', 'DM') then
+    raise exception 'This person has left (status set by Leaving). To change it, use Rehire in Former Staff.'; end if;
   if nxt ? 'emp_status' and nxt->>'emp_status' not in ('UP', 'C', 'CT', 'PT', 'INT') then
     raise exception 'Choose the employment status (resigning, termination and dismissal go through Leaving).'; end if;
   if nxt ? 'employee_id' then
