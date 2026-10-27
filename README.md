@@ -75,6 +75,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 47. `20261027_cms_letter_jd_duties_format.sql` — `{{jd_responsibilities}}` as numbered titles with the description on the next line
 48. `20261027_cms_letter_submit_optional_fields.sql` — sending for approval only needs the required placeholders filled (the letter reference is given on save); the error names what is still empty
 49. `20261027_cms_letter_apply.sql` — `cms_letter_apply_preview`, `cms_letter_apply`; `cms_letter_applied`, `cms_scheduled_changes` + nightly job `cms-scheduled-changes` (00:05 MYT); cancelled letters cancel their pending changes
+50. `20261027_cms_run_totals_of.sql` — `private.cms_totals_of(run, company)`: a month's stored totals worked out again from its lines (for corrections)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
