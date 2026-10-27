@@ -37,6 +37,8 @@ export async function render(el, ctx, params, query) {
   const fromP = YEAR_VIEWS.has(view) ? `${year}-01-01` : `${month.slice(0, 4)}-01-01`;
   const toP = YEAR_VIEWS.has(view) ? `${year}-12-01` : month;
   const [P, allLines] = await Promise.all([loadPeopleDetails(ctx.sb, ref), loadLines(ctx.sb, fromP, toP)]);
+  // payslips and reports print the person's current Employee ID; the saved pay lines keep the one they were made with
+  for (const l of allLines) { const cur = P.people.get(l.employee_id)?.emp_id; if (cur) l.emp_code = cur; }
   const coName = (id) => P.companies.get(Number(id))?.name || 'No company';
   const coShort = (id) => P.companies.get(Number(id))?.short_name || coName(id);
   const inCompany = (l) => !company || String(l.company_id || '') === company;

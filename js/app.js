@@ -2153,7 +2153,7 @@
     const tbl = (h, body, foot, small) => `<table class="doc-table${small ? ' small' : ''}"><thead><tr><th>${h}</th><th class="num">RM</th></tr></thead><tbody>${body}</tbody>${foot ? `<tfoot><tr><th>${foot[0]}</th><th class="num">${m2(foot[1])}</th></tr></tfoot>` : ''}</table>`;
     const yr = String(D.period).slice(0, 4);
     return `<section class="sheet payslip">${docHead(c, 'PAYSLIP', monthName(D.period))}
-      <div class="doc-grid"><div>${kv('Employee', l.emp_name || p.name)}${kv('Employee ID', l.emp_code || p.employee_id)}${kv('NRIC / Passport', p.nric || p.passport_no)}</div>
+      <div class="doc-grid"><div>${kv('Employee', l.emp_name || p.name)}${kv('Employee ID', p.employee_id || l.emp_code)}${kv('NRIC / Passport', p.nric || p.passport_no)}</div>
         <div>${kv('Department', e.department)}${kv('Job title', e.title)}${kv('EPF / SOCSO / Tax no.', [p.epf_no || '—', p.socso_no || (p.nric ? String(p.nric).replace(/\D/g, '') : '') || '—', p.tax_no || '—'].join(' · '))}</div></div>
       <div class="doc-two">${tbl('Earnings', rows(m.earnings) + rows(m.deductions, '−'), ['Gross pay', m.gross])}
         ${tbl('Deductions', m.statutory.map((s) => `<tr><td>${esc(s.label)}</td><td class="num">${m2(s.ee)}</td></tr>`).join('') + `<tr><td>PCB (monthly tax deduction)</td><td class="num">${m2(m.pcb)}</td></tr>` + rows(m.personal), ['Total deductions', m.totalDeductions])}</div>
@@ -2174,7 +2174,7 @@
       <div class="ea-top"><div><div class="small">Malaysia · Cukai Pendapatan</div><div class="ea-form">EA</div><div class="small">C.P.8A – Pin. 2023</div></div>
         <div class="ea-title"><b>PENYATA SARAAN DARIPADA PENGGAJIAN BAGI TAHUN BERAKHIR 31 DISEMBER ${y}</b><div class="small">Statement of remuneration from employment for the year ended 31 December ${y}</div></div>
         <div class="ea-ids"><div>No. Majikan E: <b>${esc(c.tax_employer_no || '—')}</b></div><div>No. Pengenalan Cukai (TIN) Pekerja: <b>${esc(p.tax_no || '—')}</b></div><div>LHDNM Negeri: <b></b></div></div></div>
-      ${sec('A. BUTIRAN PEKERJA / EMPLOYEE PARTICULARS', [['1', 'Nama penuh pekerja / Full name', e.emp_name || p.name], ['2', 'Jawatan / Position', (D.employment || {}).title], ['3', 'No. kakitangan / Staff no.', e.emp_code || p.employee_id],
+      ${sec('A. BUTIRAN PEKERJA / EMPLOYEE PARTICULARS', [['1', 'Nama penuh pekerja / Full name', e.emp_name || p.name], ['2', 'Jawatan / Position', (D.employment || {}).title], ['3', 'No. kakitangan / Staff no.', p.employee_id || e.emp_code],
         ['4', 'No. K.P. baru / NRIC', p.nric], ['5', 'No. pasport / Passport no.', p.passport_no], ['6', 'No. KWSP / EPF no.', p.epf_no], ['7', 'No. PERKESO / SOCSO no.', p.socso_no || (p.nric ? String(p.nric).replace(/\D/g, '') : '')],
         ['8', 'Bilangan anak yang layak untuk pelepasan cukai / Children qualifying for tax relief', ''],
         ['9', 'Jika bekerja tidak genap setahun / If employed for part of the year: (a) tarikh mula / start date (b) tarikh berhenti / end date', [joined ? `(a) ${dShort(joined.join_date)}` : null, left ? `(b) ${dShort(left.resigned_date)}` : null].filter(Boolean).join('   ')]]

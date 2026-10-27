@@ -53,6 +53,8 @@ export async function render(el, ctx, params, query) {
 async function renderRun(el, ctx, param) {
   if (!/^\d{4}-\d{2}$/.test(param)) { el.append(h('div', { class: 'empty-state' }, 'Month not recognised.')); return; }
   const D = await loadPayMonth(ctx.sb, `${param}-01`);
+  // the person's current Employee ID (a line keeps the ID it was made with)
+  const idOf = (l) => (D.people || []).find((p) => p.id === l.employee_id)?.emp_id || l.emp_code || '';
   const run = D.run;
   const locked = run?.status === 'finalised';
   const isAdmin = ctx.can(['admin']);
@@ -134,14 +136,14 @@ async function renderRun(el, ctx, param) {
 
   function drawLines() {
     const q = search.value.trim().toLowerCase();
-    const shown = lines.filter((l) => (!q || `${l.emp_name} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn')));
+    const shown = lines.filter((l) => (!q || `${l.emp_name} ${idOf(l)} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn')));
     clear(linesBody).append(h('table', { class: 'data clickable' },
       h('thead', {}, h('tr', {}, ['Employee', 'Company', 'Basic', 'Overtime', 'Other pay', 'Unpaid leave', 'Gross', ...STAT_COLS_EE.map((c) => c[1]), 'PCB', 'Net paid'].map((x, i) => h('th', { class: i >= 2 ? 'num' : '' }, x)))),
       h('tbody', {}, shown.length ? shown.map((l) => {
         const s = lineSummary(l); const warn = (l.warnings || []).filter((w) => w.level === 'warn').length;
         const tr = h('tr', { class: l.excluded ? 'inactive' : '' },
           h('td', {}, h('span', { class: 'strong' }, l.emp_name), warn ? h('span', { class: 'tag warn', style: 'margin-left:.4rem', title: l.warnings.map((w) => w.text).join('\n') }, `${warn} warning${warn > 1 ? 's' : ''}`) : null,
-            l.excluded ? h('span', { class: 'tag', style: 'margin-left:.4rem' }, 'Left out') : null, h('div', { class: 'small muted' }, l.emp_code || '')),
+            l.excluded ? h('span', { class: 'tag', style: 'margin-left:.4rem' }, 'Left out') : null, h('div', { class: 'small muted' }, idOf(l))),
           h('td', { class: 'small' }, companyName(l.company_id)),
           h('td', { class: 'num' }, money(s.basic)), h('td', { class: 'num' }, s.overtime ? money(s.overtime) : ''), h('td', { class: 'num' }, s.other ? money(s.other) : ''),
           h('td', { class: 'num' }, s.unpaid ? `−${money(s.unpaid)}` : ''), h('td', { class: 'num' }, money(l.gross)),
@@ -211,7 +213,7 @@ async function renderRun(el, ctx, param) {
   function reload() { window.removeEventListener('beforeunload', leaveGuard); window.dispatchEvent(new HashChangeEvent('hashchange')); }
   function exportCsv() {
     const cols = ['Employee ID', 'Name', 'Company', 'Basic', 'Overtime', 'Other pay', 'Unpaid leave', 'Gross', 'EPF wage', 'EPF ee', 'EPF er', 'SOCSO wage', 'SOCSO ee Inv.', 'SOCSO ee NEI', 'SOCSO ee total', 'SOCSO er', 'EIS wage', 'EIS ee', 'EIS er', 'PCB', 'Net', 'Personal deductions', 'Claims', 'Net paid', 'Left out', 'Warnings'];
-    const rows = lines.map((l) => { const s = lineSummary(l); return [l.emp_code || '', l.emp_name, companyName(l.company_id), s.basic, s.overtime, s.other, s.unpaid, l.gross, l.epf_wage, l.epf_ee, l.epf_er, l.socso_wage, statVal(l, 'socso_ee_inv'), statVal(l, 'socso_ee_nei'), l.socso_ee, l.socso_er, l.eis_wage, l.eis_ee, l.eis_er, l.pcb, l.net, l.personal_deductions, s.claims, l.net_paid, l.excluded ? 'Yes' : '', (l.warnings || []).map((w) => w.text).join(' | ')]; });
+    const rows = lines.map((l) => { const s = lineSummary(l); return [idOf(l), l.emp_name, companyName(l.company_id), s.basic, s.overtime, s.other, s.unpaid, l.gross, l.epf_wage, l.epf_ee, l.epf_er, l.socso_wage, statVal(l, 'socso_ee_inv'), statVal(l, 'socso_ee_nei'), l.socso_ee, l.socso_er, l.eis_wage, l.eis_ee, l.eis_er, l.pcb, l.net, l.personal_deductions, s.claims, l.net_paid, l.excluded ? 'Yes' : '', (l.warnings || []).map((w) => w.text).join(' | ')]; });
     const csv = [cols, ...rows].map((r) => r.map((v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(',')).join('\r\n');
     const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `payroll_${ym(D.period)}.csv` }); document.body.append(a); a.click(); a.remove();
   }

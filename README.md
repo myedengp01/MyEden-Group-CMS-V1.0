@@ -125,6 +125,8 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-17:55** — Payslips, payroll reports (payment list, EPF, SOCSO & EIS, PCB, year to date, EA), the payroll month page and staff
+  self-service payslips print the person's **current** Employee ID. Each saved pay line still keeps the ID it was made with.
 - **v2026.10.27-16:05** — Transfer and promotion letters: the assessment end date follows the start (3 months less a day) until HR types
   another date. "Update records from this letter" for a transfer / promotion puts the new basic salary in the first payroll month after the
   assessment ends (not the effective date) and the next review 12 months later. Printed pages keep a heading or an "…as follows:" line with
