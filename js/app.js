@@ -3364,6 +3364,24 @@
     paras: (d) => Array.from(d.getElementsByTagNameNS(WNS, 'p')),
     texts: (p) => Array.from(p.getElementsByTagNameNS(WNS, 't')),
     ptext: (p) => W.texts(p).map((n) => n.textContent).join(''),
+    // paragraph / run properties in the order Word requires
+    PPR: ['pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl', 'numPr', 'suppressLineNumbers', 'pBdr', 'shd', 'tabs', 'suppressAutoHyphens', 'kinsoku', 'wordWrap',
+      'overflowPunct', 'topLinePunct', 'autoSpaceDE', 'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind', 'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc',
+      'textDirection', 'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle', 'rPr', 'sectPr', 'pPrChange'],
+    RPR: ['rStyle', 'rFonts', 'b', 'bCs', 'i', 'iCs', 'caps', 'smallCaps', 'strike', 'dstrike', 'outline', 'shadow', 'emboss', 'imprint', 'noProof', 'snapToGrid', 'vanish', 'webHidden', 'color',
+      'spacing', 'w', 'kern', 'position', 'sz', 'szCs', 'highlight', 'u', 'effect', 'bdr', 'shd', 'fitText', 'vertAlign', 'rtl', 'cs', 'em', 'lang', 'eastAsianLayout', 'specVanish', 'oMath'],
+    child(parent, name, order) {   // the w:<name> child of parent, made in the right place when missing
+      const d = parent.ownerDocument; let el = Array.from(parent.childNodes).find((c) => c.localName === name); if (el) return el;
+      el = d.createElementNS(WNS, `w:${name}`); const i = order.indexOf(name);
+      const next = Array.from(parent.childNodes).find((c) => c.nodeType === 1 && order.indexOf(c.localName) > i);
+      parent.insertBefore(el, next || null); return el;
+    },
+    ppr(p, name) { const d = p.ownerDocument; let pPr = Array.from(p.childNodes).find((c) => c.localName === 'pPr');
+      if (!pPr) { pPr = d.createElementNS(WNS, 'w:pPr'); p.insertBefore(pPr, p.firstChild); } return W.child(pPr, name, W.PPR); },
+    indent(p, tw) { const ind = W.ppr(p, 'ind'); const cur = Number(ind.getAttributeNS(WNS, 'left') || ind.getAttribute('w:left') || ind.getAttribute('w:start') || 0);
+      ind.setAttribute('w:left', String(cur + tw)); if (ind.hasAttribute('w:start')) ind.setAttribute('w:start', String(cur + tw)); ind.removeAttribute('w:hanging'); ind.removeAttribute('w:firstLine'); },
+    bold(p) { Array.from(p.getElementsByTagNameNS(WNS, 'r')).forEach((r) => { const d = r.ownerDocument; let rPr = Array.from(r.childNodes).find((c) => c.localName === 'rPr');
+      if (!rPr) { rPr = d.createElementNS(WNS, 'w:rPr'); r.insertBefore(rPr, r.firstChild); } const b = W.child(rPr, 'b', W.RPR); b.removeAttribute('w:val'); }); },
     // replace character ranges of a paragraph, keeping each run's own style (Word often splits one word over several runs)
     splice(p, ranges) {
       const nodes = W.texts(p);
@@ -3421,8 +3439,11 @@
         if (multi) {   // e.g. {{jd_responsibilities}}: one paragraph per line, each a copy of the template paragraph
           const lines = String(values[only[1]]).split(/\r?\n/).filter((l) => l.trim() !== ''); const at = text.indexOf('{{'); const tmpl = p.cloneNode(true);
           const rg = (t) => [{ start: at, end: at + only[0].length, text: t }];
-          W.splice(p, rg(lines[0] || '')); let after = p;
-          lines.slice(1).forEach((ln) => { const c = tmpl.cloneNode(true); W.splice(c, rg(ln)); after.parentNode.insertBefore(c, after.nextSibling); after = c; });
+          // a line starting with spaces is indented; for the JD duties a numbered line ("1. Title") is the bold heading of the lines under it
+          const shape = (c, ln) => { const ind = /^\s+\S/.test(ln); W.splice(c, rg(ind ? ln.replace(/^\s+/, '') : ln));
+            if (ind) W.indent(c, 360); else if (only[1] === 'jd_responsibilities' && /^\d+\.\s/.test(ln)) { W.bold(c); W.ppr(c, 'keepNext'); } };
+          shape(p, lines[0] || ''); let after = p;
+          lines.slice(1).forEach((ln) => { const c = tmpl.cloneNode(true); shape(c, ln); after.parentNode.insertBefore(c, after.nextSibling); after = c; });
           return 1;
         }
         const ranges = [...text.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => { const v = values[m[1]]; return { start: m.index, end: m.index + m[0].length, text: v != null && String(v).trim() !== '' ? String(v) : `[${labelOf(m[1])}]` }; });

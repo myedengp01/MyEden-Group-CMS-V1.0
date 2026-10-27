@@ -72,6 +72,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 44. `20261026_cms_person_master_edit.sql` — Super Admin only: `cms_person_master(person)`, `cms_person_master_save(person, changes, reason)` (identity, Employee ID, master company, centre, job title, employment status, confirmation / probation dates; join date locked; Employee Master + payroll record together; logged)
 45. `20261027_cms_employment_history.sql` — permission `people.history` (Admin, HR); `cms_employer_periods`; `cms_person_history`, `cms_person_transfer`, `cms_person_period_add`, `cms_person_period_end`, `cms_person_paylines_move` (Super Admin); master company follows the employer history
 46. `20261027_cms_history_correct_company.sql` — `cms_person_assignment_correct` (Super Admin: fix the company of a paying-company part, dates kept); seeded employer periods end on the last day for former staff
+47. `20261027_cms_letter_jd_duties_format.sql` — `{{jd_responsibilities}}` as numbered titles with the description on the next line
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -121,6 +122,8 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-12:55** — HR letters: the JD duties (`{{jd_responsibilities}}`) now follow the JD Manual's layout — "1. Title" in bold, the
+  description on its own indented line under it. Database: `20261027_cms_letter_jd_duties_format.sql`.
 - **v2026.10.27-12:25** — **Printing Word letters.** Printed / saved PDF letters now come out as clean A4 pages: no browser web address,
   date or page counter on the paper, no blank half-pages. Text that runs past the bottom margin continues on a new page with the same
   letterhead and footer, and "Page x of y" in the footer counts the pages. The PDF and the Word download are named
