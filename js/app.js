@@ -3488,6 +3488,35 @@
         return out + [...cur].reverse().map((g) => `[/${g}]`).join('');
       }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
     },
+    // Word pages as on paper: a page whose text runs past the bottom margin continues on a new page with the same header and footer,
+    // and "Page x of y" in the footer counts the pages (the Word file itself keeps its own page breaks)
+    paginate(doc) {
+      const px = (v) => { const m = String(v || '').match(/([\d.]+)(pt|px)/); return m ? Number(m[1]) * (m[2] === 'pt' ? 4 / 3 : 1) : 0; };
+      const pages = [...doc.querySelectorAll('section.docx')];
+      for (let i = 0; i < pages.length && i < 60; i += 1) {
+        const sec = pages[i]; const art = sec.querySelector(':scope > article'); if (!art) continue;
+        const cs = doc.defaultView.getComputedStyle(sec); const pageH = px(sec.style.minHeight) || 1123;
+        const head = sec.querySelector(':scope > header'); const foot = sec.querySelector(':scope > footer');
+        const room = pageH - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - Math.max(0, (head?.offsetHeight || 0) + parseFloat(head ? doc.defaultView.getComputedStyle(head).marginTop : 0))
+          - Math.max(0, (foot?.offsetHeight || 0) + parseFloat(foot ? doc.defaultView.getComputedStyle(foot).marginBottom : 0)) - 12;
+        if (art.scrollHeight <= room) continue;
+        const top = art.getBoundingClientRect().top; const kids = [...art.children];
+        const cut = kids.findIndex((k, n) => n > 0 && k.getBoundingClientRect().bottom - top > room);
+        if (cut <= 0) continue;
+        const next = sec.cloneNode(false); if (head) next.append(head.cloneNode(true)); const art2 = art.cloneNode(false); art2.style.paddingTop = '14px'; next.append(art2);
+        kids.slice(cut).forEach((k) => art2.append(k)); if (foot) next.append(foot.cloneNode(true));
+        const wm = sec.querySelector(':scope > .cms-wm'); if (wm) next.append(wm.cloneNode(true));
+        sec.after(next); pages.splice(i + 1, 0, next);
+      }
+      const all = [...doc.querySelectorAll('section.docx')];
+      all.forEach((sec, i) => { sec.querySelectorAll(':scope > footer, :scope > header').forEach((hf) => {
+        const w = doc.createTreeWalker(hf, 4); let acc = ''; let n;
+        while ((n = w.nextNode())) { const t = n.textContent;
+          if (/^\s*\d+\s*$/.test(t) && /Page\s*$/i.test(acc)) n.textContent = t.replace(/\d+/, String(i + 1));
+          else if (/^\s*\d+\s*$/.test(t) && /\bof\s*$/i.test(acc) && /Page\s*\d+\s*of\s*$/i.test(acc)) n.textContent = t.replace(/\d+/, String(all.length));
+          acc = (acc + n.textContent).slice(-40); } }); });
+      return all.length;
+    },
     // read-only preview in a sandboxed frame (no scripts, no network); unfilled [Label] and raw {{key}} are marked
     async render(bytes, host, opts = {}) {
       await wordLibs(); const box = document.createElement('div');
@@ -3503,10 +3532,15 @@
       if (opts.stamp) box.querySelectorAll('section.docx').forEach((s) => { s.style.position = 'relative'; const w = document.createElement('div'); w.className = 'cms-wm'; w.textContent = opts.stamp; w.setAttribute('aria-hidden', 'true'); s.append(w); });
       const frame = document.createElement('iframe'); frame.className = 'lw-frame'; frame.title = 'Word letter preview'; frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
       const fit = () => { for (const pg of frame.contentDocument?.querySelectorAll('section.docx') || []) pg.style.zoom = opts.zoom || Math.min(1, (frame.clientWidth - 20) / pg.offsetWidth); };
-      frame.onload = () => { fit(); try { frame.style.height = `${Math.max(500, frame.contentDocument.body.scrollHeight + 20)}px`; } catch (e) { /* sizing only */ } };
-      frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><style>body{margin:0;background:#e5e7eb}.docx-wrapper{padding:8px!important;background:#e5e7eb!important}section.docx{margin:0 auto 10px!important}.cms-wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-35deg);font:bold 40pt Arial,sans-serif;color:rgba(190,20,30,.13);white-space:nowrap;pointer-events:none;user-select:none;z-index:5;letter-spacing:.04em}@media print{body,.docx-wrapper{background:#fff!important;padding:0!important}section.docx{zoom:1!important;box-shadow:none!important;margin:0!important}mark{background:none!important;color:inherit!important}}</style></head><body>${box.innerHTML}</body></html>`;
+      frame.onload = () => { try { W.paginate(frame.contentDocument); } catch (e) { /* preview still shows */ } fit(); try { frame.style.height = `${Math.max(500, frame.contentDocument.body.scrollHeight + 20)}px`; } catch (e) { /* sizing only */ } };
+      frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><style>body{margin:0;background:#e5e7eb}.docx-wrapper{padding:8px!important;background:#e5e7eb!important}section.docx{margin:0 auto 10px!important}.cms-wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-35deg);font:bold 40pt Arial,sans-serif;color:rgba(190,20,30,.13);white-space:nowrap;pointer-events:none;user-select:none;z-index:5;letter-spacing:.04em}section.docx{overflow:hidden}@page{size:A4;margin:0}@media print{body,.docx-wrapper{background:#fff!important;padding:0!important}section.docx{zoom:1!important;box-shadow:none!important;margin:0!important;height:297mm!important;min-height:0!important;break-after:page;page-break-after:always}section.docx:last-of-type{break-after:auto;page-break-after:auto}mark{background:none!important;color:inherit!important}}</style></head><body>${box.innerHTML}</body></html>`;
       host.replaceChildren(frame);
-      return { frame, refit: fit, print: () => frame.contentWindow.print(), selection: () => { try { return String(frame.contentWindow.getSelection() || '').trim(); } catch (e) { return ''; } } };
+      // print / save as PDF: the file is named "<employee> - <letter> - <date time>" (the browser takes the name from the page title)
+      const print = (name) => { const doc = frame.contentDocument; const top = document.title; const inner = doc.title;
+        if (name) { document.title = name; doc.title = name; }
+        const back = () => { document.title = top; doc.title = inner; window.removeEventListener('focus', back); };
+        frame.contentWindow.addEventListener('afterprint', back, { once: true }); setTimeout(back, 60000); frame.contentWindow.print(); };
+      return { frame, refit: fit, print, selection: () => { try { return String(frame.contentWindow.getSelection() || '').trim(); } catch (e) { return ''; } } };
     },
   };
   const srcBucket = () => API.sb().storage.from('hr-letter-sources');
@@ -3916,6 +3950,9 @@
       if (t.format === 'docx') { const src = await getDocx(t.source_path); const bytes = await W.letterhead(await W.fill(src, rec.fields || vals, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
+    // file name for print / PDF / Word: employee name - letter name - date and time
+    const letterFileName = () => { const n = new Date(Date.now() + 8 * 36e5).toISOString(); const nm = (rec?.name || person()?.name || 'Letter').trim(); const tl = (rec?.title || tpl()?.title || 'HR letter').trim();
+      return `${nm} - ${tl} - ${n.slice(0, 10)} ${n.slice(11, 13)}.${n.slice(14, 16)}`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim(); };
     $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
       const a = b.dataset.a;
       try {
@@ -3929,8 +3966,8 @@
           if (ok) { toast('Sent back'); loadLettersPending(); render(); } return; }
         if (a === 'issue') { if (!(await ask(`Issue this letter to ${rec.name}? It is then locked and kept in their records.`, 'Issue'))) return;
           b.disabled = true; await doIssue(); toast('Letter issued'); state.lettersData = null; loadLettersPending(); render(); return; }
-        if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(); return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf)], () => render()); return; }
-        if (a === 'word') { saveBytes(await getDocx(rec.docx_path), `${fileSafe(rec.title)}-${fileSafe(rec.name)}.docx`); return; }
+        if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(letterFileName()); return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf)], () => render()); return; }
+        if (a === 'word') { saveBytes(await getDocx(rec.docx_path), `${letterFileName()}.docx`); return; }
         if (a === 'void') { const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: `<p class="muted small">${status === 'issued' ? 'The issued letter stays on record, marked as cancelled.' : 'The draft is closed.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
           onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_letter_void', { p_id: rec.id, p_reason: f.r.value.trim() }); } });
           if (ok) { toast('Letter cancelled'); state.lettersData = null; location.hash = '#/letters'; } }

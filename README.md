@@ -121,6 +121,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-12:25** — **Printing Word letters.** Printed / saved PDF letters now come out as clean A4 pages: no browser web address,
+  date or page counter on the paper, no blank half-pages. Text that runs past the bottom margin continues on a new page with the same
+  letterhead and footer, and "Page x of y" in the footer counts the pages. The PDF and the Word download are named
+  "<employee> - <letter> - <date time>".
 - **v2026.10.27-11:15** — Word letter preview: the "DRAFT — NOT ISSUED" / "DRAFT — INCOMPLETE" / "APPROVED — NOT YET ISSUED" mark is now a
   faint diagonal watermark across the page instead of red text at the top, which overlapped the letterhead. The issued Word file has no mark.
 - **v2026.10.27-10:50** — History tab: **Correct…** on each paying-company part (Super Admin) for a company that was wrong from the
