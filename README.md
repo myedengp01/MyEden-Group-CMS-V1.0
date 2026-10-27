@@ -125,6 +125,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-16:05** — Transfer and promotion letters: the assessment end date follows the start (3 months less a day) until HR types
+  another date. "Update records from this letter" for a transfer / promotion puts the new basic salary in the first payroll month after the
+  assessment ends (not the effective date) and the next review 12 months later. Printed pages keep a heading or an "…as follows:" line with
+  the table under it. Clean Word template "Letter of Transfer and Promotion" (MEG-HR-TRL-002 v1.0): a variation letter — one Current → New
+  table, assessment and salary once, other terms unchanged, Appendix 1 Job Description from the JD Manual.
 - **v2026.10.27-14:05** — **Update records from an issued letter.** An issued letter shows the changes it implies — confirmation,
   new basic salary, next salary review (12 months by default, can be changed), new position (job title, level, Career Paths JD) — each as
   now → after, ticked by default and editable. One click applies them. Changes dated in the future (confirmation, position) are scheduled

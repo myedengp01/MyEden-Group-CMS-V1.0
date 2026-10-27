@@ -3522,8 +3522,13 @@
           - Math.max(0, (foot?.offsetHeight || 0) + parseFloat(foot ? doc.defaultView.getComputedStyle(foot).marginBottom : 0)) - 12;
         if (art.scrollHeight <= room) continue;
         const top = art.getBoundingClientRect().top; const kids = [...art.children];
-        const cut = kids.findIndex((k, n) => n > 0 && k.getBoundingClientRect().bottom - top > room);
+        let cut = kids.findIndex((k, n) => n > 0 && k.getBoundingClientRect().bottom - top > room);
         if (cut <= 0) continue;
+        // keep a heading, or a line that introduces what follows ("…as follows:"), with the block it introduces
+        const lead = (k) => { if (!k || k.tagName !== 'P') return false; const tx = k.textContent.trim(); if (!tx) return false;
+          if (/:\s*$/.test(tx)) return true; const spans = [...k.querySelectorAll('span')].filter((x) => x.textContent.trim());
+          return tx.length < 90 && spans.length > 0 && spans.every((x) => /bold|700/.test(doc.defaultView.getComputedStyle(x).fontWeight)); };
+        while (cut > 1 && lead(kids[cut - 1])) cut -= 1;
         const next = sec.cloneNode(false); if (head) next.append(head.cloneNode(true)); const art2 = art.cloneNode(false); art2.style.paddingTop = '14px'; next.append(art2);
         kids.slice(cut).forEach((k) => art2.append(k)); if (foot) next.append(foot.cloneNode(true));
         const wm = sec.querySelector(':scope > .cms-wm'); if (wm) next.append(wm.cloneNode(true));
@@ -3850,7 +3855,16 @@
       } catch (e) { pv.innerHTML = errorCard(e.message); }
     };
     const later = () => { clearTimeout(timer); timer = setTimeout(preview, tpl()?.format === 'docx' ? 500 : 120); };
-    const calc = () => { if (!('basic_increment' in vals) && !keys().includes('basic_increment')) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
+    // assessment in a new position: the end date follows the start (3 months less a day) until HR types another end date
+    const calcAssess = () => {
+      if (!keys().includes('promotion_probation_start') || !keys().includes('promotion_probation_end')) return;
+      const raw = String(vals.promotion_probation_start || '').trim(); const t = raw ? Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw) : NaN; if (isNaN(t)) return;
+      const s0 = new Date(t); const e = new Date(s0.getFullYear(), s0.getMonth() + 3, s0.getDate() - 1);
+      const iso = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`; const v = longDate(iso);
+      const cur = String(vals.promotion_probation_end || '').trim();
+      if (cur === '' || cur === vals._pp_auto) { vals.promotion_probation_end = v; vals._pp_auto = v; const i = $('[data-k="promotion_probation_end"]', el); if (i) i.value = v; }
+    };
+    const calc = () => { calcAssess(); if (!('basic_increment' in vals) && !keys().includes('basic_increment')) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
     // duties, JD reference and version from the JD Manual, by job title: the position in the letter (transfer / promotion), else the current one
@@ -3889,7 +3903,7 @@
         <datalist id="lw-jdtitles">${(jdTitles || []).map((x) => `<option value="${esc(x.title)}">${esc([x.level, x.department].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`;
       $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); });
         if (['new_position', 'revised_position'].includes(i.dataset.k)) i.addEventListener('change', () => { vals[i.dataset.k] = i.value; fillJD(true); }); });
-      $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; later(); }));
+      $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; calc(); later(); }));
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
     };
     const loadCtx = async (fresh) => {

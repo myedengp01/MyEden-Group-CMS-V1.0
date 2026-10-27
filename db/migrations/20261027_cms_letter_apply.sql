@@ -112,7 +112,7 @@ create or replace function public.cms_letter_apply_preview(p_id uuid)
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $f$
 declare l public.hr_letter_records; t public.hr_letter_templates; em public.employee_master; ee public.eppd_employees; m public.eppd_employments;
         f jsonb; v_date date; v_type text; items jsonb := '[]'::jsonb; cur_sal numeric; new_sal numeric; v_title text; v_pos public.jd_positions; ap public.cms_letter_applied;
-        co text; v_can_people boolean; v_can_pay boolean; v_can_career boolean; rv public.cms_employee_review;
+        co text; v_sal date; v_pend date; v_can_people boolean; v_can_pay boolean; v_can_career boolean; rv public.cms_employee_review;
 begin
   select * into l from public.hr_letter_records where id = p_id;
   if l.id is null then raise exception 'Letter not found.'; end if;
@@ -124,6 +124,10 @@ begin
   select * into m from public.eppd_employments where employee_id = ee.id and resigned_date is null order by join_date desc limit 1;
   select * into rv from public.cms_employee_review where employment_id = m.id;
   f := l.fields; v_date := coalesce(private.cms_parse_date(f->>'effective_date'), private.cms_parse_date(f->>'confirmation_date'));
+  -- the salary month: the effective month, or for a transfer / promotion the first payroll month after the assessment ends
+  v_pend := private.cms_parse_date(f->>'promotion_probation_end');
+  v_sal := case when v_type like 'TRL%' and v_pend is not null then case when extract(day from v_pend + 1) = 1 then v_pend + 1 else (date_trunc('month', v_pend) + interval '1 month')::date end
+                else date_trunc('month', coalesce(v_date, current_date))::date end;
   v_can_people := public.cms_can('people', 'E', co); v_can_pay := public.cms_can('payroll.increments', 'C', co); v_can_career := public.cms_can('careers', 'E', co);
 
   if v_type like 'LOC%' then
@@ -136,13 +140,13 @@ begin
   if new_sal is not null and new_sal > 0 and m.id is not null then
     select h.amount into cur_sal from public.eppd_salary_history h join public.eppd_assignments a on a.id = h.assignment_id
      where a.employment_id = m.id and a.is_primary order by h.effective_from desc limit 1;
-    items := items || jsonb_build_array(jsonb_build_object('kind', 'salary', 'label', 'Basic salary', 'date', date_trunc('month', coalesce(v_date, current_date))::date, 'amount', new_sal,
+    items := items || jsonb_build_array(jsonb_build_object('kind', 'salary', 'label', 'Basic salary', 'date', v_sal, 'amount', new_sal,
       'allowed', v_can_pay, 'now', 'RM ' || to_char(coalesce(cur_sal, 0), 'FM999,990.00'),
-      'after', 'RM ' || to_char(new_sal, 'FM999,990.00') || ' from ' || to_char(date_trunc('month', coalesce(v_date, current_date)), 'Mon YYYY') || ' payroll'));
+      'after', 'RM ' || to_char(new_sal, 'FM999,990.00') || ' from ' || to_char(v_sal, 'Mon YYYY') || ' payroll' || case when v_type like 'TRL%' and v_pend is not null then ' (after the assessment ends ' || to_char(v_pend, 'DD Mon YYYY') || '; change it if the assessment is extended)' else '' end));
     items := items || jsonb_build_array(jsonb_build_object('kind', 'review', 'label', 'Next salary review', 'interval', 'M12',
-      'next', (date_trunc('month', coalesce(v_date, current_date)) + interval '12 months')::date, 'allowed', public.cms_can('payroll.increments', 'E', co),
+      'next', (v_sal + interval '12 months')::date, 'allowed', public.cms_can('payroll.increments', 'E', co),
       'now', coalesce('every ' || (select label from public.cms_review_intervals where code = rv.interval_code), 'default interval') || coalesce(', next ' || to_char(rv.next_review, 'DD Mon YYYY'), ''),
-      'after', 'Every 12 months, next review ' || to_char((date_trunc('month', coalesce(v_date, current_date)) + interval '12 months')::date, 'DD Mon YYYY'),
+      'after', 'Every 12 months, next review ' || to_char((v_sal + interval '12 months')::date, 'DD Mon YYYY'),
       'intervals', (select jsonb_agg(jsonb_build_object('code', code, 'label', label, 'months', months) order by sort_order) from public.cms_review_intervals where is_active)));
   end if;
   v_title := nullif(btrim(coalesce(f->>'new_position', f->>'revised_position', '')), '');
