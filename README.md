@@ -121,6 +121,8 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-11:15** — Word letter preview: the "DRAFT — NOT ISSUED" / "DRAFT — INCOMPLETE" / "APPROVED — NOT YET ISSUED" mark is now a
+  faint diagonal watermark across the page instead of red text at the top, which overlapped the letterhead. The issued Word file has no mark.
 - **v2026.10.27-10:50** — History tab: **Correct…** on each paying-company part (Super Admin) for a company that was wrong from the
   start — the dates stay, only the company changes; then move the pay lines. Database: `20261027_cms_history_correct_company.sql`.
 - **v2026.10.27-09:40** — **Employment history on the profile (History tab).** For people whose path is not a straight line: the
