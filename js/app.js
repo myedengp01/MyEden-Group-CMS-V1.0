@@ -3768,7 +3768,7 @@
       : status === 'void' ? `<div class="note bad">${icon('x')}<div><b>Cancelled</b>${rec.void_reason ? ` · ${esc(rec.void_reason)}` : ''}</div></div>` : '';
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters">‹ HR Letters</a><div class="lw-title"><b>${rec ? esc(`${rec.title || rec.template} · ${rec.name}`) : 'New HR letter'}</b>${rec ? ` <span class="tag ${(LET_ST[status] || [])[1] || ''} xs">${esc((LET_ST[status] || [status])[0])}</span>` : ''}</div><div class="lw-acts" id="lw-acts"></div></div>
-      ${banner}
+      ${banner}${status === 'issued' || status === 'void' ? '<div id="lw-apply"></div>' : ''}
       <div class="lw-grid">
         <section class="card lw-form">
           <div class="fld"><span>Person</span>${editable && !rec ? `<input id="lw-pq" type="search" placeholder="Type to find a name or Employee ID" aria-label="Find person">` : ''}
@@ -3998,6 +3998,35 @@
     pq?.addEventListener('input', () => { const t = pq.value.trim().toLowerCase(); let first = null; $$('option', psel).forEach((o) => { const hit = !o.value || !t || o.textContent.toLowerCase().includes(t); o.hidden = !hit; if (hit && o.value && !first) first = o; }); if (t && first && psel.value !== first.value) { psel.value = first.value; psel.dispatchEvent(new Event('change')); } });
     psel.addEventListener('change', () => { personId = psel.value; ++jdSeq; jdSnapshot = null; jdPerson = ''; Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(true); });
     $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; ++jdSeq; drawFields(); drawJD(); later(); loadFacts(); fillJD(false); });
+    // after issuing: update the person's records from what the letter says (confirmation, salary, review, position)
+    const drawApply = async () => {
+      const box = $('#lw-apply', el); if (!box || !rec) return;
+      let A; try { A = await API.rpc('cms_letter_apply_preview', { p_id: rec.id }); } catch (e) { box.innerHTML = ''; return; }
+      const sched = (A.scheduled || []).filter((x) => x.status === 'pending');
+      if (A.applied) {
+        box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>${icon('check-circle')} Records updated from this letter</h3><span class="muted small">${dShort(A.applied.at)}${A.applied.by ? ` · ${esc(A.applied.by)}` : ''}</span></div>
+          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position' }[x.kind] || x.kind)}${x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
+          ${status === 'void' ? `<p class="note warn small">${icon('help')}<span>This letter is cancelled. Changes not yet due were cancelled; changes already made (salary, review${A.applied.items.some((x) => !x.scheduled && ['confirm', 'position'].includes(x.kind)) ? ', confirmation / position' : ''}) stay — reverse them in Payroll / the profile if they no longer apply.</span></p>` : ''}</section>`;
+        return;
+      }
+      if (status !== 'issued' || !A.items.length) { box.innerHTML = ''; return; }
+      const inp = (x, i) => x.kind === 'salary' ? `<label class="fld"><span>New basic (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>From payroll month</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
+        : x.kind === 'review' ? `<label class="fld"><span>Review every</span><select data-i="${i}" data-f="interval" ${x.allowed ? '' : 'disabled'}>${(x.intervals || []).map((v) => `<option value="${esc(v.code)}" ${v.code === x.interval ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label><label class="fld"><span>Next review</span><input type="date" data-i="${i}" data-f="next" value="${esc(x.next || '')}" ${x.allowed ? '' : 'disabled'}></label>`
+        : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
+      box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>Update records from this letter</h3><span class="muted small">Issuing files the letter; these change ${esc(A.person)}'s records.</span></div>
+        <div class="table-wrap"><table class="data la-t"><thead><tr><th></th><th>Change</th><th>Now</th><th>After</th><th></th></tr></thead><tbody>
+        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed ? '' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
+        <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
+      $('#la-go', box).addEventListener('click', async () => {
+        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, amount: x.amount, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
+          $$(`[data-i="${i}"]`, box).forEach((f) => { o[f.dataset.f] = f.dataset.f === 'date' && f.type === 'month' ? `${f.value}-01` : f.dataset.f === 'amount' ? String(f.value).replace(/,/g, '') : f.value; }); return o; }).filter(Boolean);
+        if (!items.length) { toast('Tick at least one change.', 'err'); return; }
+        if (!(await ask(`Update ${A.person}'s records from this letter (${items.length} change${items.length === 1 ? '' : 's'})?`, 'Apply'))) return;
+        try { await API.rpc('cms_letter_apply', { p_id: rec.id, p_items: items }); toast('Records updated'); drawApply(); } catch (e) { toast(e.message, 'err'); }
+      });
+    };
+    drawApply();
     $('#lw-zoom', el).addEventListener('change', (e) => { zoom = e.target.value; applyZoom(); });
     $('#lw-full', el).addEventListener('click', () => { const c = $('#lw-pv-card', el); c.classList.toggle('lw-fullscreen'); $('#lw-full', el).lastChild.textContent = c.classList.contains('lw-fullscreen') ? 'Close full screen' : 'Full screen'; requestAnimationFrame(applyZoom); });
     window.addEventListener('resize', () => { if (zoom === 'fit') applyZoom(); });

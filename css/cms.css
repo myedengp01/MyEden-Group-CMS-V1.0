@@ -1029,3 +1029,9 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
 .hx-per:first-of-type { border-top: 0; padding-top: 4px; }
 .hx-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
 .hx-h .lnk { margin-left: auto; }
+
+/* ---- HR letters › update records from an issued letter */
+.la-card { margin-bottom: 14px; }
+.la-t td { vertical-align: top; }
+.la-in { display: flex; flex-wrap: wrap; gap: 8px; min-width: 260px; }
+.la-in .fld { margin: 0; min-width: 120px; flex: 1; }

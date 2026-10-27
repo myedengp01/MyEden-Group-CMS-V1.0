@@ -74,6 +74,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 46. `20261027_cms_history_correct_company.sql` — `cms_person_assignment_correct` (Super Admin: fix the company of a paying-company part, dates kept); seeded employer periods end on the last day for former staff
 47. `20261027_cms_letter_jd_duties_format.sql` — `{{jd_responsibilities}}` as numbered titles with the description on the next line
 48. `20261027_cms_letter_submit_optional_fields.sql` — sending for approval only needs the required placeholders filled (the letter reference is given on save); the error names what is still empty
+49. `20261027_cms_letter_apply.sql` — `cms_letter_apply_preview`, `cms_letter_apply`; `cms_letter_applied`, `cms_scheduled_changes` + nightly job `cms-scheduled-changes` (00:05 MYT); cancelled letters cancel their pending changes
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -123,6 +124,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-14:05** — **Update records from an issued letter.** An issued letter shows the changes it implies — confirmation,
+  new basic salary, next salary review (12 months by default, can be changed), new position (job title, level, Career Paths JD) — each as
+  now → after, ticked by default and editable. One click applies them. Changes dated in the future (confirmation, position) are scheduled
+  and applied automatically that night; salary goes into the payroll from its month. Applied once per letter, kept with the letter and on
+  the Timeline; a cancelled letter cancels its changes not yet due. Database: `20261027_cms_letter_apply.sql`.
 - **v2026.10.27-12:55** — HR letters: the JD duties (`{{jd_responsibilities}}`) now follow the JD Manual's layout — "1. Title" in bold, the
   description on its own indented line under it. Database: `20261027_cms_letter_jd_duties_format.sql`.
 - **v2026.10.27-12:25** — **Printing Word letters.** Printed / saved PDF letters now come out as clean A4 pages: no browser web address,
