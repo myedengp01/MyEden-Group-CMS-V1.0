@@ -71,6 +71,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 43. `20261026_cms_letter_reference_jd_appendix.sql` — `hr_letter_records.reference` + `{{letter_reference}}` (given on first save, e.g. MEG/HR/LOC_LOI/2026/0001); placeholders `jd_department`, `jd_level`, `jd_reports_to`, `jd_purpose`, `jd_effective_date`, `jd_qualifications`, `jd_experience`; `cms_letter_jd_titles(person)`
 44. `20261026_cms_person_master_edit.sql` — Super Admin only: `cms_person_master(person)`, `cms_person_master_save(person, changes, reason)` (identity, Employee ID, master company, centre, job title, employment status, confirmation / probation dates; join date locked; Employee Master + payroll record together; logged)
 45. `20261027_cms_employment_history.sql` — permission `people.history` (Admin, HR); `cms_employer_periods`; `cms_person_history`, `cms_person_transfer`, `cms_person_period_add`, `cms_person_period_end`, `cms_person_paylines_move` (Super Admin); master company follows the employer history
+46. `20261027_cms_history_correct_company.sql` — `cms_person_assignment_correct` (Super Admin: fix the company of a paying-company part, dates kept); seeded employer periods end on the last day for former staff
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -120,6 +121,8 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-10:50** — History tab: **Correct…** on each paying-company part (Super Admin) for a company that was wrong from the
+  start — the dates stay, only the company changes; then move the pay lines. Database: `20261027_cms_history_correct_company.sql`.
 - **v2026.10.27-09:40** — **Employment history on the profile (History tab).** For people whose path is not a straight line: the
   employer of record over time, each employment period with how it ended, and its paying-company parts. **Transfer…** from a date changes
   the employer of record, the paying company or both (service continuous; salary and running allowances carry over). **Add past

@@ -4579,7 +4579,7 @@
             <div class="hx-h"><b>${dShort(m.join)} – ${d(m.end)}</b> <span class="tag ${m.end ? '' : 'ok'}">${m.end ? esc(m.end_reason_label || 'Ended') : 'Current'}</span>
               <span class="muted small">${esc([jsL(m.job_status), m.title, m.dept ? `${m.dept}${m.dept_name ? ` · ${m.dept_name}` : ''}` : ''].filter(Boolean).join(' · '))}</span>
               ${m.end ? `<button type="button" class="lnk small" data-h="end" data-m="${m.id}">Change end…</button>` : ''}</div>
-            ${table(['Paid by', 'From', 'To', 'Salary'], m.assignments.map((a) => [`${esc(coN(a.company))}${a.primary ? '' : ' <span class="muted small">(second company)</span>'}`, a.from ? dShort(a.from) : '—', d(a.to),
+            ${table(['Paid by', 'From', 'To', 'Salary'], m.assignments.map((a) => [`${esc(coN(a.company))}${a.primary ? '' : ' <span class="muted small">(second company)</span>'}${Hh.can_move ? ` <button type="button" class="lnk small" data-h="fix" data-a="${a.id}" title="The company was wrong from the start: change it for these dates">Correct…</button>` : ''}`, a.from ? dShort(a.from) : '—', d(a.to),
               a.salary ? `RM ${m2(a.salary.amount)}${a.salary.basis === 'hourly' ? ' /h' : a.salary.basis === 'daily' ? ' /day' : ''}` : '<span class="muted">—</span>']), 'No paying company.')}
             ${m.end_note ? `<p class="small muted">${esc(m.end_note)}</p>` : ''}</div>`).join('') : '<p class="muted small">No employment period yet.</p>'}
           <p class="small muted">Join dates of existing periods are locked. A current period is ended with Leaving; someone coming back now is added with Rehire in Former Staff. Salary changes are made in Payroll.</p></section>
@@ -4626,6 +4626,13 @@
             <label class="fld"><span>How it ended</span><select name="er">${optL(WHY, m.end_reason, 'No change')}</select></label>
             <label class="fld fld-2"><span>Details</span><input name="en" maxlength="200" value="${esc(m.end_note || '')}"></label>${reasonFld}</div>`,
           onOk: async (f) => { const why = needWhy(f); await API.rpc('cms_person_period_end', { p_person: pid, p_employment: m.id, p: { end: f.end.value, end_reason: f.er.value, end_note: f.en.value.trim() }, p_reason: why }); } })) done('Period updated');
+      }));
+      $$('[data-h=fix]', box).forEach((b) => b.addEventListener('click', async () => {
+        const a = Hh.employments.flatMap((m) => m.assignments).find((x) => String(x.id) === b.dataset.a);
+        if (await modal({ title: `Correct the paying company · ${a.from ? dShort(a.from) : 'start'} – ${d(a.to)}`, ok: 'Correct',
+          body: `<p class="small muted">For a company that was wrong from the start (e.g. imported under the wrong company). The dates stay; only the company changes. To change company from a date onwards, use Transfer instead. Then move the pay lines below.</p>
+            <div class="fld-2"><label class="fld"><span>Now</span><input value="${esc(coN(a.company))}" disabled></label><label class="fld"><span>Correct company</span><select name="co">${optL(COS.filter(([c]) => c !== a.company), '', 'Choose…')}</select></label>${reasonFld}</div>`,
+          onOk: async (f) => { const why = needWhy(f); if (!f.co.value) throw new Error('Choose the company.'); await API.rpc('cms_person_assignment_correct', { p_person: pid, p_assignment: a.id, p: { company: f.co.value }, p_reason: why }); } })) done('Paying company corrected');
       }));
       $('[data-h=move]', box)?.addEventListener('click', async () => {
         const ids = $$('[data-line]:checked', box).map((i) => Number(i.dataset.line)); if (!ids.length) { toast('Tick the months to move.', 'err'); return; }
