@@ -70,6 +70,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 42. `20261026_cms_letter_jd_placeholders.sql` — placeholders `jd_title`, `jd_responsibilities` (+ `jd_reference`, `jd_version` from records); `cms_letter_jd_lookup(person, title, position)`
 43. `20261026_cms_letter_reference_jd_appendix.sql` — `hr_letter_records.reference` + `{{letter_reference}}` (given on first save, e.g. MEG/HR/LOC_LOI/2026/0001); placeholders `jd_department`, `jd_level`, `jd_reports_to`, `jd_purpose`, `jd_effective_date`, `jd_qualifications`, `jd_experience`; `cms_letter_jd_titles(person)`
 44. `20261026_cms_person_master_edit.sql` — Super Admin only: `cms_person_master(person)`, `cms_person_master_save(person, changes, reason)` (identity, Employee ID, master company, centre, job title, employment status, confirmation / probation dates; join date locked; Employee Master + payroll record together; logged)
+45. `20261027_cms_employment_history.sql` — permission `people.history` (Admin, HR); `cms_employer_periods`; `cms_person_history`, `cms_person_transfer`, `cms_person_period_add`, `cms_person_period_end`, `cms_person_paylines_move` (Super Admin); master company follows the employer history
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -119,6 +120,13 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.27-09:40** — **Employment history on the profile (History tab).** For people whose path is not a straight line: the
+  employer of record over time, each employment period with how it ended, and its paying-company parts. **Transfer…** from a date changes
+  the employer of record, the paying company or both (service continuous; salary and running allowances carry over). **Add past
+  period…** records an employment that has already ended (e.g. a temporary contract after leaving). **Change end…** corrects how / when a
+  past period ended. **Pay lines vs history** lists months paid under the wrong company; a Super Admin moves them (amounts unchanged,
+  months stay finalised, company totals move, audit entry per month). New permission "Employment history" (Admin and HR by default).
+  Join dates stay locked. Database: `20261027_cms_employment_history.sql`.
 - **v2026.10.26-22:30** — Fix: Edit master record failed for former staff ("confirmation_status … not-null"). Their Resigned /
   Terminated / Dismissed status is now shown and locked (changed only through Leaving / Rehire), and the status can no longer be cleared.
 - **v2026.10.26-20:45** — **Super Admin: edit master record.** On the employee profile, a Super Admin can correct the full name, Chinese

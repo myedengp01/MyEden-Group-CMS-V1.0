@@ -1023,3 +1023,9 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
   .pf-row { flex-wrap: wrap; } .pf-row input { flex: 1 1 40% !important; }
   .pf-tabs { max-width: 100%; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; } .pf-tabs button { flex: none; }
 }
+
+/* ---- profile › History (employment periods, transfers) */
+.hx-per { border-top: 1px solid var(--line, #e5e7eb); padding: 12px 0 4px; }
+.hx-per:first-of-type { border-top: 0; padding-top: 4px; }
+.hx-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.hx-h .lnk { margin-left: auto; }

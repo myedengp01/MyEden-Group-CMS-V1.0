@@ -3960,7 +3960,7 @@
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit · ${esc(t.title)}` : 'New text template'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
         <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_publish ? 'Publish' : 'Send for approval'}</button></div></div>
-      ${pub ? `<div class="note">${icon('help')}<div>This template is published${t.active ? ' and in use' : ''}. Your change ${L.can_publish ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current wording stays in use.${t.pending?.rejected ? `<br><b class="bad-t">Last change sent back:</b> ${esc(t.pending.rejected)}` : ''}</div></div>` : t?.status === 'rejected' && t.review_note ? `<div class="note bad">${icon('help')}<div><b>Sent back:</b> ${esc(t.review_note)}</div></div>` : ''}
+      ${pub ? `<div class="note">${icon('help')}<div>This template is published${t.active ? ' and in use' : ''}. Your change ${L.can_publish ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current wording stays in use.${t.pending?.rejected ? `<br><b class="bad-txt">Last change sent back:</b> ${esc(t.pending.rejected)}` : ''}</div></div>` : t?.status === 'rejected' && t.review_note ? `<div class="note bad">${icon('help')}<div><b>Sent back:</b> ${esc(t.review_note)}</div></div>` : ''}
       <form class="lw-grid" id="te-f" onsubmit="return false">
         <section class="card lw-form">
           <div class="grid-2 tight"><label class="fld fld-2"><span>Template title</span><input name="title" required value="${esc(fromWord?.title || pend?.title || t?.title || '')}" placeholder="e.g. Letter of Confirmation (teachers)"></label>
@@ -4385,7 +4385,7 @@
   }
 
   // ================================================================ PRI-011 · Employee profile: everything about a person on one page
-  const PROFILE_TABS = [['overview', 'Overview'], ['personal', 'Personal'], ['family', 'Family'], ['background', 'Background'], ['employment', 'Employment'],
+  const PROFILE_TABS = [['overview', 'Overview'], ['personal', 'Personal'], ['family', 'Family'], ['background', 'Background'], ['employment', 'Employment'], ['history', 'History'],
     ['pay', 'Pay'], ['leave', 'Leave'], ['documents', 'Photo & documents'], ['records', 'Letters & reviews'], ['timeline', 'Timeline']];
   const IMG_KINDS = [['photo', 'Passport-size photo'], ['ic_front', 'IC — front'], ['ic_back', 'IC — back'], ['passport', 'Passport page']];
   const profileImgCache = new Map();
@@ -4407,7 +4407,8 @@
   }
   async function profilePage(item, el) {
     const qs = new URLSearchParams(location.hash.split('?')[1] || ''); const pid = qs.get('id');
-    let tab = PROFILE_TABS.some(([k]) => k === qs.get('tab')) ? qs.get('tab') : 'overview';
+    const canHist = isSuper() || can('people.history'); const TABS = PROFILE_TABS.filter(([k]) => k !== 'history' || canHist);
+    let tab = TABS.some(([k]) => k === qs.get('tab')) ? qs.get('tab') : 'overview';
     el.innerHTML = loading();
     if (!pid) { el.innerHTML = errorCard('Choose a person in View People.'); return; }
     let D; try { D = await API.rpc('cms_person_profile', { p_person: pid }); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
@@ -4434,7 +4435,7 @@
         </div>
         <div class="pf-acts">${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
       </section>
-      <div class="seg pf-tabs" role="tablist">${PROFILE_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="seg pf-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="pf-body"></div>`;
     // header photo
     (async () => { try { const u = await profileImage(pid, 'photo', D.images?.photo); if (u) $('#pf-photo', el).innerHTML = `<img src="${esc(u)}" alt="Photo of ${esc(H.name)}">`; } catch (e) { /* initials stay */ } })();
@@ -4557,6 +4558,84 @@
         ${D.items ? `<section class="card">${secHead('Company items')}${table(['Item', 'Tag', 'Status', 'Issued', 'Returned'], D.items.map((x) => [v(x.description || x.type), v(x.tag), v(x.status), x.issued ? dShort(x.issued) : v(''), x.returned ? dShort(x.returned) : v('')]), 'No items.')}</section>` : ''}
         ${!D.letters && !D.appraisals && !D.items ? '<section class="card"><p class="muted small">You cannot see letters, appraisals or items.</p></section>' : ''}`;
     }
+    // ---- employment history: periods, employer of record, paying companies; transfer, add a past period, change how one ended
+    async function historyTab(box) {
+      box.innerHTML = loading();
+      let Hh; try { Hh = await API.rpc('cms_person_history', { p_person: pid }); } catch (e) { box.innerHTML = errorCard(e.message); return; }
+      const coN = (c) => coShort(c) || c; const d = (x) => (x ? dShort(x) : 'now');
+      const optL = (list, cur, blank) => `${blank != null ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([val, l]) => `<option value="${esc(val)}" ${String(cur ?? '') === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+      const COS = Hh.companies.map((c) => [c.code, c.name]); const JS = (Hh.job_statuses || []).map((x) => [x.code, x.label]);
+      const DEP = Hh.departments.map((x) => [x.id, `${x.code} · ${x.name}`]); const TIT = Hh.titles.map((x) => [x.id, x.name]); const WHY = (Hh.leaving_reasons || []).map((x) => [x.code, x.label]);
+      const jsL = (c) => (Hh.job_statuses || []).find((x) => x.code === c)?.label || c || '';
+      const bad = Hh.pay_check.filter((x) => !x.ok);
+      const emps = Hh.employments.slice().reverse();
+      box.innerHTML = `
+        <section class="card">${secHead('Employer of record (master company)', `<button type="button" class="btn sm" data-h="transfer" ${Hh.employments.length ? '' : 'disabled'}>${icon('arrow')}Transfer…</button>`)}
+          ${Hh.employers.length ? `<ol class="pf-tl">${Hh.employers.slice().reverse().map((x) => `<li><span class="muted small">${dShort(x.from)} – ${d(x.to)}</span><b>${esc(coN(x.company))}</b>${x.note ? `<span class="small muted">${esc(x.note)}</span>` : ''}</li>`).join('')}</ol>`
+            : `<p class="small">${esc(coN(Hh.company))} <span class="muted">since ${Hh.start ? dShort(Hh.start) : 'the start'} (from the master record; a transfer starts the history)</span></p>`}
+          <p class="small muted">The master company follows the period that covers today (or the latest one). It decides the letterhead, the company name in letters and which company's HR sees the person.</p></section>
+        <section class="card">${secHead('Employment periods', `<button type="button" class="btn sm ghost" data-h="add">${icon('plus')}Add past period…</button>`)}
+          ${emps.length ? emps.map((m, i) => `<div class="hx-per">
+            <div class="hx-h"><b>${dShort(m.join)} – ${d(m.end)}</b> <span class="tag ${m.end ? '' : 'ok'}">${m.end ? esc(m.end_reason_label || 'Ended') : 'Current'}</span>
+              <span class="muted small">${esc([jsL(m.job_status), m.title, m.dept ? `${m.dept}${m.dept_name ? ` · ${m.dept_name}` : ''}` : ''].filter(Boolean).join(' · '))}</span>
+              ${m.end ? `<button type="button" class="lnk small" data-h="end" data-m="${m.id}">Change end…</button>` : ''}</div>
+            ${table(['Paid by', 'From', 'To', 'Salary'], m.assignments.map((a) => [`${esc(coN(a.company))}${a.primary ? '' : ' <span class="muted small">(second company)</span>'}`, a.from ? dShort(a.from) : '—', d(a.to),
+              a.salary ? `RM ${m2(a.salary.amount)}${a.salary.basis === 'hourly' ? ' /h' : a.salary.basis === 'daily' ? ' /day' : ''}` : '<span class="muted">—</span>']), 'No paying company.')}
+            ${m.end_note ? `<p class="small muted">${esc(m.end_note)}</p>` : ''}</div>`).join('') : '<p class="muted small">No employment period yet.</p>'}
+          <p class="small muted">Join dates of existing periods are locked. A current period is ended with Leaving; someone coming back now is added with Rehire in Former Staff. Salary changes are made in Payroll.</p></section>
+        <section class="card">${secHead('Pay lines vs history')}
+          ${Hh.pay_check.length ? `${bad.length ? `<p class="note warn small">${icon('help')}<span>${bad.length} month${bad.length === 1 ? '' : 's'} paid under a different company from the paying company of that month.${Hh.can_move ? ' Tick them and move them (amounts unchanged; finalised months stay finalised; company totals move with them).' : ' A Super Admin can move them.'}</span></p>` : '<p class="note ok small">' + icon('check-circle') + '<span>Every pay line matches the paying company of its month.</span></p>'}
+            ${table(['', 'Month', 'Payroll', 'Pay line under', 'Paying company that month', 'Gross'], Hh.pay_check.slice().reverse().map((x) => [x.ok || !Hh.can_move ? '' : `<input type="checkbox" data-line="${x.line}" checked aria-label="Move ${esc(x.period)}">`,
+              esc(new Date(`${x.period}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })), esc(x.run_status), x.ok ? esc(coN(x.company)) : `<b class="bad-txt">${esc(coN(x.company))}</b>`, esc(coN(x.expected || '—')), `RM ${m2(x.gross)}`]), '')}
+            ${bad.length && Hh.can_move ? `<div class="btn-row"><button type="button" class="btn primary" data-h="move">Move ticked pay lines…</button></div>` : ''}` : '<p class="muted small">No pay lines yet.</p>'}</section>`;
+      const reasonFld = '<label class="fld fld-2"><span>Reason <small class="muted">— required, kept in the audit log</small></span><input name="why" maxlength="300" required></label>';
+      const needWhy = (f) => { if (f.why.value.trim().length < 5) throw new Error('Give the reason for the change (at least 5 characters).'); return f.why.value.trim(); };
+      const done = (msg) => { toast(msg); historyTab(box); };
+      $('[data-h=transfer]', box)?.addEventListener('click', async () => {
+        if (await modal({ title: `Transfer · ${H.name}`, wide: true, ok: 'Save transfer',
+          body: `<p class="small muted">From the date chosen, change the employer of record, the paying company, or both. Service stays continuous; the salary in force and running allowances carry over to the new paying company.</p>
+            <div class="fld-2"><label class="fld"><span>Takes effect from</span><input type="date" name="date" required></label><span></span>
+            <label class="fld"><span>Employer of record (master company)</span><select name="emp">${optL(COS, '', 'No change')}</select></label>
+            <label class="fld"><span>Paying company</span><select name="pay">${optL(COS, '', 'No change')}</select></label>
+            <label class="fld"><span>Full / part time from then <small class="muted">— optional</small></span><select name="js">${optL(JS, '', 'No change')}</select></label>
+            <label class="fld"><span>Job title from then <small class="muted">— optional</small></span><select name="title">${optL(TIT, '', 'No change')}</select></label>
+            <label class="fld"><span>Centre / department from then <small class="muted">— optional</small></span><select name="dept">${optL(DEP, '', 'No change')}</select></label>${reasonFld}</div>`,
+          onOk: async (f) => { const why = needWhy(f); if (!f.date.value) throw new Error('Choose the date the transfer takes effect.'); if (!f.emp.value && !f.pay.value) throw new Error('Choose the new employer of record, the new paying company, or both.');
+            await API.rpc('cms_person_transfer', { p_person: pid, p: { date: f.date.value, employer: f.emp.value, paying: f.pay.value, job_status: f.js.value, title_id: f.title.value, dept_id: f.dept.value }, p_reason: why }); } })) done('Transfer saved');
+      });
+      $('[data-h=add]', box)?.addEventListener('click', async () => {
+        if (await modal({ title: `Add past employment period · ${H.name}`, wide: true, ok: 'Add period',
+          body: `<p class="small muted">For a period that has already ended, e.g. an earlier stint or a temporary contract after leaving. It must not overlap another period.</p>
+            <div class="fld-2"><label class="fld"><span>First day</span><input type="date" name="start" required></label><label class="fld"><span>Last day</span><input type="date" name="end" required></label>
+            <label class="fld"><span>Paying company</span><select name="pay">${optL(COS, Hh.company)}</select></label>
+            <label class="fld"><span>Employer of record</span><select name="emp">${optL(COS, '', 'Same as the paying company')}</select></label>
+            <label class="fld"><span>Full / part time</span><select name="js">${optL(JS, 'PT', 'Not set')}</select></label>
+            <label class="fld"><span>Job title</span><select name="title">${optL(TIT, '', 'Not set')}</select></label>
+            <label class="fld"><span>Centre / department</span><select name="dept">${optL(DEP, '', 'Not set')}</select></label>
+            <label class="fld"><span>How it ended</span><select name="er" required>${optL(WHY, 'CONTRACT_END', 'Choose…')}</select></label>
+            <label class="fld"><span>Details <small class="muted">— needed for "Other"</small></span><input name="en" maxlength="200"></label>
+            <label class="fld"><span>Salary for the period <small class="muted">— optional</small></span><span class="hours"><input name="sal" inputmode="decimal" placeholder="RM"> <select name="basis">${optL([['monthly', 'per month'], ['hourly', 'per hour'], ['daily', 'per day']], 'monthly')}</select></span></label>${reasonFld}</div>`,
+          onOk: async (f) => { const why = needWhy(f); if (!f.start.value || !f.end.value) throw new Error('Give the first and last day.'); if (!f.er.value) throw new Error('Choose how the period ended.');
+            await API.rpc('cms_person_period_add', { p_person: pid, p: { start: f.start.value, end: f.end.value, paying: f.pay.value, employer: f.emp.value, job_status: f.js.value, title_id: f.title.value, dept_id: f.dept.value,
+              end_reason: f.er.value, end_note: f.en.value.trim(), salary: f.sal.value.trim(), basis: f.basis.value }, p_reason: why }); } })) done('Period added');
+      });
+      $$('[data-h=end]', box).forEach((b) => b.addEventListener('click', async () => {
+        const m = Hh.employments.find((x) => String(x.id) === b.dataset.m);
+        if (await modal({ title: `Change how the period ended · ${dShort(m.join)} – ${dShort(m.end)}`, ok: 'Save',
+          body: `<div class="fld-2"><label class="fld"><span>Last day</span><input type="date" name="end" value="${esc(m.end)}"></label>
+            <label class="fld"><span>How it ended</span><select name="er">${optL(WHY, m.end_reason, 'No change')}</select></label>
+            <label class="fld fld-2"><span>Details</span><input name="en" maxlength="200" value="${esc(m.end_note || '')}"></label>${reasonFld}</div>`,
+          onOk: async (f) => { const why = needWhy(f); await API.rpc('cms_person_period_end', { p_person: pid, p_employment: m.id, p: { end: f.end.value, end_reason: f.er.value, end_note: f.en.value.trim() }, p_reason: why }); } })) done('Period updated');
+      }));
+      $('[data-h=move]', box)?.addEventListener('click', async () => {
+        const ids = $$('[data-line]:checked', box).map((i) => Number(i.dataset.line)); if (!ids.length) { toast('Tick the months to move.', 'err'); return; }
+        const list = Hh.pay_check.filter((x) => ids.includes(x.line));
+        if (await modal({ title: `Move ${ids.length} pay line${ids.length === 1 ? '' : 's'} · ${H.name}`, ok: 'Move pay lines', danger: true,
+          body: `<p class="small">${list.map((x) => `${esc(new Date(`${x.period}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}: ${esc(coN(x.company))} → <b>${esc(coN(x.expected))}</b>`).join('<br>')}</p>
+            <p class="small muted">Only the company of each line changes. Amounts, payslip figures and the month's status stay; the month's company totals move with the line. Payslips and reports for these months then show the new company. Files already downloaded or submitted do not change.</p>${reasonFld}`,
+          onOk: async (f) => { const why = needWhy(f); await API.rpc('cms_person_paylines_move', { p_person: pid, p_lines: ids, p_reason: why }); } })) done('Pay lines moved');
+      });
+    }
     async function timeline(box) {
       box.innerHTML = loading();
       try { const tl = await API.rpc('cms_person_timeline', { p_person: pid });
@@ -4565,7 +4644,7 @@
     }
     async function draw() {
       const map = { overview, personal, family, background, employment, pay, records };
-      if (map[tab]) body.innerHTML = map[tab](); else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body);
+      if (map[tab]) body.innerHTML = map[tab](); else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body); else if (tab === 'history') await historyTab(body);
       $$('[data-edit]', body).forEach((b) => b.addEventListener('click', () => editProfile(b.dataset.edit)));
     }
     // ---- editing (stored in the CMS; the application stays as it was)
