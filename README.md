@@ -76,6 +76,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 48. `20261027_cms_letter_submit_optional_fields.sql` — sending for approval only needs the required placeholders filled (the letter reference is given on save); the error names what is still empty
 49. `20261027_cms_letter_apply.sql` — `cms_letter_apply_preview`, `cms_letter_apply`; `cms_letter_applied`, `cms_scheduled_changes` + nightly job `cms-scheduled-changes` (00:05 MYT); cancelled letters cancel their pending changes
 50. `20261027_cms_run_totals_of.sql` — `private.cms_totals_of(run, company)`: a month's stored totals worked out again from its lines (for corrections)
+51. `20261028_cms_letter_draft_print.sql` — `cms_letter_draft_printed` (records each print of a letter before it is issued) and `cms_letter_history` (a letter's history for the letter page)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -125,6 +126,9 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.28-08:10** — HR letters: **Print draft / PDF** on every letter not yet issued (new, draft, waiting for approval, approved).
+  The printout keeps the diagonal watermark (DRAFT — NOT ISSUED / APPROVED — NOT YET ISSUED), the file name has "DRAFT" in it, and every
+  draft print is recorded in the letter's new **History** list and the audit log. Print / Download Word for the final letter stay issued-only.
 - **v2026.10.27-17:55** — Payslips, payroll reports (payment list, EPF, SOCSO & EIS, PCB, year to date, EA), the payroll month page and staff
   self-service payslips print the person's **current** Employee ID. Each saved pay line still keeps the ID it was made with.
 - **v2026.10.27-16:05** — Transfer and promotion letters: the assessment end date follows the start (3 months less a day) until HR types

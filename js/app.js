@@ -3781,7 +3781,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-fields"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-fields"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -3975,6 +3975,7 @@
     if (editable) acts.push('<button type="button" class="btn" data-a="save">Save draft</button>', '<button type="button" class="btn primary" data-a="submit">Send for approval</button>');
     if (status === 'pending_approval' && L.can_approve && rec.created_by !== L.me) acts.push('<button type="button" class="btn danger" data-a="back">Send back…</button>', '<button type="button" class="btn primary" data-a="approve">Approve</button>');
     if (status === 'approved' && L.can_issue && !isJD()) acts.push('<button type="button" class="btn primary" data-a="issue">Issue letter…</button>');
+    if (['new', 'draft', 'pending_approval', 'approved'].includes(status)) acts.push(`<button type="button" class="btn ghost" data-a="dprint" title="Prints with the draft watermark; recorded in the letter's history">${icon('download')}Print draft / PDF</button>`);
     if (status === 'issued') { acts.push(`<button type="button" class="btn primary" data-a="print">${icon('download')}Print / PDF</button>`); if (rec.docx_path) acts.push('<button type="button" class="btn" data-a="word">Download Word</button>'); }
     if (rec && ['draft', 'pending_approval', 'approved', 'issued'].includes(status) && L.can_void) acts.push('<button type="button" class="btn ghost" data-a="void">Cancel letter…</button>');
     $('#lw-acts', el).innerHTML = acts.join('');
@@ -4001,6 +4002,14 @@
           if (ok) { toast('Sent back'); loadLettersPending(); render(); } return; }
         if (a === 'issue') { if (!(await ask(`Issue this letter to ${rec.name}? It is then locked and kept in their records.`, 'Issue'))) return;
           b.disabled = true; await doIssue(); toast('Letter issued'); state.lettersData = null; loadLettersPending(); render(); return; }
+        if (a === 'dprint') {   // before issue: printed with its watermark, and recorded
+          if (!tpl() || !personId) throw new Error('Choose the person and the letter first.');
+          try { await API.rpc('cms_letter_draft_printed', { p_id: rec?.id || null, p_person: personId, p_template: tpl().code }); } catch (e) { toast(e.message, 'err'); return; }
+          const nm = letterFileName().replace(/ - (\d{4}-\d{2}-\d{2} \d{2}\.\d{2})$/, ' - DRAFT - $1');
+          if (tpl().format === 'docx') { if (!view) throw new Error('The preview is still loading. Try again in a moment.'); view.print(nm); }
+          else docView(el, nm, [`<div class="lw-stamp">${esc(stamp() || 'DRAFT — NOT ISSUED')}</div>${letterSheet(textNow(), co, coCode, labelOf)}`], () => render());
+          drawHistory(); return;
+        }
         if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(letterFileName()); return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf)], () => render()); return; }
         if (a === 'word') { saveBytes(await getDocx(rec.docx_path), `${letterFileName()}.docx`); return; }
         if (a === 'void') { const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: `<p class="muted small">${status === 'issued' ? 'The issued letter stays on record, marked as cancelled.' : 'The draft is closed.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
@@ -4041,6 +4050,16 @@
       });
     };
     drawApply();
+    // the letter's history: saved, sent for approval, approved / sent back, printed before issue, issued, cancelled
+    const HIST = { draft_saved: 'Draft saved', submitted_for_approval: 'Sent for approval', approved: 'Approved', rejected: 'Sent back', sent_back: 'Sent back', returned: 'Sent back',
+      draft_printed: 'Printed before issue', issued: 'Issued', voided: 'Cancelled', void: 'Cancelled', cancelled: 'Cancelled' };
+    async function drawHistory() {
+      const box = $('#lw-hist', el); if (!box || !rec) return;
+      let Hs; try { Hs = await API.rpc('cms_letter_history', { p_id: rec.id }); } catch (e) { box.innerHTML = ''; return; }
+      if (!Hs.length) { box.innerHTML = ''; return; }
+      box.innerHTML = `<h4 class="sec-h">History</h4><ol class="pf-tl lw-hist">${Hs.slice().reverse().map((x) => `<li><span class="muted small">${esc(new Date(x.at).toLocaleString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span><b>${esc(HIST[x.action] || String(x.action || '').replace(/_/g, ' '))}${x.action === 'draft_printed' && x.status ? ` <span class="muted small">(${esc(LET_ST[x.status]?.[0] || x.status)})</span>` : ''}</b><span class="small">${esc(x.by || '')}${x.reason ? ` · ${esc(x.reason)}` : ''}</span></li>`).join('')}</ol>`;
+    }
+    drawHistory();
     $('#lw-zoom', el).addEventListener('change', (e) => { zoom = e.target.value; applyZoom(); });
     $('#lw-full', el).addEventListener('click', () => { const c = $('#lw-pv-card', el); c.classList.toggle('lw-fullscreen'); $('#lw-full', el).lastChild.textContent = c.classList.contains('lw-fullscreen') ? 'Close full screen' : 'Full screen'; requestAnimationFrame(applyZoom); });
     window.addEventListener('resize', () => { if (zoom === 'fit') applyZoom(); });
