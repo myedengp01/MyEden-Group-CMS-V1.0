@@ -16,6 +16,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-009 | 2026-10-22 | HR letters: when a letter is chosen for a person, show that person's facts for that letter type beside the draft (e.g. confirmation / increment: start date, probation end / confirmation due, extensions; resignation: notice period, last day, leave balance) | **Built in v2026.10.22-14:45** |
 | PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Step B built in v2026.10.22-15:05 (banner + Sync Check); switch-over waits for CLC |
 | PRI-011 | 2026-10-22 | One page per employee with everything about them: personal details, passport-size photo from the MEG-EAF application, IC (front / back) photos, passport, and all other details | **Built in v2026.10.25-23:20** |
+| PRI-012 | 2026-10-29 | Attendance app in the CMS: staff clock in / out on the phone with geo location (centre geofence), attendance records feed payroll (overtime, part-time hours, unpaid absence, allowances) | Recorded — waiting for CLC's 7 decisions |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -226,3 +227,38 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - Sensitive parts follow permissions (IC / passport and IC photos: "See IC"; bank: "See bank"; salary: "See salaries";
   personal / family details: a new permission).
 
+## PRI-012 · Attendance app with geo location, feeding payroll — recorded 2026-10-29
+- **Idea:** staff clock in / out from the CMS on their phone (installed to the home screen); the phone's location is checked against
+  their centre's area (map point + allowed distance, e.g. 100 m) for E1, E3, E3+, E6, E7, E10, E11 and HQ. Server time is the
+  official time. Attendance records are used for payroll and other calculations.
+- **Staff:** Clock in / Clock out button, own history (today, month to date, late / overtime), optional reminders ("not clocked out").
+- **HR / managers:** live board per centre (in, late, absent, on leave); monthly timesheet per person reviewed by the reporting line
+  and locked by HR; corrections (forgotten clock-out etc.) with a reason, original never overwritten; flags (outside the area,
+  poor GPS accuracy, new device, offline clock-in).
+- **Payroll link (locked timesheets only):** overtime under EA 1955 (1.5× normal day, 2× rest day, 3× public holiday, 104-hour
+  monthly cap; could pre-fill or replace OTCF claims); part-timers paid on hours × hourly rate; unpaid absence cross-checked with
+  leave; attendance allowance. Preview before anything is posted to the pay run.
+- **Limits noted:**
+  - GPS can be faked on Android and a web app cannot reliably detect it. Options: rotating QR code on a tablet at each centre
+    (strongest), selfie at clock-in kept for a short period, device binding (new phone needs HR approval).
+  - Location is read only at clock-in / out; no background tracking or automatic clock-in. Offline clock-ins are queued and
+    flagged "offline".
+  - Supabase Free plan: clock records are small, but selfies would fill the 1 GB storage in about 6 months for ~60 staff;
+    either no selfies, delete after 30–60 days, or the Pro plan.
+  - PDPA 2010: written notice and consent for location (and photo), stated retention period; add to self-service activation
+    and the handbook. Lateness pay deductions need care under EA 1955 (deductions are limited); prefer warnings or attendance
+    allowance. No face recognition (biometric data).
+- **Further possibilities:** rosters / shifts per centre; switching on CMS leave (attendance needs it to tell absent from on leave);
+  staff-to-child ratio per centre if children's attendance is recorded; punctuality into KPI; native app wrapper later if fake
+  GPS becomes a real problem.
+- **Suggested phases:** A1 clock in / out, centre areas, HR live board, corrections, privacy notice (run alongside the current
+  method, per PRI-010); A2 working hours / rosters, lateness, overtime, Johor public holidays, monthly approval and lock;
+  A3 payroll link with preview; A4 QR / selfie checks, reminders, reports, KPI link.
+- **Decisions needed from CLC before building:**
+  1. Who clocks in (all staff, or exclude directors / HQ; part-timers and interns?).
+  2. Outside the area: block, or allow with a reason and flag.
+  3. Anti-cheating: QR at the centre, selfie, device binding, or none to start.
+  4. Working hours: fixed per centre, or rosters / shifts.
+  5. Payroll use: overtime, part-time hours, unpaid absence, attendance allowance, lateness.
+  6. Current attendance method (punch card, thumbprint machine, WhatsApp, book), for running side by side.
+  7. Switch on CMS leave as part of this.
