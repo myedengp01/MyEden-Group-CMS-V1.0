@@ -254,6 +254,9 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Suggested phases:** A1 clock in / out, centre areas, HR live board, corrections, privacy notice (run alongside the current
   method, per PRI-010); A2 working hours / rosters, lateness, overtime, Johor public holidays, monthly approval and lock;
   A3 payroll link with preview; A4 QR / selfie checks, reminders, reports, KPI link.
+- **Link to OTCF (noted 2026-10-30):** OTCF now takes up to 3 OT times a day (came in early and stayed late). Once staff clock in / out here,
+  a clock-in before or a clock-out after the normal working hours pre-fills those OTCF times for the day; the employee only confirms and adds a
+  remark, and the approver sees the clock records beside the claim.
 - **Decisions needed from CLC before building:**
   1. Who clocks in (all staff, or exclude directors / HQ; part-timers and interns?).
   2. Outside the area: block, or allow with a reason and flag.

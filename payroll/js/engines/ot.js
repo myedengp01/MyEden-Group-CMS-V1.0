@@ -70,7 +70,21 @@ export function otcfToEntries(subs, resolve, normalFor) {
     const emp = resolve(s.emp_name);
     if (!emp) { const k = normaliseName(s.emp_name); if (!unmatched.has(k)) unmatched.set(k, { name: s.emp_name, key: k, submissions: [] }); unmatched.get(k).submissions.push(s); continue; }
     const normal = normalFor(emp);
+    // A day may have up to 3 OT times (OTCF v2026.10.30: came in early and stayed late). A rest day or public holiday is
+    // priced on the whole day's hours, so its times are added up first; normal and off-day times are priced line by line.
+    const lines = []; const dayAt = new Map();
     (s.line_items || []).forEach((li, idx) => {
+      const type = String(li.claimType || '').toLowerCase(); const whole = li.ph || type.startsWith('public') || type.startsWith('rest');
+      const key = `${li.date}`;
+      if (whole && dayAt.has(key)) {
+        const d = lines[dayAt.get(key)]; const hrs = Number(li.actualHrs ?? li.totalHrs) || 0;
+        d.li = { ...d.li, actualHrs: r2((Number(d.li.actualHrs ?? d.li.totalHrs) || 0) + hrs), to: li.to || d.li.to, remarks: [d.li.remarks, li.remarks].filter(Boolean).join(' / ') };
+        return;
+      }
+      if (whole) dayAt.set(key, lines.length);
+      lines.push({ li, idx });
+    });
+    lines.forEach(({ li, idx }) => {
       const parts = classifyOtcfLine(li, normal);
       const date = otcfDate(li.date, s.year, s.month);
       if (!parts.length || !date) { if (Number(li.actualHrs ?? li.totalHrs) > 0) skipped++; return; }

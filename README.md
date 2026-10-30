@@ -127,6 +127,10 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.30-21:40** — OTCF claims with more than one OT time a day (MEG-OTCF v2026.10.30-21:40: up to 3, e.g. came in early and stayed
+  late): the payroll pull adds up a rest day's or public holiday's times before pricing them (half day / full day / beyond normal hours), so
+  splitting the day cannot change the pay; normal and off-day times stay line by line. OTCF PDFs made in the CMS use the app's own layout,
+  so they show the extra times too. PRI-012 notes that clock-in records will later pre-fill these times.
 - **v2026.10.30-20:50** — Resignation calculator. **Record resignation** on the profile (Employment tab): letter date, notice start (the letter
   date unless changed), notice end = letter + 4 / 6 / 12 weeks by completed years (4 on probation), last physical working day, annual leave paid
   out (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Saturday, public holidays skipped), and notice not served =
