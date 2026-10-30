@@ -107,11 +107,47 @@ export function slEntitlement(joinDate, onIso, slRule) {
   return bands[bands.length - 1].days;
 }
 
-/** Part-time pro-rating (Employment (Part-Time Employees) Regulations): full-time days × weekly hours ÷ full-time hours. */
+/** Leave years before part_time.from_year: full-time days × weekly hours ÷ full-time hours (the earlier rule). */
 export function proRate(days, weeklyHours, ptPolicy) {
   const ft = Number(ptPolicy?.full_time_weekly_hours) || 45;
   if (!weeklyHours) return null;                       // weekly hours not recorded yet
   return halfUp((days * Math.min(Number(weeklyHours), ft)) / ft);
+}
+
+// ---------------------------------------------------------------- full time / part time / casual (Employment (Part-Time Employees) Regulations 2010)
+export const PT_AL_BANDS = [{ until_months: 24, days: 6 }, { until_months: 60, days: 8 }, { until_months: null, days: 11 }];   // reg. 7(1)
+export const PT_SL_BANDS = [{ until_years: 2, days: 10 }, { until_years: 5, days: 13 }, { until_years: null, days: 15 }];     // reg. 8(1)
+export const CLASS_LABEL = { FT: 'Full time', PT: 'Part time', CASUAL: 'Casual' };
+/** Weekly hours as a share of a full-time week: up to 30 % casual (outside the Regulations), above 30 % to 70 % part time, above 70 % full time. */
+export function classByHours(weeklyHours, ptPolicy) {
+  const h = Number(weeklyHours); if (!(h > 0)) return null;
+  const pct = (h / (Number(ptPolicy?.full_time_weekly_hours) || 45)) * 100;
+  if (pct <= Number(ptPolicy?.casual_max_pct ?? 30) + 1e-9) return 'CASUAL';
+  if (pct <= Number(ptPolicy?.part_time_max_pct ?? 70) + 1e-9) return 'PT';
+  return 'FT';
+}
+/** The class the leave rules use: HR's marking first, else the contracted weekly hours, else the job status. */
+export function workClass(em, ptPolicy) {
+  if (em?.hours_class) return em.hours_class;
+  return classByHours(em?.weekly_hours, ptPolicy) || (em?.job_status === 'PT' ? 'PT' : 'FT');
+}
+/**
+ * Leave rules for one employment and leave year. From part_time.from_year (2027): part time gets the Regulations' days
+ * (AL 6 / 8 / 11, SL 10 / 13 / 15 by service), casual gets no paid annual or sick leave, full time the normal bands.
+ * Earlier years keep the earlier rule (job status PT, pro-rated by weekly hours).
+ */
+export function leaveRules(em, year, policies = {}) {
+  const pt = policies.part_time || {};
+  const ftBands = policies.al_entitlement?.bands || [{ until_months: 24, days: 8 }, { until_months: 60, days: 12 }, { until_months: null, days: 16 }];
+  const from = Number(pt.from_year || 0);
+  if (!from || Number(year) < from) {
+    const prorate = em?.job_status === 'PT';
+    return { mode: prorate ? 'hours' : 'ft', cls: prorate ? 'PT' : 'FT', alBands: ftBands, slBands: null, prorate };
+  }
+  const cls = workClass(em, pt);
+  if (cls === 'CASUAL') return { mode: 'casual', cls, alBands: ftBands.map((b) => ({ ...b, days: 0 })), slBands: [{ until_years: null, days: 0 }], prorate: false };
+  if (cls === 'PT') return { mode: 'pt', cls, alBands: pt.al_bands || PT_AL_BANDS, slBands: pt.sl_bands || PT_SL_BANDS, prorate: false };
+  return { mode: 'ft', cls, alBands: ftBands, slBands: null, prorate: false };
 }
 
 // ---------------------------------------------------------------- balances
@@ -126,7 +162,8 @@ export function leaveBalances(input) {
   const { employment: em = {}, year, policies = {} } = input;
   const asOf = input.asOf || todayIso();
   const rules = policies.leave_rules || {};
-  const partTime = em.job_status === 'PT';
+  const LR = leaveRules(em, year, policies);
+  const partTime = LR.prorate;
   // cutoff (optional): only leave taken / adjustments dated on or before it count (payslips and the monthly audit)
   const cut = input.cutoff || null;
   const recs = (input.records || []).filter((r) => r.status !== 'cancelled' && String(r.date_from).slice(0, 4) === String(year) && (!cut || String(r.date_from) <= cut));
@@ -136,7 +173,7 @@ export function leaveBalances(input) {
   const out = {};
 
   // AL
-  const bands = policies.al_entitlement?.bands || [{ until_months: 24, days: 8 }, { until_months: 60, days: 12 }, { until_months: null, days: 16 }];
+  const bands = LR.alBands;
   const al = em.join_date ? alEntitlement({ joinDate: em.join_date, resignDate: em.resigned_date, bands, year }) : { days: 0, periods: [] };
   let alEnt = al.days, needsHours = false;
   if (partTime && (policies.part_time?.prorate || ['AL', 'SL']).includes('AL')) {
@@ -151,18 +188,18 @@ export function leaveBalances(input) {
     carriedExpired = r2(carriedExpired + Math.max(0, Number(a.days) - usedBefore));
   }
   const alTaken = taken('AL'), adjusted = adj('AL', ['manual']), buyback = adj('AL', ['buyback']), forfeit = adj('AL', ['forfeit']);
-  out.AL = { entitled: alEnt, carried, carriedExpired, adjusted, taken: alTaken, buyback, forfeit, periods: al.periods, needsHours,
+  out.AL = { entitled: alEnt, carried, carriedExpired, adjusted, taken: alTaken, buyback, forfeit, periods: al.periods, needsHours, cls: LR.cls, mode: LR.mode,
              balance: r2(alEnt + carried + adjusted - carriedExpired - alTaken - buyback - forfeit) };
 
   // SL / HPL (hospitalisation shares a 60-day pool with sick leave)
   const onIso = asOf < `${year}-12-31` ? asOf : `${year}-12-31`;
-  let slEnt = slEntitlement(em.join_date, onIso, rules.SL);
+  let slEnt = slEntitlement(em.join_date, onIso, LR.slBands ? { bands: LR.slBands } : rules.SL);
   if (partTime && (policies.part_time?.prorate || ['AL', 'SL']).includes('SL')) {
     const p = proRate(slEnt, em.weekly_hours, policies.part_time); if (p === null) needsHours = true; else slEnt = p;
   }
   const slTaken = taken('SL'), hplTaken = taken('HPL');
   out.SL = { entitled: slEnt, taken: slTaken, balance: r2(slEnt + adj('SL', ['manual', 'opening']) - slTaken) };
-  const hplPool = Number(rules.HPL?.days ?? 60);
+  const hplPool = LR.mode === 'casual' ? 0 : Number(rules.HPL?.days ?? 60);
   out.HPL = { entitled: hplPool, taken: hplTaken, balance: r2(hplPool + adj('HPL', ['manual', 'opening']) - hplTaken - (rules.HPL?.includes_sick_leave === false ? 0 : slTaken)) };
 
   // per-event leave: show entitlement per occasion and days taken this year

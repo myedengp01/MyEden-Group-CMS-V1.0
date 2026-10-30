@@ -1035,3 +1035,14 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
 .la-t td { vertical-align: top; }
 .la-in { display: flex; flex-wrap: wrap; gap: 8px; min-width: 260px; }
 .la-in .fld { margin: 0; min-width: 120px; flex: 1; }
+
+/* resignation calculator (profile, record window, letter page) */
+.rs-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.rs-out { border: 1px solid var(--line); border-radius: 12px; background: var(--soft); padding: 10px 12px; min-height: 120px; }
+.rs-out .sec-h { margin-top: 0; }
+.rs-kv { font-size: 13px; }
+.rs-kv dd .sub, .rs-kv dd small { display: inline; }
+.rs-notes { margin: 6px 0 0; padding-left: 18px; }
+#lw-resign .lw-facts .pf-kv { margin-top: 8px; }
+@media (max-width: 900px) { .rs-grid { grid-template-columns: 1fr; } }
+.modal-box.wide:has(.rs-grid) { width: min(1120px, 100%); }

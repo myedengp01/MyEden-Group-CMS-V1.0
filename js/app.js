@@ -173,6 +173,10 @@
     if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
     if (ob && ob.idPending && can('people')) t.push({ ic: 'users', tone: 'rose', title: `${num(ob.idPending)} Employee IDs incomplete`, sub: 'Number reserved; gender or start date missing', href: '#/onboarding' });
     if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
+    const rs = state.resignSum;
+    if (rs?.no_letter?.length) t.push({ ic: 'file-check', tone: 'orange', title: `${num(rs.no_letter.length)} resignation${rs.no_letter.length === 1 ? '' : 's'} without an acceptance letter`, sub: `${rs.no_letter.slice(0, 3).map((x) => x.name).join(', ')}${rs.no_letter.length > 3 ? '…' : ''} · recorded over 3 days ago`, href: rs.no_letter.length === 1 ? `#/person?id=${rs.no_letter[0].person_id}&tab=employment` : '#/letters' });
+    if (rs?.handover?.length) t.push({ ic: 'box', tone: 'rose', title: `${num(rs.handover.length)} leaving within 7 days with items to hand over`, sub: rs.handover.map((x) => `${x.name} (${dShort(x.last_day)})`).slice(0, 3).join(', '), href: '#/assets' });
+    if (rs?.no_settlement?.length) t.push({ ic: 'wallet', tone: 'orange', title: `${num(rs.no_settlement.length)} leaver${rs.no_settlement.length === 1 ? '' : 's'} without a final settlement`, sub: `${rs.no_settlement.slice(0, 3).map((x) => x.name).join(', ')} · leaving this month or next`, href: '#/payroll/settlement' });
     const inc = state.incrSum;
     if (inc && (inc.overdue || inc.due) && can('payroll.increments')) t.push({ ic: 'trend', tone: 'orange', title: `${num(inc.overdue + inc.due)} salary reviews due`, sub: [inc.overdue && `${inc.overdue} overdue`, inc.due && `${inc.due} this month`].filter(Boolean).join(' · '), href: '#/payroll/increments' });
     return t;
@@ -1629,6 +1633,10 @@
   const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
   const daysTo = (s) => (s ? Math.round((new Date(s) - today0()) / 86400000) : null);
 
+  async function loadResignSummary() {
+    if (!(can('people') || can('letters') || can('payroll'))) return;
+    try { state.resignSum = await API.rpc('cms_resignation_tasks'); drawBell(); } catch (e) { /* reminders are a convenience */ }
+  }
   // ---------------------------------------------------------------- reminders (bell): offers, hires, stamp duty
   async function loadRecruitSummary() {
     if (!can('onboarding')) return;
@@ -3780,7 +3788,7 @@
             <select id="lw-p" ${editable && !rec ? '' : 'disabled'}><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === personId ? 'selected' : ''}>${esc(p.name)} · ${esc(p.employee_id || 'no ID')}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></div>
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
-          <div id="lw-facts"></div>
+          <div id="lw-resign"></div><div id="lw-facts"></div>
           <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-fields"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
@@ -3916,8 +3924,49 @@
         L.placeholders.forEach((p) => { if (p.default && (vals[p.key] == null || vals[p.key] === '')) vals[p.key] = p.default; });
         calc();
       }
-      drawFields(); drawJD(); preview(); loadFacts(); fillJD(!!fresh);
+      drawFields(); drawJD(); preview(); loadFacts(); fillJD(!!fresh); drawResign();
     };
+    // resignation acceptance letters: the calculation from the recorded resignation fills the letter (HR can still change any field)
+    let resignR = null; let resignFor = ''; let resignC = null;
+    const isRL = () => { const t = tpl(); return !!t && (t.letter_type || String(t.code).split('_TP')[0]) === 'RL'; };
+    const RS_MONEY = ['al_payout_amount', 'daily_rate', 'notice_in_lieu_amount', 'net_settlement', 'notice_in_lieu_terms'];
+    const resignFill = (force) => {
+      if (!resignC || !resignC.ok || !editable) return 0; const k = new Set(keys()); let n = 0;
+      Object.entries(resignC.fields).forEach(([key, v]) => { if (!k.has(key) || v == null || v === '') return; if (!resignC.salaryKnown && RS_MONEY.includes(key)) return;
+        const p = ph.get(key) || {}; if (p.protected || p.editable === false || p.source === 'calculation') return;
+        if (force || vals[key] == null || String(vals[key]).trim() === '') { if (vals[key] !== v) n += 1; vals[key] = v; } });
+      return n;
+    };
+    async function drawResign(force) {
+      const box = $('#lw-resign', el); if (!box) return;
+      if (!personId || !isRL()) { box.innerHTML = ''; return; }
+      if (resignFor !== personId || force) {
+        resignFor = personId; resignC = null; box.innerHTML = `<div class="lw-facts muted small">${icon('clock')} Looking up the resignation…</div>`;
+        try { resignR = await API.rpc('cms_resignation_get', { p_person: personId }); } catch (e) { box.innerHTML = ''; return; }
+        const r = resignR.record;
+        if (r) { try { const lib = await mypImport('resign-data.js'); const C = await lib.resignContext(mypSb(), resignR, { letterDate: r.letter_date });
+          const lastIn = r.calc && 'input_last' in r.calc ? r.calc.input_last : (r.al_use === 'offset' && r.employment_end === r.notice_end ? null : r.last_physical_day);
+          resignC = C.calc({ letterDate: r.letter_date, noticeStart: r.notice_start, noticeEnd: r.notice_agreed ? r.notice_end : null, lastPhysical: lastIn || null, alUse: r.al_use, payer: r.notice_payer });
+        } catch (e) { resignC = null; } }
+        if (resignFor !== personId) return;
+        if (resignC && editable && resignFill(false)) { drawFields(); later(); }
+        drawFacts();
+      }
+      const r = resignR?.record; const c = resignC;
+      if (!r) { box.innerHTML = `<details class="lw-facts" open><summary><b>Resignation</b></summary><p class="note warn small">${icon('help')}<span>No resignation is recorded for this person. Record it on the profile first — the notice, last days, annual leave and notice in lieu are worked out and fill this letter.</span></p>
+          <a class="btn sm" href="#/person?id=${esc(personId)}&tab=employment&resign=1">Record resignation on the profile ›</a></details>`; return; }
+      const sug = c && c.ok ? RES_TPL[c.arrangement] : null; const changed = c && c.ok && (c.employmentEnd !== r.employment_end || c.lastPhysical !== r.last_physical_day || (r.calc?.net != null && c.salaryKnown && Math.abs(c.net - Number(r.calc.net)) > 0.004));
+      const fillable = c && c.ok ? Object.keys(c.fields).filter((k) => keys().includes(k)).length : 0;
+      box.innerHTML = `<details class="lw-facts" open><summary><b>Resignation calculator</b><span class="muted small"> · from the resignation recorded ${dShort(r.created_at)}</span>
+          ${editable && fillable ? `<button type="button" class="btn sm" data-rs-fill>Fill the letter (${fillable})</button>` : ''}</summary>
+        ${c ? resignSummary(c, { amounts: c.salaryKnown }) : '<p class="muted small">Could not work it out.</p>'}
+        ${changed ? `<p class="note warn small">${icon('help')}<span>The leave records changed since the resignation was recorded (it now works out differently). Update the resignation so the payroll dates and the final settlement match the letter.</span></p>` : ''}
+        ${sug && sug !== tpl()?.code && editable ? `<p class="note small">${icon('help')}<span>This is “${esc(RES_ARR[c.arrangement])}”: the suggested letter is <b>${esc((L.templates.find((t) => t.code === sug) || {}).title || sug)}</b>. <button type="button" class="lnk" data-rs-switch="${esc(sug)}">Switch to it</button></span></p>` : ''}
+        ${resignR.can?.edit ? '<button type="button" class="lnk small" data-rs-edit>Change the resignation…</button>' : ''}</details>`;
+      $('[data-rs-fill]', box)?.addEventListener('click', (e) => { e.preventDefault(); const n = resignFill(true); drawFields(); later(); toast(n ? `${n} field${n === 1 ? '' : 's'} filled from the resignation` : 'The letter already matches the resignation'); drawResign(); });
+      $('[data-rs-switch]', box)?.addEventListener('click', (e) => { e.preventDefault(); code = e.target.dataset.rsSwitch; $('#lw-t', el).value = code; ++jdSeq; resignFill(false); drawFields(); drawJD(); later(); loadFacts(); drawResign(); });
+      $('[data-rs-edit]', box)?.addEventListener('click', async (e) => { e.preventDefault(); if (await resignationWindow(personId, resignR)) { toast('Resignation saved'); await drawResign(true); if (editable) { resignFill(true); drawFields(); later(); } } });
+    }
     // PRI-009 · facts for this letter: what matters for this letter type, with one-click insert into matching fields
     let facts = null; let factsFor = '';
     const fmtD = (iso) => (iso ? longDate(String(iso).slice(0, 10)) : '');
@@ -3943,7 +3992,7 @@
       const box = $('#lw-facts', el); if (!box) return;
       if (!facts || !personId || !tpl()) { box.innerHTML = ''; return; }
       const k = new Set(keys());
-      const canIns = (it) => { if (!(editable && it.key && k.has(it.key) && it.insert != null && it.insert !== '' && it.insert !== '—')) return false; const p = ph.get(it.key) || {}; return !(p.protected || p.editable === false || p.source === 'calculation'); };
+      const canIns = (it) => { if (!(editable && it.key && k.has(it.key) && it.insert != null && it.insert !== '' && it.insert !== '—')) return false; if (isRL() && resignC?.ok && it.key in resignC.fields) return false; const p = ph.get(it.key) || {}; return !(p.protected || p.editable === false || p.source === 'calculation'); };
       const all = facts.groups.flatMap((g) => g.items).filter(canIns);
       const flagIc = { ok: 'check-circle', warn: 'help', bad: 'help' };
       box.innerHTML = `<details class="lw-facts" open><summary><b>Facts for this letter</b><span class="muted small"> · from the CMS records</span>
@@ -4020,7 +4069,7 @@
     const pq = $('#lw-pq', el); const psel = $('#lw-p', el);
     pq?.addEventListener('input', () => { const t = pq.value.trim().toLowerCase(); let first = null; $$('option', psel).forEach((o) => { const hit = !o.value || !t || o.textContent.toLowerCase().includes(t); o.hidden = !hit; if (hit && o.value && !first) first = o; }); if (t && first && psel.value !== first.value) { psel.value = first.value; psel.dispatchEvent(new Event('change')); } });
     psel.addEventListener('change', () => { personId = psel.value; ++jdSeq; jdSnapshot = null; jdPerson = ''; Object.keys(vals).forEach((k) => delete vals[k]); loadCtx(true); });
-    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; ++jdSeq; drawFields(); drawJD(); later(); loadFacts(); fillJD(false); });
+    $('#lw-t', el).addEventListener('change', (e) => { code = e.target.value; ++jdSeq; if (isRL() && resignFor === personId) resignFill(false); drawFields(); drawJD(); later(); loadFacts(); fillJD(false); drawResign(); });
     // after issuing: update the person's records from what the letter says (confirmation, salary, review, position)
     const drawApply = async () => {
       const box = $('#lw-apply', el); if (!box || !rec) return;
@@ -4028,17 +4077,17 @@
       const sched = (A.scheduled || []).filter((x) => x.status === 'pending');
       if (A.applied) {
         box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>${icon('check-circle')} Records updated from this letter</h3><span class="muted small">${dShort(A.applied.at)}${A.applied.by ? ` · ${esc(A.applied.by)}` : ''}</span></div>
-          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position' }[x.kind] || x.kind)}${x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
+          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved' }[x.kind] || x.kind)}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
           ${status === 'void' ? `<p class="note warn small">${icon('help')}<span>This letter is cancelled. Changes not yet due were cancelled; changes already made (salary, review${A.applied.items.some((x) => !x.scheduled && ['confirm', 'position'].includes(x.kind)) ? ', confirmation / position' : ''}) stay — reverse them in Payroll / the profile if they no longer apply.</span></p>` : ''}</section>`;
         return;
       }
       if (status !== 'issued' || !A.items.length) { box.innerHTML = ''; return; }
-      const inp = (x, i) => x.kind === 'salary' ? `<label class="fld"><span>New basic (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>From payroll month</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
+      const inp = (x, i) => ['settlement', 'note'].includes(x.kind) ? (x.kind === 'settlement' && !x.module_on ? '<small class="muted">Saved now; added to payroll once the Final settlement module is switched on (Settings › Policies).</small>' : '') : x.kind === 'salary' ? `<label class="fld"><span>New basic (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>From payroll month</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'review' ? `<label class="fld"><span>Review every</span><select data-i="${i}" data-f="interval" ${x.allowed ? '' : 'disabled'}>${(x.intervals || []).map((v) => `<option value="${esc(v.code)}" ${v.code === x.interval ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label><label class="fld"><span>Next review</span><input type="date" data-i="${i}" data-f="next" value="${esc(x.next || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
       box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>Update records from this letter</h3><span class="muted small">Issuing files the letter; these change ${esc(A.person)}'s records.</span></div>
         <div class="table-wrap"><table class="data la-t"><thead><tr><th></th><th>Change</th><th>Now</th><th>After</th><th></th></tr></thead><tbody>
-        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed ? '' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
+        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
         <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
       $('#la-go', box).addEventListener('click', async () => {
@@ -4505,6 +4554,191 @@
     catch (e) { root.innerHTML = errorCard(e.message); }
   }
 
+  // ================================================================ Resignation: record, notice, last days, leave and notice in lieu (Oct 2026)
+  // The calculation runs in the page (payroll/js/engines/resign.js, same leave engine as Leave Balances); the database keeps the record and
+  // keeps payroll and the Employee Master in step. Notice = letter date + 4 / 6 / 12 weeks (4 on probation); leave paid at basic ÷ 26;
+  // notice not served = basic ÷ the days of each month × calendar days; offset leave on Monday–Saturday, public holidays skipped.
+  const RES_TPL = { full: 'RL', offset: 'RL_TP2', in_lieu: 'RL_TP3' };
+  const RES_ARR = { full: 'Notice served in full', offset: 'Annual leave used up in the last days of the notice', in_lieu: 'Leaves before the notice ends' };
+  const PAYER = [['employee', 'Employee pays (deducted from the final salary)'], ['company', 'Company pays (it asked the person to leave early)'], ['waived', 'Waived — no payment either way']];
+  const AL_USE = [['payout', 'Pay out in the final salary (basic ÷ 26 a day)'], ['offset', 'Use up before the employment end date (offset)'], ['none', 'Do not pay out (negative balance still deducted)']];
+  const isoDay = (iso) => (iso ? `${dShort(iso)} <span class="muted">(${esc(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(`${iso}T00:00:00Z`).getUTCDay()])})</span>` : '—');
+  const rmS = (x) => `${Number(x) < 0 ? '−' : ''}RM ${m2(Math.abs(Number(x) || 0))}`;
+  /** The calculation as a small table (profile card, the record window, the letter page). */
+  function resignSummary(c, { amounts = true } = {}) {
+    if (!c) return '';
+    if (!c.ok && c.errors?.length && !c.noticeEnd) return `<p class="note bad small">${icon('help')}<span>${c.errors.map(esc).join('<br>')}</span></p>`;
+    const A = c.al; const S = c.short;
+    const rows = [
+      ['Service at the letter date', `${c.years} completed year${c.years === 1 ? '' : 's'}${c.onProbation ? ' · <b>on probation</b>' : ''} → <b>${c.weeks} weeks</b> notice`],
+      ['Notice', `${isoDay(c.noticeStart)} → <b>${isoDay(c.noticeEnd)}</b>${c.noticeEnd !== c.noticeEndPolicy ? ` <span class="tag warn xs">agreed</span> <span class="muted small">policy: ${dShort(c.noticeEndPolicy)}</span>` : ''}`],
+      ['Last physical working day', `<b>${isoDay(c.lastPhysical)}</b>`],
+      c.offset?.days > 0 ? ['Annual leave used up (offset)', `${c.offset.days} day${c.offset.days === 1 ? '' : 's'}: ${dShort(c.offset.from)}${c.offset.to !== c.offset.from ? ` – ${dShort(c.offset.to)}` : ''}`] : null,
+      ['Employment ends', `<b>${isoDay(c.employmentEnd)}</b>`],
+      A ? ['Annual leave balance at the end', `<b>${m2(A.balance)}</b> day(s) <span class="muted small">(earned ${m2((A.entitled || 0) + (A.carried || 0))}${A.carried ? ` incl. ${m2(A.carried)} carried` : ''}, taken ${m2(A.taken)}${A.mode === 'pt' ? ' · part-time rules' : A.mode === 'casual' ? ' · casual: no paid leave' : ''})</span>`]
+        : ['Annual leave balance', '<span class="muted">not available (no leave records for this year)</span>'],
+      c.payoutDays != null && c.payoutDays !== 0 ? [c.payoutDays < 0 ? 'Annual leave taken in advance (deducted)' : 'Annual leave paid out', `${m2(Math.abs(c.payoutDays))} day(s) × ${amounts ? `RM ${m2(c.orp)}` : 'daily rate'}${amounts ? ` = <b>${rmS(c.alAmount)}</b>` : ''}`] : null,
+      ['Notice not served', S.calendar ? `<b>${S.calendar} calendar day${S.calendar === 1 ? '' : 's'}</b> (${dShort(S.from)} – ${dShort(S.to)}) · ${esc(PAYER.find(([k]) => k === c.payer)?.[1] || '')}${amounts && !c.hourly ? `<br><span class="muted small">${S.parts.map((p) => `${esc(new Date(`${p.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }))}: ${p.days} × RM ${m2(p.rate)} (basic ÷ ${p.of})`).join(' · ')}</span>` : ''}${amounts && c.hourly ? `<br><span class="muted small">${S.working} working day(s) × RM ${m2(c.orp)} (hourly pay)</span>` : ''}${amounts && c.payer !== 'waived' ? ` = <b>${rmS(c.noticeSigned)}</b>` : ''}` : 'None — served in full'],
+      amounts ? ['Net settlement', `<b class="${c.net < 0 ? 'bad-txt' : ''}">${rmS(c.net)}</b> <span class="muted small">${c.net < 0 ? 'deducted from' : 'added to'} the final salary</span>`] : null,
+      amounts && c.lastMonthBasic != null ? ['Final month (estimate)', `basic ${rmS(c.lastMonthBasic)} for ${dShort(`${c.employmentEnd.slice(0, 7)}-01`) === '—' ? '' : 'the days worked'} + settlement = <b>${rmS(c.finalEst)}</b> <span class="muted small">before EPF / SOCSO / EIS / PCB</span>${c.owed ? `<br><b class="bad-txt">Balance owed by the employee: RM ${m2(c.owed)}</b>` : ''}`] : null,
+    ].filter(Boolean);
+    return `<dl class="pf-kv rs-kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
+      ${c.errors?.length ? `<p class="note bad small">${icon('help')}<span>${c.errors.map(esc).join('<br>')}</span></p>` : ''}
+      ${c.notes?.length ? `<ul class="small muted rs-notes">${c.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
+  }
+  /** Record or change a resignation (and see the calculation as it is typed). */
+  async function resignationWindow(pid, R, preset = {}) {
+    const lib = await mypImport('resign-data.js');
+    const rec = R.record || {}; const emp = R.employment || {};
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const v0 = { letter: preset.letter || rec.letter_date || emp.resignation_letter_date || today, recv: rec.received_date || '', start: preset.start || rec.notice_start || '',
+      agreed: rec.notice_agreed ? rec.notice_end : '', req: rec.requested_last_day || '', last: preset.last ?? (rec.id && rec.last_physical_day !== rec.notice_end && !(rec.al_use === 'offset' && rec.employment_end === rec.notice_end) ? rec.last_physical_day : ''),
+      al: preset.al || rec.al_use || 'payout', payer: preset.payer || rec.notice_payer || 'employee', waived: rec.waived_by || '', note: rec.note || '' };
+    const opt = (list, cur, blank) => `${blank != null ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
+    let ctx = null; let ctxYear = null; let last = null;
+    const getCtx = async (letter) => { const y = Number(String(letter).slice(0, 4)); if (ctx && ctxYear === y) return ctx; ctx = await lib.resignContext(mypSb(), R, { letterDate: letter }); ctxYear = y; return ctx; };
+    const inputs = (f) => ({ letterDate: f.letter.value, noticeStart: f.start.value || null, noticeEnd: f.agreedOn.checked && f.agreed.value ? f.agreed.value : null,
+      lastPhysical: f.last.value || null, alUse: f.al.value, payer: f.payer.value });
+    const ok = await modal({ title: `${rec.id ? 'Resignation' : 'Record resignation'} · ${R.person.name}`, wide: true, ok: rec.id ? 'Save changes' : 'Save resignation',
+      body: `<div class="rs-grid"><div class="fld-2">
+          <label class="fld"><span>Resignation letter date</span><input type="date" name="letter" required value="${esc(v0.letter)}"></label>
+          <label class="fld"><span>Date received <small class="muted">— optional</small></span><input type="date" name="recv" value="${esc(v0.recv)}"></label>
+          <label class="fld"><span>Notice starts <small class="muted">— blank = the letter date</small></span><input type="date" name="start" value="${esc(v0.start)}"></label>
+          <div class="fld"><span><label class="chk"><input type="checkbox" name="agreedOn" ${v0.agreed ? 'checked' : ''}> Agreed a different notice end</label></span><input type="date" name="agreed" value="${esc(v0.agreed)}" ${v0.agreed ? '' : 'disabled'}></div>
+          <label class="fld"><span>Last physical working day <small class="muted">— blank = works to the notice end</small></span><input type="date" name="last" value="${esc(v0.last)}"></label>
+          <label class="fld"><span>Last day the employee asked for <small class="muted">— optional, for the record</small></span><input type="date" name="req" value="${esc(v0.req)}"></label>
+          <label class="fld"><span>Annual leave balance</span><select name="al">${opt(AL_USE, v0.al)}</select></label>
+          <label class="fld"><span>Notice not served</span><select name="payer">${opt(PAYER, v0.payer)}</select></label>
+          <label class="fld fld-2" data-waived ${v0.payer === 'waived' ? '' : 'hidden'}><span>Waiving approved by</span><input name="waived" maxlength="120" value="${esc(v0.waived)}" placeholder="Name and position"></label>
+          <label class="fld"><span>Reason for leaving</span><select name="reason" required>${opt((R.reasons || []).map((x) => [x.code, x.label]), emp.leaving_reason || '', 'Choose…')}</select></label>
+          <label class="fld"><span>Details <small class="muted">— needed for "Other"</small></span><input name="lnote" maxlength="300" value="${esc(emp.leaving_note || '')}"></label>
+          <label class="fld"><span>Rehire</span><select name="rehire">${opt([['eligible', 'Eligible for rehire'], ['conditional', 'Eligible, with conditions'], ['not_eligible', 'Not eligible for rehire']], emp.rehire || '', '— not assessed')}</select></label>
+          <label class="fld"><span>Rehire note</span><input name="rnote" maxlength="300" value="${esc(emp.rehire_note || '')}"></label>
+          <label class="fld fld-2"><span>Note <small class="muted">— optional</small></span><input name="note" maxlength="300" value="${esc(v0.note)}"></label></div>
+        <section class="rs-out" id="rs-out">${loading('Working out…')}</section></div>
+        <p class="small muted">Saving updates the payroll record (letter date, notice end, last working day = employment end, leaving reason) and the Employee Master. A hand-over opens by itself if the person holds company items. The final settlement is saved from the issued acceptance letter (Update records from this letter).</p>`,
+      onOpen: (wrap) => {
+        const f = $('form', wrap); const out = $('#rs-out', wrap); let seq = 0;
+        const run = async () => {
+          const n = ++seq; if (!f.letter.value) { out.innerHTML = '<p class="muted small">Enter the letter date.</p>'; return; }
+          try { const C = await getCtx(f.letter.value); if (n !== seq) return; last = C.calc(inputs(f));
+            out.innerHTML = `<h4 class="sec-h">Worked out</h4>${resignSummary(last, { amounts: last.salaryKnown })}
+              ${!last.salaryKnown ? `<p class="note warn small">${icon('help')}<span>No salary to work out the amounts (none on record, or you cannot see salaries). The dates are saved; amounts are worked out by someone who can see salaries.</span></p>` : ''}
+              ${!C.hasHolidays ? `<p class="small muted">${icon('help')} No public holidays are entered for ${C.years.join(' / ')} (Settings › Holidays), so none are skipped.</p>` : ''}
+              ${last.ok ? `<p class="small">Suggested letter: <b>${esc(RES_ARR[last.arrangement])}</b> → ${esc({ RL: 'Full Notice', RL_TP2: 'Annual Leave Offset', RL_TP3: 'Early Release (Notice in Lieu)' }[RES_TPL[last.arrangement]])}</p>` : ''}`;
+          } catch (e) { out.innerHTML = errorCard(e.message); }
+        };
+        f.agreedOn.addEventListener('change', () => { f.agreed.disabled = !f.agreedOn.checked; if (f.agreedOn.checked && !f.agreed.value && last?.noticeEnd) f.agreed.value = last.noticeEnd; run(); });
+        f.payer.addEventListener('change', () => { $('[data-waived]', f).hidden = f.payer.value !== 'waived'; });
+        ['letter', 'start', 'agreed', 'last', 'al', 'payer'].forEach((k) => { f[k].addEventListener('change', run); f[k].addEventListener('input', run); });
+        run(); setTimeout(() => f.letter.focus(), 30);
+      },
+      onOk: async (f) => {
+        if (!last || !last.ok) throw new Error(last?.errors?.join(' ') || 'Check the dates.');
+        if (!f.reason.value) throw new Error('Choose the reason for leaving.');
+        const c = last;
+        await API.rpc('cms_resignation_save', { p_person: pid, p: { letter_date: f.letter.value, received_date: f.recv.value || null, notice_start: c.noticeStart, notice_end: c.noticeEnd,
+          notice_agreed: f.agreedOn.checked && !!f.agreed.value, notice_weeks: c.weeks, requested_last_day: f.req.value || null, last_physical_day: c.lastPhysical, employment_end: c.employmentEnd,
+          al_use: f.al.value, notice_payer: f.payer.value, waived_by: f.waived.value.trim(), leaving_reason: f.reason.value, leaving_note: f.lnote.value.trim(), rehire: f.rehire.value || null,
+          rehire_note: f.rnote.value.trim(), note: f.note.value.trim(), calc: { ...(c.salaryKnown ? c.snapshot : { ...c.snapshot, al_amount: null, notice_amount: null, net: null, orp: null, basic: null }), input_last: f.last.value || null } } });
+      } });
+    return ok ? last : null;
+  }
+  /** The resignation card on the profile (Employment tab). */
+  async function resignCard(box, pid, after) {
+    box.innerHTML = `<section class="card">${loading('Resignation…')}</section>`;
+    let R; try { R = await API.rpc('cms_resignation_get', { p_person: pid }); } catch (e) { box.innerHTML = ''; return; }
+    if (!R.employment) { box.innerHTML = ''; return; }
+    const rec = R.record; const C = R.can || {};
+    const head = `<div class="pf-sh"><h3>Resignation &amp; notice</h3><span>${C.edit ? `<button type="button" class="btn sm" data-rs="edit">${icon(rec ? 'clock' : 'plus')}${rec ? 'Change…' : 'Record resignation…'}</button>` : ''}${rec && C.edit ? ` <button type="button" class="btn sm ghost" data-rs="withdraw">Withdraw…</button>` : ''}</span></div>`;
+    if (!rec) {
+      box.innerHTML = `<section class="card" id="pf-resign-card">${head}<p class="muted small">No resignation recorded. When a resignation letter comes in, record it here: the notice period, last days, annual leave and any notice in lieu are worked out, and the acceptance letter can be issued from it.</p>
+        ${R.employment.resignation_letter_date ? `<p class="small note warn">${icon('help')}<span>Payroll already has a resignation letter dated ${dShort(R.employment.resignation_letter_date)}${R.employment.notice_until ? ` (notice to ${dShort(R.employment.notice_until)})` : ''}. Record it here to work out the rest.</span></p>` : ''}
+        ${(R.withdrawn || []).length ? `<p class="small muted">Withdrawn before: ${R.withdrawn.map((w) => `letter ${dShort(w.letter_date)} (${esc(w.reason || '')})`).join(' · ')}</p>` : ''}</section>`;
+    } else {
+      const cx = rec.calc || {}; const arr = cx.arrangement || 'full'; const sug = RES_TPL[arr] || 'RL';
+      const lets = (R.letters || []).filter((l) => l.status !== 'void');
+      box.innerHTML = `<section class="card" id="pf-resign-card">${head}
+        <dl class="pf-kv rs-kv"><dt>Resignation letter</dt><dd>${dShort(rec.letter_date)}${rec.received_date ? ` <span class="muted small">received ${dShort(rec.received_date)}</span>` : ''}</dd>
+          <dt>Notice</dt><dd>${cx.weeks || rec.notice_weeks || '?'} weeks: ${isoDay(rec.notice_start)} → <b>${isoDay(rec.notice_end)}</b>${rec.notice_agreed ? ' <span class="tag warn xs">agreed</span>' : ''}</dd>
+          <dt>Last physical working day</dt><dd><b>${isoDay(rec.last_physical_day)}</b></dd>
+          ${Number(cx.offset_days) > 0 ? `<dt>Annual leave used up</dt><dd>${m2(cx.offset_days)} day(s): ${dShort(cx.offset_from)} – ${dShort(cx.offset_to)}</dd>` : ''}
+          <dt>Employment ends</dt><dd><b>${isoDay(rec.employment_end)}</b></dd>
+          <dt>Annual leave</dt><dd>${cx.al_balance != null ? `balance ${m2(cx.al_balance)} day(s)` : '—'}${cx.payout_days ? ` · ${cx.payout_days < 0 ? 'deducted' : 'paid out'} ${m2(Math.abs(cx.payout_days))} day(s)${cx.al_amount != null && C.salary ? ` = ${rmS(cx.al_amount)}` : ''}` : ''}</dd>
+          <dt>Notice not served</dt><dd>${Number(cx.short_days) > 0 ? `${cx.short_days} calendar day(s) · ${esc({ employee: 'employee pays', company: 'company pays', waived: `waived${rec.waived_by ? ` (approved by ${rec.waived_by})` : ''}` }[rec.notice_payer])}${cx.notice_amount != null && C.salary && rec.notice_payer !== 'waived' ? ` = ${rmS(cx.notice_amount)}` : ''}` : 'None — served in full'}</dd>
+          ${C.salary && cx.net != null ? `<dt>Net settlement</dt><dd><b class="${cx.net < 0 ? 'bad-txt' : ''}">${rmS(cx.net)}</b>${cx.owed ? ` · <b class="bad-txt">balance owed RM ${m2(cx.owed)}</b>` : ''}</dd>` : ''}
+          <dt>Arrangement</dt><dd>${esc(RES_ARR[arr] || arr)}</dd>
+          <dt>Final settlement</dt><dd>${R.settlement && (R.settlement.al_mode === 'custom' || R.settlement.notice_mode !== 'none') ? `saved${R.settlement.note ? ` <span class="muted small">(${esc(R.settlement.note)})</span>` : ''}` : '<span class="muted">not saved yet — from the issued acceptance letter</span>'}${R.policies?.modules?.settlement ? '' : ' <span class="muted small">· the Final settlement module is off (Settings › Policies), so it is not added to payroll yet</span>'}</dd></dl>
+        <div class="btn-row">${C.letters ? `<a class="btn primary sm" href="#/letters?ws=new&person=${esc(pid)}&template=${esc(sug)}">${icon('file-check')}Issue acceptance letter →</a>` : ''}
+          <span class="muted small">Suggested: ${esc({ RL: 'Full Notice', RL_TP2: 'Annual Leave Offset', RL_TP3: 'Early Release (Notice in Lieu)' }[sug])}; another acceptance letter can be chosen on the letter page.</span></div>
+        ${lets.length ? `<p class="small">Acceptance letters: ${lets.map((l) => `<a href="#/letters?ws=${esc(l.id)}">${esc(l.title)}</a> <span class="tag xs">${esc((LET_ST[l.status] || [l.status])[0])}</span>`).join(' · ')}</p>` : ''}</section>`;
+    }
+    $('[data-rs=edit]', box)?.addEventListener('click', async () => { if (await resignationWindow(pid, R)) { toast('Resignation saved'); after ? after() : resignCard(box, pid); } });
+    $('[data-rs=withdraw]', box)?.addEventListener('click', async () => {
+      if (await modal({ title: `Withdraw resignation · ${R.person.name}`, ok: 'Withdraw', danger: true,
+        body: `<p class="small muted">The person stays employed: the letter date, notice end, last working day and leaving reason are cleared in payroll and the Employee Master, and the final settlement is reset. The record is kept as withdrawn. Cancel any acceptance letter not yet issued, and close the hand-over in Items if one was opened.</p><label class="fld"><span>Reason</span><input name="r" required maxlength="300"></label>`,
+        onOk: async (f) => { await API.rpc('cms_resignation_withdraw', { p_person: pid, p_reason: f.r.value.trim() }); } })) { toast('Resignation withdrawn'); after ? after() : resignCard(box, pid); }
+    });
+    return R;
+  }
+  /** Working hours and the full time / part time / casual marking (leave rules from 2027). */
+  async function hoursCard(box, pid) {
+    let L; try { L = await API.rpc('cms_working_hours_list'); } catch (e) { box.innerHTML = ''; return; }
+    let R; try { R = await API.rpc('cms_resignation_get', { p_person: pid }); } catch (e) { box.innerHTML = ''; return; }
+    const emp = R.employment; if (!emp) { box.innerHTML = ''; return; }
+    const row = (L.rows || []).find((x) => x.person_id === pid) || { weekly_hours: emp.weekly_hours, work_days: emp.work_days_per_week, hours_class: emp.hours_class, job_status: emp.job_status, actual: null, can_edit: R.can?.edit };
+    const P = L.policy || {}; const cls = hoursClass(row, P); const avg = actualWeekly(row.actual, P);
+    box.innerHTML = `<section class="card">${secHeadG('Working hours', row.can_edit ? `<button type="button" class="btn sm" data-hw>Change…</button>` : '')}
+      <dl class="pf-kv"><dt>Contracted</dt><dd>${row.weekly_hours ? `${m2(row.weekly_hours).replace(/\.00$/, '')} h a week` : '<span class="muted">not recorded</span>'}${row.work_days ? ` · ${row.work_days} day(s) a week` : ''}${row.weekly_hours ? ` <span class="muted small">(${Math.round(row.weekly_hours / (P.full_time_weekly_hours || 45) * 100)} % of ${P.full_time_weekly_hours || 45} h)</span>` : ''}</dd>
+        <dt>For the leave rules</dt><dd><b>${esc(HCLS[cls.cls])}</b> <span class="muted small">${row.hours_class ? `marked by HR${row.reason ? `: ${esc(row.reason)}` : ''}${row.marked_by ? ` · ${esc(row.marked_by)}` : ''}` : cls.by === 'hours' ? 'from the contracted hours' : 'from the job status (no hours recorded)'}</span></dd>
+        ${avg ? `<dt>Actually worked</dt><dd>${m2(avg.week).replace(/\.00$/, '')} h a week on average <span class="muted small">(${avg.months.join(', ')})</span>${avg.cls !== cls.cls ? ` <span class="tag warn xs">looks ${esc(HCLS[avg.cls].toLowerCase())}</span>` : ''}</dd>` : ''}</dl>
+      <p class="small muted">From the ${P.from_year || 2027} leave year: part time (above ${P.casual_max_pct ?? 30} % to ${P.part_time_max_pct ?? 70} % of a full-time week) gets annual leave 6 / 8 / 11 and sick leave 10 / 13 / 15 days by service (Employment (Part-Time Employees) Regulations 2010); casual (${P.casual_max_pct ?? 30} % or less) gets no paid annual or sick leave. <a class="link" href="#/time/hours">Working Hours ›</a></p></section>`;
+    $('[data-hw]', box)?.addEventListener('click', async () => { if (await hoursWindow(pid, R.person.name, row, P)) { toast('Working hours saved'); hoursCard(box, pid); } });
+  }
+  const HCLS = { FT: 'Full time', PT: 'Part time', CASUAL: 'Casual' };
+  const secHeadG = (t, extra = '') => `<div class="pf-sh"><h3>${esc(t)}</h3>${extra}</div>`;
+  const clsByHours = (h, P) => { const x = Number(h); if (!(x > 0)) return null; const pct = x / (Number(P.full_time_weekly_hours) || 45) * 100; return pct <= Number(P.casual_max_pct ?? 30) + 1e-9 ? 'CASUAL' : pct <= Number(P.part_time_max_pct ?? 70) + 1e-9 ? 'PT' : 'FT'; };
+  const hoursClass = (row, P) => (row.hours_class ? { cls: row.hours_class, by: 'hr' } : clsByHours(row.weekly_hours, P) ? { cls: clsByHours(row.weekly_hours, P), by: 'hours' } : { cls: row.job_status === 'PT' ? 'PT' : 'FT', by: 'status' });
+  const actualWeekly = (act, P = {}) => { const a = (act || []).filter((x) => Number(x.hours) > 0); if (!a.length) return null; const m = a.reduce((s, x) => s + Number(x.hours), 0) / a.length; const week = Math.round(m * 12 / 52 * 10) / 10;
+    return { week, month: m, months: a.map((x) => `${new Date(`${x.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })} ${m2(x.hours).replace(/\.00$/, '')} h`), cls: clsByHours(week, P) || 'CASUAL' }; };
+  async function hoursWindow(pid, name, row, P) {
+    return modal({ title: `Working hours · ${name}`, ok: 'Save',
+      body: `<div class="fld-2"><label class="fld"><span>Contracted hours a week</span><input name="h" inputmode="decimal" value="${esc(row.weekly_hours ?? '')}" placeholder="e.g. 20"></label>
+        <label class="fld"><span>Working days a week</span><input name="d" inputmode="decimal" value="${esc(row.work_days ?? '')}" placeholder="e.g. 5"></label>
+        <label class="fld"><span>For the leave rules</span><select name="c"><option value="">Work it out from the hours</option>${Object.entries(HCLS).map(([k, l]) => `<option value="${k}" ${row.hours_class === k ? 'selected' : ''}>Mark as ${l.toLowerCase()}</option>`).join('')}</select></label>
+        <label class="fld"><span>Reason <small class="muted">— needed when you mark</small></span><input name="r" maxlength="300" value="${esc(row.reason || '')}"></label></div>
+        <p class="small muted" id="hw-hint"></p>`,
+      onOpen: (wrap) => { const f = $('form', wrap); const hint = () => { const c = clsByHours(f.h.value, P); $('#hw-hint', wrap).textContent = c ? `${f.h.value} h a week = ${Math.round(Number(f.h.value) / (P.full_time_weekly_hours || 45) * 100)} % of a full-time week → ${HCLS[c].toLowerCase()} by the hours.` : 'With no hours, the job status decides (part time if PT).'; };
+        f.h.addEventListener('input', hint); hint(); },
+      onOk: async (f) => { await API.rpc('cms_working_hours_save', { p_person: pid, p: { weekly_hours: f.h.value.trim() || null, work_days: f.d.value.trim() || null, hours_class: f.c.value || null, reason: f.r.value.trim() } }); } });
+  }
+  // Time & Leave › Working Hours: everyone not full time (or with hours recorded), contracted vs actually worked, and the marking
+  async function hoursPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="hw-body">${loading()}</div>`;
+    let L; try { L = await API.rpc('cms_working_hours_list'); } catch (e) { $('#hw-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const P = L.policy || {}; const f = { v: 'attention' };
+    const rows = (L.rows || []).map((r) => { const c = hoursClass(r, P); const a = actualWeekly(r.actual, P);
+      const flags = []; if (!r.weekly_hours && !r.hours_class) flags.push('No contracted hours'); if (a && a.cls !== c.cls) flags.push(`Worked ${a.week} h a week: looks ${HCLS[a.cls].toLowerCase()}`);
+      if (r.job_status === 'PT' && c.cls === 'FT') flags.push('Job status part time, but full time by the hours'); return { ...r, c, a, flags }; });
+    const V = [['attention', 'Needs attention', (r) => r.flags.length], ['CASUAL', 'Casual', (r) => r.c.cls === 'CASUAL'], ['PT', 'Part time', (r) => r.c.cls === 'PT'], ['all', 'All', () => true]];
+    const draw = () => {
+      const show = rows.filter(V.find(([k]) => k === f.v)[2]);
+      $('#hw-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Job status</th><th class="num">Contracted h / week</th><th class="num">Days</th><th>For the leave rules</th><th class="num">Worked h / week</th><th>Check</th><th></th></tr></thead><tbody>
+        ${show.map((r) => `<tr><td><a href="#/person?id=${esc(r.person_id)}&tab=employment">${esc(r.name)}</a><small class="sub">${esc(r.employee_id || '')} · ${esc(coShort(r.company) || r.company || '')}</small></td>
+          <td>${esc(r.job_status || '—')}</td><td class="num">${r.weekly_hours ? m2(r.weekly_hours).replace(/\.00$/, '') : '—'}</td><td class="num">${r.work_days ?? '—'}</td>
+          <td><b>${esc(HCLS[r.c.cls])}</b><small class="sub">${r.c.by === 'hr' ? `marked${r.reason ? `: ${esc(r.reason)}` : ''}` : r.c.by === 'hours' ? 'by the hours' : 'by the job status'}</small></td>
+          <td class="num">${r.a ? `${r.a.week}<small class="sub">${esc(r.a.months.join(' · '))}</small>` : '—'}</td>
+          <td>${r.flags.map((x) => `<span class="tag warn xs">${esc(x)}</span>`).join(' ') || '<span class="tag ok xs">OK</span>'}</td>
+          <td>${r.can_edit ? `<button type="button" class="btn sm" data-e="${esc(r.person_id)}">Change…</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Nobody here.</td></tr>'}</tbody></table></div>
+        <p class="small muted">Full-time week: ${P.full_time_weekly_hours || 45} h. Casual = ${P.casual_max_pct ?? 30} % or less (${Math.round((P.full_time_weekly_hours || 45) * (P.casual_max_pct ?? 30)) / 100} h); part time = above that up to ${P.part_time_max_pct ?? 70} % (${Math.round((P.full_time_weekly_hours || 45) * (P.part_time_max_pct ?? 70)) / 100} h); above that counts as full time. Worked hours are the basic hours paid in ${dShort(L.from)} – ${dShort(L.to)} (hourly-paid staff only), × 12 ÷ 52. The marking decides annual and sick leave from the ${P.from_year || 2027} leave year; earlier years keep the earlier rule.</p></section>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $$('[data-e]', el).forEach((b) => b.addEventListener('click', async () => { const r = rows.find((x) => x.person_id === b.dataset.e); if (await hoursWindow(r.person_id, r.name, r, P)) { toast('Working hours saved'); hoursPage(item, el); } }));
+    };
+    if (!rows.some(V[0][2])) f.v = 'all';
+    draw();
+  }
+
   // ================================================================ PRI-011 · Employee profile: everything about a person on one page
   const PROFILE_TABS = [['overview', 'Overview'], ['personal', 'Personal'], ['family', 'Family'], ['background', 'Background'], ['employment', 'Employment'], ['history', 'History'],
     ['pay', 'Pay'], ['leave', 'Leave'], ['documents', 'Photo & documents'], ['records', 'Letters & reviews'], ['timeline', 'Timeline']];
@@ -4612,7 +4846,8 @@
             v(CONF[x.confirmation] || x.confirmation), v(x.job_status), v(x.hours), (x.paid_by || []).map((c) => `${esc(c.company)}${c.to ? ` <span class="muted">to ${dShort(c.to)}</span>` : ''}`).join('<br>') || v(''),
             v([x.leaving_reason, x.rehire ? `rehire: ${x.rehire}` : ''].filter(Boolean).join(' · '))]), 'No payroll record yet.')}</section>
         <section class="card">${kv([['Probation ends', E.probation_end ? `${dShort(E.probation_end)} <span class="muted">(${esc(E.probation_source || '')})</span>` : v('')], ['Confirmed', H.confirmation_date ? dShort(H.confirmation_date) : v('')],
-          ['Notice period', v(E.notice)], ['Group start date', H.group_start ? dShort(H.group_start) : v('')], E.exit?.reason ? ['Exit reason', v(E.exit.reason)] : null, E.exit?.clearance ? ['Clearance', v(E.exit.clearance)] : null])}</section>`;
+          ['Notice period', v(E.notice)], ['Group start date', H.group_start ? dShort(H.group_start) : v('')], E.exit?.reason ? ['Exit reason', v(E.exit.reason)] : null, E.exit?.clearance ? ['Clearance', v(E.exit.clearance)] : null])}</section>
+        ${H.eppd_employee_id ? '<div id="pf-resign"></div><div id="pf-hours"></div>' : ''}`;
     }
     function pay() {
       const I = D.ids || {};
@@ -4772,7 +5007,14 @@
     }
     async function draw() {
       const map = { overview, personal, family, background, employment, pay, records };
-      if (map[tab]) body.innerHTML = map[tab](); else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body); else if (tab === 'history') await historyTab(body);
+      if (map[tab]) body.innerHTML = map[tab](); if (tab === 'employment' && $('#pf-resign', body)) {
+        const after = () => profilePage(item, el);
+        resignCard($('#pf-resign', body), pid, after).then((R) => {
+          if (R && qs.get('resign') === '1' && R.can?.edit && !state.resignOpened) { state.resignOpened = true; history.replaceState(null, '', `#/person?id=${pid}&tab=employment`);
+            resignationWindow(pid, R, { letter: qs.get('letter') || '', start: qs.get('start') || '', last: qs.get('last') ?? undefined, al: qs.get('al') || '', payer: qs.get('payer') || '' }).then((ok) => { state.resignOpened = false; if (ok) { toast('Resignation saved'); after(); } }); }
+        });
+        hoursCard($('#pf-hours', body), pid);
+      } else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body); else if (tab === 'history') await historyTab(body);
       $$('[data-edit]', body).forEach((b) => b.addEventListener('click', () => editProfile(b.dataset.edit)));
     }
     // ---- editing (stored in the CMS; the application stays as it was)
@@ -5088,7 +5330,7 @@
 
   const LIVE = {
     dashboard: dashboardPage, people: peoplePage, 'people/former': peoplePage, org: orgPage, 'admin/companies': orgPage, approvals: approvalsPage,
-    'payroll/companies': payingPage, 'payroll/increments': incrementsPage,
+    'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
     careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
@@ -5259,7 +5501,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

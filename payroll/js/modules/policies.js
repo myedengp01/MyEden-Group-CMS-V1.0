@@ -179,9 +179,25 @@ export async function render(el, ctx) {
 
   // part-time
   const pt = structuredClone(P.part_time?.value || { full_time_weekly_hours: 45, prorate: ['AL', 'SL'] });
-  el.append(panel('Part-time staff', 'Annual and sick leave for part-timers = full-time days × their weekly hours ÷ full-time weekly hours, rounded half up. Set each part-timer’s weekly hours in their Employment tab.',
-    h('label', { class: 'check-row' }, 'Full-time weekly hours', n(pt.full_time_weekly_hours, (v) => { pt.full_time_weekly_hours = v; })),
-    saveBtn('Save part-time rule', () => save('part_time', pt, 'Part-time rule'))));
+  pt.al_bands = pt.al_bands || [{ until_months: 24, days: 6 }, { until_months: 60, days: 8 }, { until_months: null, days: 11 }];
+  pt.sl_bands = pt.sl_bands || [{ until_years: 2, days: 10 }, { until_years: 5, days: 13 }, { until_years: null, days: 15 }];
+  const bandRow = (label, b) => h('tr', {}, h('td', {}, label), h('td', {}, n(b.days, (v) => { b.days = v; })));
+  el.append(panel('Part-time and casual staff', `Employment (Part-Time Employees) Regulations 2010. From the leave year ${pt.from_year || 2027}: weekly hours above ${pt.casual_max_pct ?? 30} % and up to ${pt.part_time_max_pct ?? 70} % of a full-time week are part time (annual leave by service below, pro-rated by months; sick leave by service); ${pt.casual_max_pct ?? 30} % or less is casual (no paid annual or sick leave); above ${pt.part_time_max_pct ?? 70} % counts as full time. HR marks each person under Working hours on the profile. Earlier years keep the earlier rule (full-time days × weekly hours ÷ full-time hours).`,
+    h('div', { class: 'grid-2', style: 'gap:.8rem 2rem' },
+      h('label', { class: 'check-row' }, 'Full-time weekly hours', n(pt.full_time_weekly_hours, (v) => { pt.full_time_weekly_hours = v; })),
+      h('label', { class: 'check-row' }, 'New rules from leave year', n(pt.from_year ?? 2027, (v) => { pt.from_year = v; })),
+      h('label', { class: 'check-row' }, 'Casual: up to % of full time', n(pt.casual_max_pct ?? 30, (v) => { pt.casual_max_pct = v; })),
+      h('label', { class: 'check-row' }, 'Part time: up to % of full time', n(pt.part_time_max_pct ?? 70, (v) => { pt.part_time_max_pct = v; }))),
+    h('div', { class: 'grid-2', style: 'gap:.8rem 2rem;margin-top:1rem' },
+      h('table', { class: 'data' }, h('thead', {}, h('tr', {}, h('th', {}, 'Part-time annual leave (days a year)'), h('th', {}, 'Days'))),
+        h('tbody', {}, bandRow('Less than 2 years', pt.al_bands[0]), bandRow('2 to less than 5 years', pt.al_bands[1]), bandRow('5 years or more', pt.al_bands[2]))),
+      h('table', { class: 'data' }, h('thead', {}, h('tr', {}, h('th', {}, 'Part-time sick leave (days a year)'), h('th', {}, 'Days'))),
+        h('tbody', {}, bandRow('Less than 2 years', pt.sl_bands[0]), bandRow('2 to less than 5 years', pt.sl_bands[1]), bandRow('5 years or more', pt.sl_bands[2])))),
+    h('p', { class: 'small muted' }, 'The Regulations set these as minimums (annual leave reg. 7: 6 / 8 / 11; sick leave reg. 8: 10 / 13 / 15).'),
+    saveBtn('Save part-time rule', () => {
+      if (pt.al_bands.some((b) => Number(b.days) < [6, 8, 11][pt.al_bands.indexOf(b)]) || pt.sl_bands.some((b) => Number(b.days) < [10, 13, 15][pt.sl_bands.indexOf(b)])) { toast('Part-time leave cannot be below the Regulations’ minimum days.', 'error'); return; }
+      save('part_time', pt, 'Part-time rule');
+    })));
 
   // ---------------- Phase 4: payroll
   const DEF = { daily_rate_divisor: 26, default_normal_hours: 8, pcb_carry_forward: true, rates: { OT_NORMAL: 1.5, OT_OFFDAY: 1.5, RD_HALF: 0.5, RD_FULL: 1, RD_EXCESS: 2, PH_NORMAL: 2, PH_EXCESS: 3 } };

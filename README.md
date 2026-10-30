@@ -77,6 +77,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 49. `20261027_cms_letter_apply.sql` — `cms_letter_apply_preview`, `cms_letter_apply`; `cms_letter_applied`, `cms_scheduled_changes` + nightly job `cms-scheduled-changes` (00:05 MYT); cancelled letters cancel their pending changes
 50. `20261027_cms_run_totals_of.sql` — `private.cms_totals_of(run, company)`: a month's stored totals worked out again from its lines (for corrections)
 51. `20261028_cms_letter_draft_print.sql` — `cms_letter_draft_printed` (records each print of a letter before it is issued) and `cms_letter_history` (a letter's history for the letter page)
+52. `20261030_cms_resignation_calculator.sql` — resignation record (`cms_resignations`, `cms_resignation_get` / `_save` / `_withdraw`), final settlement from the issued acceptance letter, working hours and the full / part time / casual marking (`cms_working_hours_list` / `_save`), part-time leave policy from 2027, reminders (`cms_resignation_tasks`), new letter placeholders, the plain acceptance letter rewritten and switched on, and the early-release letter RL_TP3
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -126,6 +127,17 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.10.30-20:50** — Resignation calculator. **Record resignation** on the profile (Employment tab): letter date, notice start (the letter
+  date unless changed), notice end = letter + 4 / 6 / 12 weeks by completed years (4 on probation), last physical working day, annual leave paid
+  out (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Saturday, public holidays skipped), and notice not served =
+  basic ÷ the actual days of each month × calendar days, paid by the employee, the company or waived (approver recorded). Payroll and the
+  Employee Master are kept in step; withdrawing clears them. **Issue acceptance letter →** suggests the letter (Full Notice, Annual Leave Offset,
+  or the new Early Release — Notice in Lieu) and the letter page fills every resignation field from the calculation. The issued letter's
+  "Update records" saves the final settlement. The AL Calculator has a Resignation section; Final Settlement uses calendar days for notice.
+  **Working hours** on the profile and Time & Leave › Working Hours: contracted hours, hours actually paid, and HR's marking as full time,
+  part time or casual. From the 2027 leave year part time gets annual leave 6 / 8 / 11 and sick leave 10 / 13 / 15 days (Employment (Part-Time
+  Employees) Regulations 2010) and casual (30 % or less of a full-time week) none; earlier years are unchanged. Bell reminders for resignations
+  without an acceptance letter, hand-overs due within 7 days and leavers without a final settlement.
 - **v2026.10.28-08:10** — HR letters: **Print draft / PDF** on every letter not yet issued (new, draft, waiting for approval, approved).
   The printout keeps the diagonal watermark (DRAFT — NOT ISSUED / APPROVED — NOT YET ISSUED), the file name has "DRAFT" in it, and every
   draft print is recorded in the letter's new **History** list and the audit log. Print / Download Word for the final letter stay issued-only.

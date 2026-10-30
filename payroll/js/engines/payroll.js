@@ -195,9 +195,11 @@ export function buildAutoItems(ctx) {
       note: `${days === null ? '' : `${-days} day(s) `}more than earned × RM${fmt(R.orp)} (final settlement)` });
     if (alMode === 'auto' && (st.al_balance === null || st.al_balance === undefined)) warnings.push({ level: 'warn', text: 'Final settlement: annual leave balance not available; check the leave records.' });
     const nd = st.notice_days !== null && st.notice_days !== undefined && st.notice_days !== '' ? Number(st.notice_days) : null;
-    const na = st.notice_amount !== null && st.notice_amount !== undefined && st.notice_amount !== '' ? Number(st.notice_amount) : (nd !== null ? r2(nd * R.orp) : null);
-    if (st.notice_mode === 'employer_pays' && na > 0) add('NOTICE_PAY', { key: 'SETTLE:NOTICE', amount: na, qty: nd, unit: 'days', rate: R.orp, note: `${nd ?? '—'} day(s) of notice paid in lieu` });
-    if (st.notice_mode === 'employee_pays' && na > 0) add('NOTICE_SHORT', { key: 'SETTLE:NOTICE', amount: na, qty: nd, unit: 'days', rate: R.orp, note: `${nd ?? '—'} day(s) of notice not served` });
+    // notice days are calendar days (basic ÷ the days of the month); the amount saved with the settlement is used as it is
+    const dRate = R.basis === 'monthly' && win?.calDays ? R.full / win.calDays : R.orp;
+    const na = st.notice_amount !== null && st.notice_amount !== undefined && st.notice_amount !== '' ? Number(st.notice_amount) : (nd !== null ? r2(nd * dRate) : null);
+    if (st.notice_mode === 'employer_pays' && na > 0) add('NOTICE_PAY', { key: 'SETTLE:NOTICE', amount: na, qty: nd, unit: 'days', rate: nd ? r2(na / nd) : dRate, note: `${nd ?? '—'} calendar day(s) of notice paid in lieu` });
+    if (st.notice_mode === 'employee_pays' && na > 0) add('NOTICE_SHORT', { key: 'SETTLE:NOTICE', amount: na, qty: nd, unit: 'days', rate: nd ? r2(na / nd) : dRate, note: `${nd ?? '—'} calendar day(s) of notice not served` });
   }
 
   const inputs = {

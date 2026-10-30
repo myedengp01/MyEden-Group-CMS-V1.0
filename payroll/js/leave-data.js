@@ -9,7 +9,7 @@ export const LEAVE_LABELS = { AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', 
 export async function loadPeople(sb, ref) {
   const [people, empls] = await Promise.all([
     fetchAll(() => sb.from('eppd_employee_list').select('id,emp_id,full_name,gender,company_name,department_code,job_title').order('full_name')),
-    fetchAll(() => sb.from('eppd_employments').select('id,employee_id,join_date,resigned_date,resignation_letter_date,confirmation_status,job_status,weekly_hours,work_from,work_to,meal_hours').order('join_date', { ascending: false, nullsFirst: false })),
+    fetchAll(() => sb.from('eppd_employments').select('id,employee_id,join_date,resigned_date,resignation_letter_date,notice_until,confirmed_date,confirmation_status,job_status,weekly_hours,work_days_per_week,hours_class,work_from,work_to,meal_hours').order('join_date', { ascending: false, nullsFirst: false })),
   ]);
   const latest = new Map();
   for (const e of empls) if (!latest.has(e.employee_id)) latest.set(e.employee_id, e);

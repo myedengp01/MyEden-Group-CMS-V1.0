@@ -6,6 +6,7 @@ import { loadLeaveYear, balancesFor, loadPeople } from '../leave-data.js';
 import { computeNotice } from '../engines/notice.js';
 import { ratesOfPay, monthLabel, periodOf } from '../engines/payroll.js';
 import { salaryAsOf, todayIso, addDays } from '../engines/employee.js';
+import { calendarPay } from '../engines/resign.js';
 
 const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
 const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
@@ -45,8 +46,10 @@ export async function render(el, ctx) {
     const noticeEnd = em.notice_until || n?.noticeEnd;   // an agreed notice date on record wins over the policy
     const shortCal = noticeEnd && em.resigned_date && em.resigned_date < noticeEnd ? daysBetween(em.resigned_date, noticeEnd) : 0;
     const shortDays = Math.round(shortCal * 6 / 7 * 2) / 2;   // calendar days short → working days (6-day week), to the half day
+    // notice not served: basic ÷ the actual days of each month × the calendar days (hourly pay: working days × daily rate)
+    const noticeSuggest = shortCal > 0 ? (R.basis === 'hourly' ? r2(shortDays * R.orp) : calendarPay(addDays(em.resigned_date, 1), noticeEnd, R.full).amount) : 0;
     const myLoans = loans.filter((ln) => ln.employee_id === p.id).map((ln) => ({ ...ln, balance: Math.max(0, r2(Number(ln.principal) - (repaid.get(ln.id) || 0))) }));
-    rows.push({ p, em, R, n, shortCal, shortDays, st: stBy.get(em.id) || null, loanBal: r2(myLoans.reduce((s, ln) => s + ln.balance, 0)), period: em.resigned_date ? periodOf(em.resigned_date) : null });
+    rows.push({ p, em, R, n, shortCal, shortDays, noticeSuggest, st: stBy.get(em.id) || null, loanBal: r2(myLoans.reduce((s, ln) => s + ln.balance, 0)), period: em.resigned_date ? periodOf(em.resigned_date) : null });
   }
   rows.sort((a, b) => String(a.em.resigned_date).localeCompare(String(b.em.resigned_date)));
   // unused annual leave at each last working day
@@ -70,7 +73,7 @@ export async function render(el, ctx) {
     h('tbody', {}, rows.map((r) => {
       const st = r.st || {}; const mode = st.al_mode || defMode; const days = al.get(r.em.id);
       const alTxt = mode === 'none' ? 'Not paid' : mode === 'custom' ? `Custom: ${st.al_amount !== null && st.al_amount !== undefined ? `RM${money(st.al_amount)}` : `${st.al_days} day(s)`}` : (days === null || days === undefined ? '—' : `${days} day(s) = RM${money(r2(days * r.R.orp))}`);
-      const ntc = st.notice_mode === 'employer_pays' ? `We pay ${st.notice_days ?? '?'} day(s)` : st.notice_mode === 'employee_pays' ? `They pay ${st.notice_days ?? '?'} day(s)` : (r.shortCal > 0 ? `${r.shortCal} calendar day(s) short` : (r.n ? 'Served in full' : 'No letter date'));
+      const ntc = st.notice_mode === 'employer_pays' ? `We pay ${st.notice_days ?? '?'} day(s)` : st.notice_mode === 'employee_pays' ? `They pay ${st.notice_days ?? '?'} day(s)` : (r.shortCal > 0 ? `${r.shortCal} calendar day(s) short (RM${money(r.noticeSuggest)})` : (r.n ? 'Served in full' : 'No letter date'));
       const status = r.period ? runBy.get(r.period) : null;
       return h('tr', { class: r.shortCal > 0 && !st.notice_mode ? 'flag' : '' },
         h('td', {}, h('a', { href: `#/employees/${r.p.id}?tab=employment` }, r.p.full_name), h('div', { class: 'small muted' }, r.p.emp_id || '')),
@@ -80,7 +83,7 @@ export async function render(el, ctx) {
         h('td', {}, r.period ? h('a', { href: `#/payroll/${r.period.slice(0, 7)}` }, monthLabel(r.period)) : '—', status ? h('div', { class: 'small muted' }, status === 'finalised' ? 'Finalised' : 'Draft') : null),
         h('td', {}, status === 'finalised' || !canEdit ? null : h('button', { class: 'btn sm', type: 'button', onclick: () => edit(r, days) }, 'Edit')));
     }))))),
-    h('p', { class: 'small muted', style: 'margin-top:.8rem' }, 'Days are paid at the daily rate (basic ÷ 26). Suggested notice days count working days (6-day week) between the last working day and the end of the notice period.'));
+    h('p', { class: 'small muted', style: 'margin-top:.8rem' }, 'Unused annual leave is paid at the daily rate (basic ÷ 26, Employment Act s.60I). Notice not served = basic ÷ the actual days of each month × the calendar days between the last working day and the end of the notice (hourly pay: working days × daily rate). A resignation recorded on the profile fills this in from its issued acceptance letter.'));
 
   function edit(r, days) {
     const st = r.st || {};
@@ -88,8 +91,9 @@ export async function render(el, ctx) {
     const alDays = field('Custom: days (negative = deduct leave taken in advance)', { type: 'number', step: '0.5', value: st.al_days });
     const alAmt = field('Custom: amount (RM, overrides days)', { type: 'number', step: '0.01', value: st.al_amount });
     const nMode = field('Notice period', { type: 'select', value: st.notice_mode || 'none', options: [['none', 'Nothing to settle'], ['employer_pays', 'Company pays notice in lieu'], ['employee_pays', 'Employee pays for notice not served']] });
-    const nDays = field('Notice days (working days)', { type: 'number', step: '0.5', value: st.notice_days ?? (r.shortDays || '') , hint: r.shortCal > 0 ? `Suggested: ${r.shortDays} (${r.shortCal} calendar days short)` : undefined });
-    const nAmt = field('Notice amount (RM, overrides days)', { type: 'number', step: '0.01', value: st.notice_amount });
+    const nDays = field('Notice not served (calendar days)', { type: 'number', step: '1', value: st.notice_days ?? (r.shortCal || ''), hint: r.shortCal > 0 ? `Suggested: ${r.shortCal} calendar day(s) = RM${money(r.noticeSuggest)}` : undefined });
+    const nAmt = field('Notice amount (RM)', { type: 'number', step: '0.01', value: st.notice_amount ?? (r.shortCal > 0 ? r.noticeSuggest : ''), hint: 'Basic ÷ the days of each month × the calendar days. Changing the days works the amount out again.' });
+    nDays.input.addEventListener('input', () => { const d = Number(nDays.getValue()) || 0; nAmt.input.value = r.shortCal > 0 ? String(r2(r.noticeSuggest / r.shortCal * d)) : String(r2(d * (r.R.full / 30))); });
     const loansF = field(`Recover the whole loan balance (RM${money(r.loanBal)})`, { type: 'switch', value: st.recover_loans !== false, span2: true });
     const note = field('Note', { type: 'textarea', value: st.note, span2: true });
     const preview = h('p', { class: 'small', style: 'grid-column:1/-1' });
