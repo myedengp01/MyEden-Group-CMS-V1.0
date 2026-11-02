@@ -789,7 +789,8 @@ table.ap-scores input { width: 100%; min-width: 160px; }
 #lt-fields { max-height: 60vh; overflow: auto; padding-right: 6px; }
 .lt-prev { max-height: 60vh; overflow: auto; background: var(--bg); border-radius: 12px; padding: 8px; }
 .lt-prev .sheet { width: 100%; min-height: 0; transform-origin: top left; font-size: 9.5pt; padding: 8mm; }
-.sheet.letter .lt-body p { margin: 0 0 2.2mm; }
+.sheet.letter .lt-body p { margin: 0 0 2.2mm; text-align: justify; text-justify: inter-word; hyphens: manual; }
+.sheet.letter .lt-body td p, .sheet.letter .lt-body th p { text-align: left; }
 .sheet.letter .lt-gap { height: 3mm; }
 .sheet.letter .lt-conf { font-weight: 700; letter-spacing: .03em; }
 .sheet.letter .lt-subj { font-weight: 700; text-decoration: underline; margin: 2mm 0 3mm; }

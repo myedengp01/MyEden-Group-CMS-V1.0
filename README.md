@@ -127,6 +127,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.02-20:15** — HR letters (text format): body paragraphs are justified to both margins in the preview, print and PDF; the last line of a paragraph, one-line items and table cells stay left-aligned. Word letters keep the Word file's alignment.
 - **v2026.10.30-21:40** — OTCF claims with more than one OT time a day (MEG-OTCF v2026.10.30-21:40: up to 3, e.g. came in early and stayed
   late): the payroll pull adds up a rest day's or public holiday's times before pricing them (half day / full day / beyond normal hours), so
   splitting the day cannot change the pay; normal and off-day times stay line by line. OTCF PDFs made in the CMS use the app's own layout,
