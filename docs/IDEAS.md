@@ -17,6 +17,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-010 | 2026-10-22 | Switch-over rule: forms, MyPayroll and the CMS run side by side on the same data until confirmed stable; only then are staff redirected to the CMS for all transactions; MEG-EAF V2 applicant and HR system move into the CMS in a later phase | Step B built in v2026.10.22-15:05 (banner + Sync Check); switch-over waits for CLC |
 | PRI-011 | 2026-10-22 | One page per employee with everything about them: personal details, passport-size photo from the MEG-EAF application, IC (front / back) photos, passport, and all other details | **Built in v2026.10.25-23:20** |
 | PRI-012 | 2026-10-29 | Attendance app in the CMS: staff clock in / out on the phone with geo location (centre geofence), attendance records feed payroll (overtime, part-time hours, unpaid absence, allowances) | Recorded — waiting for CLC's 7 decisions |
+| PRI-013 | 2026-11-02 | Pay calculation methods recorded (daily / calendar-day / hourly rates, unpaid leave, overtime, rest day, public holiday, AL payout and buy-back, notice in lieu, leave entitlements, statutory) with 8 open points to decide; idea: a "How pay is worked out" page in the CMS | Recorded — waiting for CLC's decisions on the open points |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -265,3 +266,13 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   5. Payroll use: overtime, part-time hours, unpaid absence, attendance allowance, lateness.
   6. Current attendance method (punch card, thumbprint machine, WhatsApp, book), for running side by side.
   7. Switch on CMS leave as part of this.
+
+## PRI-013 · Pay calculation methods and open points — recorded 2026-11-02
+- **Recorded in full in [docs/PAY-RULES.md](PAY-RULES.md):** the three rates (daily = basic ÷ 26, calendar-day = basic ÷ days in the month,
+  hourly = daily ÷ normal hours), what uses which rate, leave entitlements, statutory deductions and rounding, as built on 2 Nov 2026.
+- **Open points for CLC:** (1) ÷ 26 vs ÷ calendar days, incl. the negative-balance mismatch (leaving vs year end); (2) basic only vs fixed
+  allowances in the daily rate; (3) overtime for staff above RM 4,000; (4) a pay rise dated mid-month applies to the whole month;
+  (5) unpaid leave across a month end deducted in the starting month; (6) Automatic PCB, Claims, Loans and Final settlement modules are off;
+  (7) rest-day half day assumes 8 normal hours when none recorded; (8) no public holidays entered for 2026 / 2027.
+- **Idea:** a "How pay is worked out" page in the CMS for HR, built from PAY-RULES.md and kept in step with the settings.
+
