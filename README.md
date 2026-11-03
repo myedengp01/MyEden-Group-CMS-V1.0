@@ -78,6 +78,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 50. `20261027_cms_run_totals_of.sql` — `private.cms_totals_of(run, company)`: a month's stored totals worked out again from its lines (for corrections)
 51. `20261028_cms_letter_draft_print.sql` — `cms_letter_draft_printed` (records each print of a letter before it is issued) and `cms_letter_history` (a letter's history for the letter page)
 52. `20261030_cms_resignation_calculator.sql` — resignation record (`cms_resignations`, `cms_resignation_get` / `_save` / `_withdraw`), final settlement from the issued acceptance letter, working hours and the full / part time / casual marking (`cms_working_hours_list` / `_save`), part-time leave policy from 2027, reminders (`cms_resignation_tasks`), new letter placeholders, the plain acceptance letter rewritten and switched on, and the early-release letter RL_TP3
+53. `20261103_cms_person_private_edit.sql` — `cms_person_private_get` / `cms_person_private_save`: bank, account no., EPF, SOCSO and income tax numbers edited on the profile Pay tab (People edit + See bank / See IC; logged)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -127,6 +128,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.03-18:35** — Profile › Pay › Bank & statutory numbers has **Edit…**: bank, account no. (digits only), EPF, SOCSO (blank = IC number) and income tax numbers are changed in the CMS — no need for MyPayroll V2.0. Needs People edit for the company, plus See bank for bank details and See IC for EPF / SOCSO / tax; every change is in the audit log (account shown by its last 4 digits).
 - **v2026.11.03-17:55** — Sick leave (PRI-014, EA s.60F): the 2- or 5-year mark reached in a year (by 31 December, or by the last day for a leaver) gives 18 / 22 days (part time 13 / 15 from 2027) for that whole year from 1 January, instead of from the anniversary; never pro-rated or deducted on leaving.
 - **v2026.11.02-20:15** — HR letters (text format): body paragraphs are justified to both margins in the preview, print and PDF; the last line of a paragraph, one-line items and table cells stay left-aligned. Word letters keep the Word file's alignment.
 - **v2026.10.30-21:40** — OTCF claims with more than one OT time a day (MEG-OTCF v2026.10.30-21:40: up to 3, e.g. came in early and stayed

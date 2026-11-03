@@ -4854,8 +4854,8 @@
       const I = D.ids || {};
       return `${D.pay ? `<section class="card">${secHead('Salary history')}${table(['From', 'Amount', 'Basis', 'Paid by', 'Reason'], D.pay.history.map((x) => [dShort(x.from), `RM ${m2(x.amount)}`, v(x.basis), v(x.company), v(x.reason)]), 'No salary recorded.')}</section>
         <section class="card">${secHead('Current allowances')}${table(['Item', 'Amount', 'From', 'To'], D.pay.allowances.map((x) => [v(x.name), `RM ${m2(x.amount)}`, x.from ? dShort(x.from) : v(''), x.to ? dShort(x.to) : 'ongoing']), 'None.')}</section>` : locked('See salaries')}
-        ${C.bank || C.ic ? `<section class="card">${secHead('Bank & statutory numbers')}${kv([C.bank ? ['Bank', v(I.bank || I.bank_code)] : null, C.bank ? ['Account no.', v(I.account)] : null,
-          C.ic ? ['EPF no.', v(I.epf)] : null, C.ic ? ['SOCSO no.', v(I.socso)] : null, C.ic ? ['Income tax no.', v(I.tax)] : null])}<p class="small muted">Changed on the payroll record (Payroll pages).</p></section>` : ''}`;
+        ${C.bank || C.ic ? `<section class="card">${secHead('Bank & statutory numbers', H.eppd_employee_id ? '<button type="button" class="btn sm" data-priv>Edit…</button>' : '')}${kv([C.bank ? ['Bank', v(I.bank || I.bank_code)] : null, C.bank ? ['Account no.', v(I.account)] : null,
+          C.ic ? ['EPF no.', v(I.epf)] : null, C.ic ? ['SOCSO no.', v(I.socso)] : null, C.ic ? ['Income tax no.', v(I.tax)] : null])}<p class="small muted">${H.eppd_employee_id ? 'Changed here (HR with “See bank” / “See IC”); every change is kept in the audit log.' : 'No payroll record yet.'}</p></section>` : ''}`;
     }
     async function leave(box) {
       if (!C.leave) { box.innerHTML = locked('Leave'); return; }
@@ -5017,6 +5017,25 @@
         hoursCard($('#pf-hours', body), pid);
       } else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body); else if (tab === 'history') await historyTab(body);
       $$('[data-edit]', body).forEach((b) => b.addEventListener('click', () => editProfile(b.dataset.edit)));
+      $('[data-priv]', body)?.addEventListener('click', () => editPrivateNumbers());
+    }
+    // ---- bank and statutory numbers (payroll record), from the Pay tab
+    async function editPrivateNumbers() {
+      let X; try { X = await API.rpc('cms_person_private_get', { p_person: pid }); } catch (e) { toast(API.friendly ? API.friendly(e) : e.message, 'err'); return; }
+      const optB = `<option value="">Not set</option>${(X.banks || []).map((b) => `<option value="${esc(b.code)}" ${b.code === X.bank_code ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}`;
+      const ok = await modal({ title: `Bank & statutory numbers · ${H.name}`, ok: 'Save',
+        body: `<div class="fld-2">
+          ${X.can_bank ? `<label class="fld"><span>Bank</span><select name="bank">${optB}</select></label>
+          <label class="fld"><span>Account no. <small class="muted">— digits only</small></span><input name="acc" inputmode="numeric" autocomplete="off" value="${esc(X.bank_account_no || '')}"></label>` : ''}
+          ${X.can_ic ? `<label class="fld"><span>EPF no.</span><input name="epf" inputmode="numeric" autocomplete="off" value="${esc(X.epf_no || '')}"></label>
+          <label class="fld"><span>SOCSO no. <small class="muted">— blank = IC number</small></span><input name="socso" autocomplete="off" value="${esc(X.socso_no || '')}" placeholder="${esc(X.socso_from_nric || '')}"></label>
+          <label class="fld"><span>Income tax no.</span><input name="tax" autocomplete="off" value="${esc(X.tax_no || '')}" placeholder="e.g. IG12345678090"></label>` : ''}</div>
+          <p class="small muted">Used on payslips, the bank payment list, EPF / SOCSO / EIS / PCB lists and the EA form. ${!X.can_bank ? 'Bank details need “See bank”. ' : ''}${!X.can_ic ? 'EPF, SOCSO and tax numbers need “See IC”. ' : ''}Every change is kept in the audit log.</p>`,
+        onOk: async (f) => { const p = {};
+          if (X.can_bank) Object.assign(p, { bank_code: f.bank.value, bank_account_no: f.acc.value });
+          if (X.can_ic) Object.assign(p, { epf_no: f.epf.value, socso_no: f.socso.value, tax_no: f.tax.value });
+          const r = await API.rpc('cms_person_private_save', { p_person: pid, p }); X.changed = r.changed || []; } });
+      if (ok) { toast(X.changed?.length ? `Saved: ${X.changed.join(', ')}` : 'Nothing changed'); profilePage(item, el); }
     }
     // ---- editing (stored in the CMS; the application stays as it was)
     const rowsEditor = (name, cols, rows) => `<div class="pf-rows" data-rows="${name}">${(rows.length ? rows : [{}]).map((r) => `<div class="pf-row">${cols.map(([k, l, w]) => `<input data-c="${k}" placeholder="${esc(l)}" value="${esc(r[k] || '')}" style="flex:${w || 1}">`).join('')}<button type="button" class="lnk" data-del>Remove</button></div>`).join('')}</div>
