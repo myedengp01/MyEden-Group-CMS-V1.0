@@ -1,4 +1,4 @@
-# MyEden Group CMS V1.0 · How pay is worked out (as built, 2 Nov 2026)
+# MyEden Group CMS V1.0 · How pay is worked out (as built, 3 Nov 2026)
 
 Taken from the payroll engine (`payroll/js/engines/payroll.js`, `ot.js`, `leave.js`, `resign.js`, `statutory.js`, `pcb.js`) and the
 settings in force. Recorded as PRI-013; the open points at the end are waiting for CLC's decision.
@@ -9,9 +9,11 @@ settings in force. Recorded as PRI-013; the open points at the end are waiting f
 |---|---|---|
 | Daily rate (ORP) | Basic ÷ 26 (Employment Act s.60I) | RM 100.00 |
 | Calendar-day rate | Basic ÷ days in that month (28–31) | RM 83.87 in a 31-day month |
-| Hourly rate (HRP) | Daily rate ÷ the person's normal hours (working hours to − from − meal break; 8 if not recorded) | 8 h a day → RM 12.50 |
+| Hourly rate (HRP) | Daily rate ÷ the person's normal hours (working hours to − from − meal break; 8 if not recorded), **at most 8 from the October 2026 payroll** (EA s.60A; CLC 3 Nov 2026). Shorter days keep their own hours. | 9 h a day → ÷ 8 → RM 12.50 |
 
-Hourly-paid staff: the hourly rate is their pay rate; their daily rate = hourly rate × normal hours.
+Hourly-paid staff: the hourly rate is their pay rate; their daily rate = hourly rate × their own normal hours (the 8-hour cap does not apply to them).
+
+Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overtime 1.5×), Sunday the rest day (EA rest-day rule). The same hours (capped at 8) set "half a day" (4 h) and "beyond normal hours" for rest days and public holidays. Before October 2026 the workbook used ÷ 9 (Jan–May) and ÷ 8 (Jun–Sep); those months are not recalculated.
 
 ## What uses which rate
 
@@ -45,7 +47,7 @@ Hourly-paid staff: the hourly rate is their pay rate; their daily rate = hourly 
   Full days in the year of joining; never pro-rated, and never deducted when someone leaves (EA s.24 / s.60F). Hospitalisation: a 60-day
   pool that includes sick leave.
 - Carry forward: by KPI grade E 6 / S 3 / A 1 / I 0 / U 0 days, confirmed staff only; the excess bought back if approved, otherwise forfeited.
-- Notice period: letter date + 4 / 6 / 12 weeks by completed years (4 on probation).
+- Notice period: letter date + 4 / 6 / 12 weeks by completed years (4 on probation). Leave offset against the notice uses Monday–Friday, public holidays skipped.
 
 ## Statutory deductions
 
@@ -66,7 +68,7 @@ Hourly-paid staff: the hourly rate is their pay rate; their daily rate = hourly 
 5. Unpaid leave across a month end (e.g. 30 Nov – 2 Dec) is all deducted in the month it starts.
 6. Optional modules switched off: Automatic PCB, Claims in payroll, Company loans, Final settlement — while off, those amounts do not reach the
    payslip automatically.
-7. Rest-day "half a day" uses the person's own normal hours; with no working hours recorded the CMS assumes 8 (half a day = 4 h).
+7. ~~Rest-day "half a day" uses the person's own normal hours~~ — decided 3 Nov 2026: hours capped at 8 from October 2026 (half a day = 4 h); 5-day 45-hour week.
 8. No public holidays entered for 2026 or 2027: leave day counts and the resignation calculator skip none until they are added.
 
 ## Idea

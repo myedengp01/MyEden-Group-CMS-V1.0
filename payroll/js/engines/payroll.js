@@ -8,7 +8,7 @@
 
 import { computeEPF, computeSOCSO, computeEIS, statutoryBases, splitSocsoTotal } from './statutory.js';
 import { salaryForMonth, allowancesForMonth, lastDayOfMonth, isoToMs, addDays } from './employee.js';
-import { normalHours, OT_CATEGORIES } from './ot.js';
+import { normalHours, rateHours, OT_CATEGORIES } from './ot.js';
 import { computePCB, taxablePay, pcbYtd, pcbPolicy } from './pcb.js';
 
 export const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
@@ -16,7 +16,7 @@ const DAY = 86400000;
 const n = (x) => (x === null || x === undefined || x === '' ? null : Number(x));
 
 export const DEFAULT_PAYROLL = {
-  daily_rate_divisor: 26, default_normal_hours: 8, pcb_carry_forward: true,
+  daily_rate_divisor: 26, default_normal_hours: 8, pcb_carry_forward: true, hours_rule: { mode: 'own', cap: 8, from: null },
   rates: { OT_NORMAL: 1.5, OT_OFFDAY: 1.5, RD_HALF: 0.5, RD_FULL: 1, RD_EXCESS: 2, PH_NORMAL: 2, PH_EXCESS: 3 },
 };
 export const STAT_KEYS = ['epf_ee', 'epf_er', 'socso_ee', 'socso_er', 'eis_ee', 'eis_er'];
@@ -67,13 +67,14 @@ export function ageForPeriod(dob, period) {
 }
 
 /** Daily (ORP) and hourly (HRP) rates of pay, Employment Act style. */
-export function ratesOfPay(salary, employment, pol = DEFAULT_PAYROLL) {
-  const normal = normalHours(employment, pol.default_normal_hours || 8);
-  if (!salary) return { basis: null, full: 0, orp: 0, hrp: 0, normal };
+export function ratesOfPay(salary, employment, pol = DEFAULT_PAYROLL, period = null) {
+  const H = rateHours(employment, pol || {}, period, salary?.pay_basis === 'hourly' ? 'hourly' : 'monthly');
+  const normal = H.hours; const x = { own: H.own, capped: H.capped };
+  if (!salary) return { basis: null, full: 0, orp: 0, hrp: 0, normal, ...x };
   const amt = Number(salary.amount) || 0;
-  if (salary.pay_basis === 'hourly') return { basis: 'hourly', full: amt, hrp: amt, orp: r2(amt * normal), normal };
+  if (salary.pay_basis === 'hourly') return { basis: 'hourly', full: amt, hrp: amt, orp: r2(amt * normal), normal, ...x };
   const orp = amt / (pol.daily_rate_divisor || 26);
-  return { basis: 'monthly', full: amt, orp, hrp: orp / normal, normal };
+  return { basis: 'monthly', full: amt, orp, hrp: orp / normal, normal, ...x };
 }
 
 /** Item from a payment type row. */
@@ -101,7 +102,8 @@ export function buildAutoItems(ctx) {
   const items = []; const warnings = [];
   const salary = ctx.salary;
   const win = ctx.window || activeWindow(period, employment, assignment);
-  const R = ratesOfPay(salary, employment, pol);
+  const R = ratesOfPay(salary, employment, pol, period);
+  const capNote = R.capped ? ` (÷ ${fmt(R.normal, R.normal % 1 ? 1 : 0)} h, EA)` : '';
   const add = (code, f) => { const t = T(code); if (!t) { warnings.push({ level: 'warn', text: `Payment type ${code} is missing; ${f.label || code} was left out.` }); return; } items.push(itemFromType(t, f)); };
 
   if (!salary) warnings.push({ level: 'warn', text: 'No salary on record for this month. Add one in the Pay tab, or type the basic pay here.' });
@@ -135,15 +137,15 @@ export function buildAutoItems(ctx) {
   const otMult = n(employment?.ot_multiplier) ?? rates.OT_NORMAL;
   if (R.hrp > 0) {
     const otN = cat('OT_NORMAL'), otO = cat('OT_OFFDAY');
-    if (otN.length) add('OT_NORMAL', { key: 'OT:OT_NORMAL', label: 'Overtime (normal day)', amount: hrs(otN) * R.hrp * otMult, qty: hrs(otN), unit: 'hours', rate: R.hrp * otMult, note: `${fmt(hrs(otN))} h × RM${fmt(R.hrp)} × ${otMult}` });
-    if (otO.length) add('OT_NORMAL', { key: 'OT:OT_OFFDAY', label: 'Overtime (off day)', amount: hrs(otO) * R.hrp * rates.OT_OFFDAY, qty: hrs(otO), unit: 'hours', rate: R.hrp * rates.OT_OFFDAY, note: `${fmt(hrs(otO))} h × RM${fmt(R.hrp)} × ${rates.OT_OFFDAY}` });
+    if (otN.length) add('OT_NORMAL', { key: 'OT:OT_NORMAL', label: 'Overtime (normal day)', amount: hrs(otN) * R.hrp * otMult, qty: hrs(otN), unit: 'hours', rate: R.hrp * otMult, note: `${fmt(hrs(otN))} h × RM${fmt(R.hrp)} × ${otMult}${capNote}` });
+    if (otO.length) add('OT_NORMAL', { key: 'OT:OT_OFFDAY', label: 'Overtime (off day)', amount: hrs(otO) * R.hrp * rates.OT_OFFDAY, qty: hrs(otO), unit: 'hours', rate: R.hrp * rates.OT_OFFDAY, note: `${fmt(hrs(otO))} h × RM${fmt(R.hrp)} × ${rates.OT_OFFDAY}${capNote}` });
     const rdH = cat('RD_HALF'), rdF = cat('RD_FULL'), rdX = cat('RD_EXCESS');
     if (rdH.length) add('OT_RESTDAY', { key: 'OT:RD_HALF', label: 'Rest day (up to half a day)', amount: rdH.length * R.orp * rates.RD_HALF, qty: rdH.length, unit: 'days', rate: R.orp * rates.RD_HALF, note: `${rdH.length} day(s) × half a day's pay (RM${fmt(R.orp)} ÷ 2)` });
     if (rdF.length) add('OT_RESTDAY', { key: 'OT:RD_FULL', label: 'Rest day (more than half a day)', amount: rdF.length * R.orp * rates.RD_FULL, qty: rdF.length, unit: 'days', rate: R.orp * rates.RD_FULL, note: `${rdF.length} day(s) × one day's pay (RM${fmt(R.orp)})` });
-    if (rdX.length) add('OT_RESTDAY', { key: 'OT:RD_EXCESS', label: 'Rest day (beyond normal hours)', amount: hrs(rdX) * R.hrp * rates.RD_EXCESS, qty: hrs(rdX), unit: 'hours', rate: R.hrp * rates.RD_EXCESS, note: `${fmt(hrs(rdX))} h × RM${fmt(R.hrp)} × ${rates.RD_EXCESS}` });
+    if (rdX.length) add('OT_RESTDAY', { key: 'OT:RD_EXCESS', label: 'Rest day (beyond normal hours)', amount: hrs(rdX) * R.hrp * rates.RD_EXCESS, qty: hrs(rdX), unit: 'hours', rate: R.hrp * rates.RD_EXCESS, note: `${fmt(hrs(rdX))} h × RM${fmt(R.hrp)} × ${rates.RD_EXCESS}${capNote}` });
     const phN = cat('PH_NORMAL'), phX = cat('PH_EXCESS');
     if (phN.length) add('OT_PH', { key: 'OT:PH_NORMAL', label: 'Public holiday (normal hours)', amount: phN.length * R.orp * rates.PH_NORMAL, qty: phN.length, unit: 'days', rate: R.orp * rates.PH_NORMAL, note: `${phN.length} day(s) × two days' pay (RM${fmt(R.orp)} × 2)` });
-    if (phX.length) add('OT_PH', { key: 'OT:PH_EXCESS', label: 'Public holiday (beyond normal hours)', amount: hrs(phX) * R.hrp * rates.PH_EXCESS, qty: hrs(phX), unit: 'hours', rate: R.hrp * rates.PH_EXCESS, note: `${fmt(hrs(phX))} h × RM${fmt(R.hrp)} × ${rates.PH_EXCESS}` });
+    if (phX.length) add('OT_PH', { key: 'OT:PH_EXCESS', label: 'Public holiday (beyond normal hours)', amount: hrs(phX) * R.hrp * rates.PH_EXCESS, qty: hrs(phX), unit: 'hours', rate: R.hrp * rates.PH_EXCESS, note: `${fmt(hrs(phX))} h × RM${fmt(R.hrp)} × ${rates.PH_EXCESS}${capNote}` });
     // the workbook's "Err" checks, as warnings
     const half = R.normal / 2;
     for (const e of rdH) if (Number(e.hours) > half + 1e-9) warnings.push({ level: 'warn', text: `Rest day ${e.work_date}: ${e.hours} h is more than half a day (${half} h). Should it be "more than half a day"?` });
@@ -203,7 +205,7 @@ export function buildAutoItems(ctx) {
   }
 
   const inputs = {
-    basis: R.basis, salary: R.full, orp: r2(R.orp), hrp: r2(R.hrp), normal_hours: R.normal,
+    basis: R.basis, salary: R.full, orp: r2(R.orp), hrp: r2(R.hrp), normal_hours: R.normal, normal_own: R.own, hours_capped: R.capped,
     window: win ? { from: win.from, to: win.to, days: win.days, cal_days: win.calDays } : null,
     unpaid_days: unpaidDays || 0,
   };

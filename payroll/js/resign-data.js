@@ -23,7 +23,7 @@ export async function resignContext(sb, R, { letterDate } = {}) {
       bandDays: inYear.length ? inYear[inYear.length - 1].days : null, asOf: today < end ? today : end, cls: b.AL.cls, mode: b.AL.mode };
   };
   const pol = R.policies || {};
-  const workDays = pol.settlement?.work_days || [1, 2, 3, 4, 5, 6];
+  const workDays = pol.settlement?.work_days || [1, 2, 3, 4, 5];
   return {
     holidays, years, hasHolidays: holidays.size > 0,
     calc(inp) {

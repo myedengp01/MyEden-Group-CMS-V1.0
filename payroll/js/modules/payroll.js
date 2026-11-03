@@ -457,7 +457,7 @@ async function renderRun(el, ctx, param) {
 
       const kv = [['Pay basis', inp.basis === 'hourly' ? `Hourly · RM${money(inp.salary)} an hour` : inp.basis === 'monthly' ? `Monthly · RM${money(inp.salary)}` : '—'],
         ['Days employed', inp.window ? `${inp.window.days} of ${inp.window.cal_days}` : (inp.workbook_row ? `Workbook row ${inp.workbook_row}` : '—')],
-        ['Daily / hourly rate', inp.orp ? `RM${money(inp.orp)} / RM${money(inp.hrp)} (${inp.normal_hours} h day)` : '—'],
+        ['Daily / hourly rate', inp.orp ? `RM${money(inp.orp)} / RM${money(inp.hrp)} (${inp.hours_capped ? `÷ ${inp.normal_hours} h, EA cap; works ${inp.normal_own} h` : `${inp.normal_hours} h day`})` : '—'],
         ['Age for statutory rates', inp.age ?? '—'], ['Statutory class', inp.stat_class || '—'], ['Company', companyName(L.company_id)]];
       clear(box).append(
         h('div', { class: 'kv', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.6rem 1.2rem;margin-bottom:1rem' },

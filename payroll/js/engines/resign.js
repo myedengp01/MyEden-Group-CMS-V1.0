@@ -18,8 +18,8 @@ export const calDays = (from, to) => (from && to && to >= from ? Math.round((iso
 const rm = (x) => `RM ${Number(r2(x)).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const num = (x) => String(r2(x));
 
-/** Working day for the offset and the notice count: Monday–Saturday by default, not a public holiday. */
-export function isWorkDay(iso, holidays = new Set(), workDays = [1, 2, 3, 4, 5, 6]) {
+/** Working day for the offset and the notice count: Monday–Friday by default (5-day week, CLC 3 Nov 2026), not a public holiday. */
+export function isWorkDay(iso, holidays = new Set(), workDays = [1, 2, 3, 4, 5]) {
   return workDays.includes(new Date(isoToMs(iso)).getUTCDay()) && !holidays.has(iso);
 }
 export function workDaysBetween(from, to, holidays, workDays) {
@@ -81,14 +81,14 @@ export function resignCalc(input, policy) {
   const N = noticeOf(input, policy);
   if (!N) { out.errors.push(!input.joinDate ? 'No date joined on record.' : 'Enter the resignation letter date.'); return out; }
   if (input.letterDate < input.joinDate) out.errors.push('The letter date is before the date joined.');
-  const H = input.holidays || new Set(); const WD = input.workDays || [1, 2, 3, 4, 5, 6];
+  const H = input.holidays || new Set(); const WD = input.workDays || [1, 2, 3, 4, 5];
   const noticeEnd = input.noticeEnd || N.end;
   const alUse0 = input.alUse || 'payout';
   // offset with no earlier last day chosen: the leave fills the last working days of the notice, counted back from its end
   let back = null;
   if (alUse0 === 'offset' && !input.lastPhysical && input.alAt) {
     const A0 = input.alAt(noticeEnd); const want = Math.max(0, Math.floor((A0?.balance || 0) * 2) / 2);
-    const avail = workDaysBetween(addDays(input.letterDate, 1), noticeEnd, input.holidays || new Set(), input.workDays || [1, 2, 3, 4, 5, 6]);
+    const avail = workDaysBetween(addDays(input.letterDate, 1), noticeEnd, input.holidays || new Set(), input.workDays || [1, 2, 3, 4, 5]);
     const take = Math.min(want, Math.max(0, avail - 1));
     if (take > 0) {
       let left = Math.ceil(take); let from = null; const to = (() => { for (let t = isoToMs(noticeEnd); ; t -= DAY) { const iso = msToIso(t); if (isWorkDay(iso, input.holidays, input.workDays)) return iso; } })();

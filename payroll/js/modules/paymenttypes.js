@@ -24,7 +24,7 @@ export async function render(el, ctx) {
       const list = rows.filter((r) => r.kind === kind);
       holder.append(h('section', { class: 'panel' },
         h('div', { class: 'panel-head' }, h('h2', {}, kind === 'earning' ? 'Earnings' : 'Deductions')),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+        h('div', { class: 'table-wrap pt-scroll' }, h('table', { class: 'data' },
           h('thead', {}, h('tr', {}, h('th', {}, 'Item'), h('th', {}, 'Category'), h('th', {}, 'Statutory treatment'),
             FLAGS.map(([, l]) => h('th', {}, l)), h('th', {}, 'Recurring'), h('th', {}, 'Active'), canWrite ? h('th', {}) : null)),
           h('tbody', {}, list.map((r) => h('tr', { class: r.is_active ? '' : 'inactive' },

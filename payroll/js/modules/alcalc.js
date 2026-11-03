@@ -88,7 +88,7 @@ export async function render(el, ctx, params, query) {
   el.append(h('section', { class: 'panel', style: 'margin-top:1.25rem' },
     h('div', { class: 'panel-head' }, h('h2', {}, 'Resignation')),
     h('div', { class: 'panel-body' },
-      h('p', { class: 'small muted' }, 'Notice = letter date + 4 / 6 / 12 weeks by completed years of service (4 on probation). Annual leave on leaving is paid at the ordinary rate of pay (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Saturday, public holidays skipped). Notice not served = basic ÷ the days of each month × the calendar days not served. Sick leave is never deducted or pro-rated when someone leaves.'),
+      h('p', { class: 'small muted' }, 'Notice = letter date + 4 / 6 / 12 weeks by completed years of service (4 on probation). Annual leave on leaving is paid at the ordinary rate of pay (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Friday, public holidays skipped). Notice not served = basic ÷ the days of each month × the calendar days not served. Sick leave is never deducted or pro-rated when someone leaves.'),
       h('div', { class: 'form-grid' }, Object.values(R)), res, acts)));
 
   let rctx = null; let rctxFor = ''; let seq = 0; let salHist = null; let mid = null;
@@ -128,7 +128,7 @@ export async function render(el, ctx, params, query) {
           return { balance: r2(ent - taken), entitled: ent, carried: 0, taken, months: per.reduce((s, x) => s + x.months, 0), bandDays: per.length ? per[per.length - 1].days : null, asOf: today < end ? today : end, mode: LR.mode }; };
         const basic = R.basic.getValue();
         c = resignCalc({ ...inp, joinDate: join, confirmationStatus: R.prob.getValue() ? 'UP' : 'C', salary: basic ? { amount: basic, pay_basis: 'monthly' } : null, holidays: new Set(), alAt,
-          workDays: ref.policies.settlement?.work_days || [1, 2, 3, 4, 5, 6], divisor: ref.policies.payroll?.daily_rate_divisor || 26 }, ref.policies.notice_period);
+          workDays: ref.policies.settlement?.work_days || [1, 2, 3, 4, 5], divisor: ref.policies.payroll?.daily_rate_divisor || 26 }, ref.policies.notice_period);
         c.salaryKnown = !!basic;
       }
     } catch (e) { res.append(h('p', { class: 'small bad' }, e.message)); return; }

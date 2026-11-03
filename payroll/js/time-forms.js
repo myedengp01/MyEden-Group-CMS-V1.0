@@ -1,7 +1,7 @@
 // MyPayroll-System-V2.0 · time-forms.js — overtime / hours entry form and the OTCF pull, shared by
 // Time & leave › Overtime & hours, Part-time hours and the payroll line window.
 import { h, clear, openModal, field, toast, failed, fmtDate } from './ui.js';
-import { OT_CATEGORIES, normalHours, normaliseName, nameKeys, sameName, otcfToEntries, hoursBetween } from './engines/ot.js';
+import { OT_CATEGORIES, rateHours, normaliseName, nameKeys, sameName, otcfToEntries, hoursBetween } from './engines/ot.js';
 export { hoursBetween };
 import { todayIso } from './engines/employee.js';
 import { mf, megformsConfigured, fetchApprovedOtcf } from './megforms.js';
@@ -50,11 +50,13 @@ export async function pullOtcf(ctx, { month, people, entries, onlyEmployeeId = n
   const { data: s } = await mf.auth.getSession();
   if (!s.session) return signIn();
   const byId = new Map(people.map((p) => [p.id, p]));
+  let payPol = {};   // payroll rules: the hours a day is split by for rest days and public holidays (EA cap from Oct 2026)
   const holder = h('div', { class: 'loading' }, 'Reading approved claims from OTCF…');
   const close = openModal({ title: `Pull OTCF claims · ${month}`, wide: true, body: holder, actions: [] });
   try {
-    const [subs, linksRes] = await Promise.all([fetchApprovedOtcf(Number(month.slice(0, 4)), Number(month.slice(5, 7))),
-      ctx.sb.from('eppd_otcf_links').select('otcf_name,employee_id')]);
+    const [subs, linksRes, polRes] = await Promise.all([fetchApprovedOtcf(Number(month.slice(0, 4)), Number(month.slice(5, 7))),
+      ctx.sb.from('eppd_otcf_links').select('otcf_name,employee_id'), ctx.sb.from('eppd_policies').select('value').eq('key', 'payroll').maybeSingle()]);
+    payPol = polRes?.data?.value || {};
     // who each claim is for: the person chosen in the OTCF form, and the person behind the claimant's login (for suggestions)
     let who = { users: [], people: [] };
     try { const r = await ctx.sb.rpc('cms_otcf_claimants', { p_users: [...new Set(subs.map((x) => x.submitted_by).filter(Boolean))], p_people: [...new Set(subs.map((x) => x.person_id).filter(Boolean))] }); if (!r.error && r.data) who = r.data; } catch { /* suggestions are optional */ }
@@ -99,7 +101,7 @@ export async function pullOtcf(ctx, { month, people, entries, onlyEmployeeId = n
     const HOW = { form: 'chosen in the OTCF form', link: 'matched before', name: 'same name', picked: 'you matched it' };
     const drawReview = () => {
       const D = new Map(fresh.map((x) => [String(x.id), decide(x)]));
-      const res = otcfToEntries(fresh, (name, sub) => D.get(String(sub.id))?.emp || null, (p) => normalHours(p.employment, 8));
+      const res = otcfToEntries(fresh, (name, sub) => D.get(String(sub.id))?.emp || null, (p) => rateHours(p.employment, payPol, month, p.salary?.pay_basis || p.pay_basis).hours);
       const only = onlyEmployeeId ? byId.get(onlyEmployeeId) : null;
       if (onlyEmployeeId) res.entries = res.entries.filter((e) => e.employee_id === onlyEmployeeId);
       const open = fresh.filter((x) => !D.get(String(x.id)).emp);

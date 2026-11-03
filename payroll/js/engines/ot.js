@@ -21,6 +21,19 @@ export function normalHours(em, fallback = 8) {
   return r2((b - a) / 60 - Number(em?.meal_hours ?? 1));
 }
 
+/**
+ * Hours the hourly rate is divided by (Payroll Settings › Payroll › "Hours used for the hourly rate").
+ * hours_rule { mode: 'own' | 'cap', cap: 8, from: 'YYYY-MM' }: 'cap' = the person's own normal hours, at most `cap` (EA s.60A, CLC 3 Nov 2026),
+ * for months from `from`. Hourly-paid staff keep their own hours (capping would lower their daily rate).
+ * Returns { hours, own, capped }.
+ */
+export function rateHours(em, pol = {}, period = null, basis = 'monthly') {
+  const own = normalHours(em, Number(pol.default_normal_hours) || 8);
+  const r = pol.hours_rule || {}; const p = period ? String(period).slice(0, 7) : null; const cap = Number(r.cap) || 0;
+  if (r.mode === 'cap' && cap > 0 && basis !== 'hourly' && (!r.from || !p || p >= r.from) && own > cap) return { hours: cap, own, capped: true };
+  return { hours: own, own, capped: false };
+}
+
 /** Names as typed in OTCF -> comparable key. */
 export const normaliseName = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9@'\s]/g, ' ').replace(/\s+/g, ' ').trim();
 

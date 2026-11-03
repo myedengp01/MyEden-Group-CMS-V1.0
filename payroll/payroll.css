@@ -353,3 +353,7 @@
 .myp .add-item input[type=text], .myp-modal .add-item input[type=text] {flex: 1 1 10rem; min-width: 8rem;}
 .myp .rehire-box td, .myp-modal .rehire-box td {vertical-align: top;}
 .myp .rehire-box th, .myp-modal .rehire-box th {white-space: nowrap;}
+
+/* Payment Types: each list scrolls in its own box so the header row stays in view (v2026.11.03) */
+.myp .pt-scroll {max-height: calc(100vh - 170px); overflow: auto; overscroll-behavior: contain;}
+.myp .pt-scroll thead th {position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--line);}

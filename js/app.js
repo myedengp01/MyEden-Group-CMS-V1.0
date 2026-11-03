@@ -4557,7 +4557,7 @@
   // ================================================================ Resignation: record, notice, last days, leave and notice in lieu (Oct 2026)
   // The calculation runs in the page (payroll/js/engines/resign.js, same leave engine as Leave Balances); the database keeps the record and
   // keeps payroll and the Employee Master in step. Notice = letter date + 4 / 6 / 12 weeks (4 on probation); leave paid at basic ÷ 26;
-  // notice not served = basic ÷ the days of each month × calendar days; offset leave on Monday–Saturday, public holidays skipped.
+  // notice not served = basic ÷ the days of each month × calendar days; offset leave on Monday–Friday (5-day week), public holidays skipped.
   const RES_TPL = { full: 'RL', offset: 'RL_TP2', in_lieu: 'RL_TP3' };
   const RES_ARR = { full: 'Notice served in full', offset: 'Annual leave used up in the last days of the notice', in_lieu: 'Leaves before the notice ends' };
   const PAYER = [['employee', 'Employee pays (deducted from the final salary)'], ['company', 'Company pays (it asked the person to leave early)'], ['waived', 'Waived — no payment either way']];
@@ -4717,22 +4717,27 @@
   async function hoursPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="hw-body">${loading()}</div>`;
     let L; try { L = await API.rpc('cms_working_hours_list'); } catch (e) { $('#hw-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
-    const P = L.policy || {}; const f = { v: 'attention' };
-    const rows = (L.rows || []).map((r) => { const c = hoursClass(r, P); const a = actualWeekly(r.actual, P);
-      const flags = []; if (!r.weekly_hours && !r.hours_class) flags.push('No contracted hours'); if (a && a.cls !== c.cls) flags.push(`Worked ${a.week} h a week: looks ${HCLS[a.cls].toLowerCase()}`);
-      if (r.job_status === 'PT' && c.cls === 'FT') flags.push('Job status part time, but full time by the hours'); return { ...r, c, a, flags }; });
+    const P = L.policy || {}; const f = { v: 'attention' }; const W = { days: 5, max_hours: 45, ...(L.week || {}) };
+    const tmin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    // a normal week from the working hours (to − from − meal break) × days a week (5-day week by default); EA: at most 45 h
+    const weekOf = (r) => { if (r.weekly_hours) return { h: Number(r.weekly_hours), from: 'contract' }; const a = tmin(r.work_from), b = tmin(r.work_to);
+      if (a === null || b === null || b <= a) return null; const d = (b - a) / 60 - Number(r.meal_hours ?? 1); return { h: Math.round(d * (Number(r.work_days) || W.days) * 100) / 100, day: d, from: 'hours' }; };
+    const rows = (L.rows || []).map((r) => { const c = hoursClass(r, P); const a = actualWeekly(r.actual, P); const wk = weekOf(r);
+      const flags = []; if (!wk && !r.hours_class) flags.push('No working hours');
+      if (wk && wk.h > W.max_hours + 1e-9) flags.push(`${m2(wk.h).replace(/\.00$/, '')} h a week: over ${W.max_hours} h (EA)`); if (a && a.cls !== c.cls) flags.push(`Worked ${a.week} h a week: looks ${HCLS[a.cls].toLowerCase()}`);
+      if (r.job_status === 'PT' && c.cls === 'FT') flags.push('Job status part time, but full time by the hours'); return { ...r, c, a, wk, flags }; });
     const V = [['attention', 'Needs attention', (r) => r.flags.length], ['CASUAL', 'Casual', (r) => r.c.cls === 'CASUAL'], ['PT', 'Part time', (r) => r.c.cls === 'PT'], ['all', 'All', () => true]];
     const draw = () => {
       const show = rows.filter(V.find(([k]) => k === f.v)[2]);
       $('#hw-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
-        <div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Job status</th><th class="num">Contracted h / week</th><th class="num">Days</th><th>For the leave rules</th><th class="num">Worked h / week</th><th>Check</th><th></th></tr></thead><tbody>
+        <div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Job status</th><th class="num">Normal h / week</th><th class="num">Days</th><th>For the leave rules</th><th class="num">Worked h / week</th><th>Check</th><th></th></tr></thead><tbody>
         ${show.map((r) => `<tr><td><a href="#/person?id=${esc(r.person_id)}&tab=employment">${esc(r.name)}</a><small class="sub">${esc(r.employee_id || '')} · ${esc(coShort(r.company) || r.company || '')}</small></td>
-          <td>${esc(r.job_status || '—')}</td><td class="num">${r.weekly_hours ? m2(r.weekly_hours).replace(/\.00$/, '') : '—'}</td><td class="num">${r.work_days ?? '—'}</td>
+          <td>${esc(r.job_status || '—')}</td><td class="num">${r.wk ? `${m2(r.wk.h).replace(/\.00$/, '')}${r.wk.from === 'hours' ? `<small class="sub">${m2(r.wk.day).replace(/\.00$/, '')} h × ${r.work_days || W.days} days</small>` : ''}` : '—'}</td><td class="num">${r.work_days ?? `<span class="muted">${W.days}</span>`}</td>
           <td><b>${esc(HCLS[r.c.cls])}</b><small class="sub">${r.c.by === 'hr' ? `marked${r.reason ? `: ${esc(r.reason)}` : ''}` : r.c.by === 'hours' ? 'by the hours' : 'by the job status'}</small></td>
           <td class="num">${r.a ? `${r.a.week}<small class="sub">${esc(r.a.months.join(' · '))}</small>` : '—'}</td>
           <td>${r.flags.map((x) => `<span class="tag warn xs">${esc(x)}</span>`).join(' ') || '<span class="tag ok xs">OK</span>'}</td>
           <td>${r.can_edit ? `<button type="button" class="btn sm" data-e="${esc(r.person_id)}">Change…</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Nobody here.</td></tr>'}</tbody></table></div>
-        <p class="small muted">Full-time week: ${P.full_time_weekly_hours || 45} h. Casual = ${P.casual_max_pct ?? 30} % or less (${Math.round((P.full_time_weekly_hours || 45) * (P.casual_max_pct ?? 30)) / 100} h); part time = above that up to ${P.part_time_max_pct ?? 70} % (${Math.round((P.full_time_weekly_hours || 45) * (P.part_time_max_pct ?? 70)) / 100} h); above that counts as full time. Worked hours are the basic hours paid in ${dShort(L.from)} – ${dShort(L.to)} (hourly-paid staff only), × 12 ÷ 52. The marking decides annual and sick leave from the ${P.from_year || 2027} leave year; earlier years keep the earlier rule.</p></section>`;
+        <p class="small muted">Normal week = the contracted hours, or the working hours less the meal break × days a week (${W.days} when not recorded); the Employment Act allows at most ${W.max_hours} h. Full-time week: ${P.full_time_weekly_hours || 45} h. Casual = ${P.casual_max_pct ?? 30} % or less (${Math.round((P.full_time_weekly_hours || 45) * (P.casual_max_pct ?? 30)) / 100} h); part time = above that up to ${P.part_time_max_pct ?? 70} % (${Math.round((P.full_time_weekly_hours || 45) * (P.part_time_max_pct ?? 70)) / 100} h); above that counts as full time. Worked hours are the basic hours paid in ${dShort(L.from)} – ${dShort(L.to)} (hourly-paid staff only), × 12 ÷ 52. The marking decides annual and sick leave from the ${P.from_year || 2027} leave year; earlier years keep the earlier rule.</p></section>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
       $$('[data-e]', el).forEach((b) => b.addEventListener('click', async () => { const r = rows.find((x) => x.person_id === b.dataset.e); if (await hoursWindow(r.person_id, r.name, r, P)) { toast('Working hours saved'); hoursPage(item, el); } }));
     };

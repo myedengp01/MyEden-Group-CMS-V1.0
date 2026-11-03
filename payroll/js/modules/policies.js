@@ -200,22 +200,33 @@ export async function render(el, ctx) {
     })));
 
   // ---------------- Phase 4: payroll
-  const DEF = { daily_rate_divisor: 26, default_normal_hours: 8, pcb_carry_forward: true, rates: { OT_NORMAL: 1.5, OT_OFFDAY: 1.5, RD_HALF: 0.5, RD_FULL: 1, RD_EXCESS: 2, PH_NORMAL: 2, PH_EXCESS: 3 } };
-  const pay = { ...DEF, ...structuredClone(P.payroll?.value || {}) }; pay.rates = { ...DEF.rates, ...(pay.rates || {}) };
+  const DEF = { daily_rate_divisor: 26, default_normal_hours: 8, pcb_carry_forward: true, hours_rule: { mode: 'own', cap: 8, from: null }, rates: { OT_NORMAL: 1.5, OT_OFFDAY: 1.5, RD_HALF: 0.5, RD_FULL: 1, RD_EXCESS: 2, PH_NORMAL: 2, PH_EXCESS: 3 } };
+  const pay = { ...DEF, ...structuredClone(P.payroll?.value || {}) }; pay.rates = { ...DEF.rates, ...(pay.rates || {}) }; pay.hours_rule = { ...DEF.hours_rule, ...(pay.hours_rule || {}) };
+  // hours the hourly rate is divided by (EA: normal hours of work, at most 8 a day; CLC 3 Nov 2026, from Oct 2026)
+  const hrMode = h('select', { disabled: !isAdmin, 'aria-label': 'Hours used for the hourly rate', style: 'width:auto' },
+    [['cap', 'Up to 8 hours (EA): the person’s own hours, at most the cap'], ['own', 'Each person’s own hours']].map(([v, l]) => h('option', { value: v, selected: pay.hours_rule.mode === v }, l)));
+  hrMode.addEventListener('change', () => { pay.hours_rule.mode = hrMode.value; });
+  const hrFrom = h('input', { type: 'month', value: pay.hours_rule.from || '', disabled: !isAdmin, 'aria-label': 'From payroll month', style: 'width:auto' });
+  hrFrom.addEventListener('input', () => { pay.hours_rule.from = hrFrom.value || null; });
   const RATE_LABELS = [['OT_NORMAL', 'Normal day OT', '× hourly rate, per hour (default; each person’s own OT multiplier is used when set)'], ['OT_OFFDAY', 'Off day (Saturday) OT', '× hourly rate, per hour'],
     ['RD_HALF', 'Rest day, up to half a day', '× daily rate, per day'], ['RD_FULL', 'Rest day, more than half a day', '× daily rate, per day'], ['RD_EXCESS', 'Rest day, beyond normal hours', '× hourly rate, per hour'],
     ['PH_NORMAL', 'Public holiday, normal hours', '× daily rate, per day (on top of the holiday’s own pay)'], ['PH_EXCESS', 'Public holiday, beyond normal hours', '× hourly rate, per hour']];
   const pcbSw = field('Copy last month’s PCB into a new month (check it before finalising)', { type: 'switch', value: pay.pcb_carry_forward });
   pcbSw.input.disabled = !isAdmin; pcbSw.input.addEventListener('change', () => { pay.pcb_carry_forward = pcbSw.getValue(); });
-  el.append(panel('Payroll', 'Daily rate = basic ÷ divisor (Employment Act: 26). Hourly rate = daily rate ÷ the person’s normal hours (work hours less meal break). Unpaid leave and part months use calendar days, as the workbook did.',
+  el.append(panel('Payroll', 'Daily rate = basic ÷ divisor (Employment Act: 26). Hourly rate = daily rate ÷ the hours set below (the person’s normal hours: work hours less meal break, capped from Oct 2026). Unpaid leave and part months use calendar days, as the workbook did.',
     h('div', { class: 'grid-2', style: 'gap:.8rem 2rem' },
       h('label', { class: 'check-row' }, 'Daily rate divisor', n(pay.daily_rate_divisor, (v) => { pay.daily_rate_divisor = v; })),
       h('label', { class: 'check-row' }, 'Normal hours when none recorded', n(pay.default_normal_hours, (v) => { pay.default_normal_hours = v; }))),
+    h('div', { class: 'block', style: 'margin-top:1rem' }, h('h3', {}, 'Hours used for the hourly rate'),
+      h('div', { style: 'display:flex;flex-wrap:wrap;gap:.6rem 1.2rem;align-items:center;margin:.5rem 0' }, hrMode,
+        h('label', { class: 'check-row' }, 'Cap', n(pay.hours_rule.cap, (v) => { pay.hours_rule.cap = v; }), 'h a day'), h('label', { class: 'check-row' }, 'From payroll month', hrFrom)),
+      h('p', { class: 'small muted' }, 'Hourly rate = daily rate ÷ these hours. With the cap, staff on 9 h or 8.5 h days are divided by 8 and staff on shorter days keep their own hours (dividing them by 8 would pay less than the Employment Act). The same hours set "half a day" and "beyond normal hours" for rest days and public holidays. Hourly-paid staff are not affected. Months before the start month, and finalised months, keep the old rule.')),
     h('table', { class: 'data', style: 'margin-top:1rem;max-width:760px' }, h('thead', {}, h('tr', {}, h('th', {}, 'Overtime type'), h('th', {}, 'Rate'), h('th', {}, ''))),
       h('tbody', {}, RATE_LABELS.map(([k, l, unit]) => h('tr', {}, h('td', {}, l), h('td', {}, n(pay.rates[k], (v) => { pay.rates[k] = v; })), h('td', { class: 'small muted' }, unit))))),
     h('div', { style: 'margin-top:1rem' }, pcbSw),
     saveBtn('Save payroll rules', () => {
       if (!(pay.daily_rate_divisor > 0) || !(pay.default_normal_hours > 0)) { toast('Divisor and normal hours must be above 0.', 'error'); return; }
+      if (pay.hours_rule.mode === 'cap' && !(pay.hours_rule.cap > 0)) { toast('The hours cap must be above 0.', 'error'); return; }
       save('payroll', pay, 'Payroll rules');
     })));
 
