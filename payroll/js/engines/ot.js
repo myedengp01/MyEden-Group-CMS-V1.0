@@ -27,7 +27,7 @@ export const normaliseName = (s) => String(s || '').toUpperCase().replace(/[^A-Z
 /**
  * Name forms for matching an OTCF name to a payroll name: curly / straight apostrophes, dots, dashes and extra spaces ignored,
  * BIN / BINTI / A/L / A/P left out. Two names are the same when their letters run together match, with or without single-letter
- * initials (e.g. "Juanita D’ Salle Macanas" = "JUANITA D'SALLE B. MACANAS").
+ * initials (e.g. "Maria D’ Costa Lim" = "MARIA D'COSTA B. LIM").
  */
 const FILLER = new Set(['BIN', 'BINTI', 'BTE', 'BT', 'AL', 'AP']);
 export function nameKeys(s) {
