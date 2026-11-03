@@ -18,7 +18,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-011 | 2026-10-22 | One page per employee with everything about them: personal details, passport-size photo from the MEG-EAF application, IC (front / back) photos, passport, and all other details | **Built in v2026.10.25-23:20** |
 | PRI-012 | 2026-10-29 | Attendance app in the CMS: staff clock in / out on the phone with geo location (centre geofence), attendance records feed payroll (overtime, part-time hours, unpaid absence, allowances) | Recorded — waiting for CLC's 7 decisions |
 | PRI-013 | 2026-11-02 | Pay calculation methods recorded (daily / calendar-day / hourly rates, unpaid leave, overtime, rest day, public holiday, AL payout and buy-back, notice in lieu, leave entitlements, statutory) with 8 open points to decide; idea: a "How pay is worked out" page in the CMS | Recorded — waiting for CLC's decisions on the open points |
-| PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | Recorded — waiting for CLC's go and one decision |
+| PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | Recorded — decision given 2026-11-03; waiting for CLC's go |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -288,8 +288,15 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Planned change:** work out service at 31 December of the leave year, so crossing the mark at any point in the year gives the higher
   quantum for the whole year. Same rule for part-time sick leave from 2027 (10 / 13 / 15). Hospitalisation (60-day pool) has no
   milestones and is unchanged. Earlier years are worked out the same way (balances recalculate; nothing posted changes).
-- **Decision needed:** someone who leaves before reaching the mark in that year (e.g. joined 1 Jul 2026, last day 31 Mar 2028): keep 14 days
-  (they never crossed the mark — suggested), or still 18?
+- **Decided (CLC, 2026-11-03):** the mark counts only if it is reached by the last day of service. Final day 1 Jan – 30 Jun 2028 → 14 days for
+  2028; 1 Jul – 31 Dec 2028 → 18. Final day 1 Jan – 30 Jun 2031 → 18; 1 Jul – 31 Dec 2031 → 22. So service is counted at the earlier of
+  31 December and the last working day.
+- **No proration or claw-back on leaving (CLC):** the year's full sick leave stays available up to the final day; sick leave already taken is
+  never deducted from pay when someone leaves (a deduction would be unlawful under EA s.24). Checked: the CMS does not prorate sick leave and
+  the final settlement / resignation calculator deal with annual leave only, so nothing deducts sick leave — this stays as it is. The build
+  will add a note on the Final Settlement page and the resignation calculator saying sick leave is never deducted.
+- **Also fixed by this:** today a leaver's sick leave looked up after their last day can count service past the last day (e.g. left
+  31 Mar 2028, viewed in Aug 2028 → shows 18); with service capped at the last day it shows 14.
 - **Note:** the CMS could not confirm the JTKSM guidance quoted; the change is safe either way because giving the higher quantum from
   1 January is at or above the Act's minimum.
 
