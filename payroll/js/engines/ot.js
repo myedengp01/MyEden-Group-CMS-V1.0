@@ -24,6 +24,19 @@ export function normalHours(em, fallback = 8) {
 /** Names as typed in OTCF -> comparable key. */
 export const normaliseName = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9@'\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
+/**
+ * Name forms for matching an OTCF name to a payroll name: curly / straight apostrophes, dots, dashes and extra spaces ignored,
+ * BIN / BINTI / A/L / A/P left out. Two names are the same when their letters run together match, with or without single-letter
+ * initials (e.g. "Juanita D’ Salle Macanas" = "JUANITA D'SALLE B. MACANAS").
+ */
+const FILLER = new Set(['BIN', 'BINTI', 'BTE', 'BT', 'AL', 'AP']);
+export function nameKeys(s) {
+  const t = String(s || '').toUpperCase().replace(/[‘’`´']/g, '').replace(/A\/[LP]\b/g, ' ').replace(/[^A-Z0-9]+/g, ' ').trim();
+  const tokens = t ? t.split(' ').filter((x) => !FILLER.has(x)) : [];
+  return { tokens, compact: tokens.join(''), noInitials: tokens.filter((x) => x.length > 1).join('') };
+}
+export const sameName = (a, b) => !!a.compact && (a.compact === b.compact || a.noInitials === b.noInitials || a.compact === b.noInitials || a.noInitials === b.compact);
+
 /** OTCF line date 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'D' (day of month) -> ISO. */
 export function otcfDate(raw, year, month) {
   const s = String(raw || '').trim();
@@ -67,7 +80,7 @@ export function classifyOtcfLine(line, normal) {
 export function otcfToEntries(subs, resolve, normalFor) {
   const entries = []; const unmatched = new Map(); let skipped = 0;
   for (const s of subs) {
-    const emp = resolve(s.emp_name);
+    const emp = resolve(s.emp_name, s);
     if (!emp) { const k = normaliseName(s.emp_name); if (!unmatched.has(k)) unmatched.set(k, { name: s.emp_name, key: k, submissions: [] }); unmatched.get(k).submissions.push(s); continue; }
     const normal = normalFor(emp);
     // A day may have up to 3 OT times (OTCF v2026.10.30: came in early and stayed late). A rest day or public holiday is

@@ -12,10 +12,11 @@ export const mf = !megformsConfigured ? null : cfg.MEGFORMS_URL === cfg.SUPABASE
 
 /** Approved OTCF claims for a month (soft-deleted ones excluded when the column exists). */
 export async function fetchApprovedOtcf(year, month) {
-  const cols = 'id,serial_no,emp_name,company_code,department,month,year,line_items,status,approved_at,approved_by_name';
-  let q = mf.from('otcf_submissions').select(cols + ',deleted_at').eq('status', 'approved').eq('year', year).eq('month', month).is('deleted_at', null);
-  let { data, error } = await q;
-  if (error && /deleted_at/.test(error.message || '')) ({ data, error } = await mf.from('otcf_submissions').select(cols).eq('status', 'approved').eq('year', year).eq('month', month));
+  const cols = 'id,serial_no,emp_name,company_code,department,month,year,line_items,status,approved_at,approved_by_name,submitted_by,total_hours';
+  const run = (c, del = true) => { let q = mf.from('otcf_submissions').select(c).eq('status', 'approved').eq('year', year).eq('month', month); return del ? q.is('deleted_at', null) : q; };
+  let { data, error } = await run(cols + ',deleted_at,person_id');                  // person_id: chosen in the OTCF form since v2026.11.03
+  if (error && /person_id/.test(error.message || '')) ({ data, error } = await run(cols + ',deleted_at'));
+  if (error && /deleted_at/.test(error.message || '')) ({ data, error } = await run(cols, false));
   if (error) throw error;
   return data || [];
 }
