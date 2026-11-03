@@ -128,6 +128,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.03-19:00** — Monthly Payroll staff list: filter by company, switches for NEI opted out, aged 60 and over and with overtime, sort by basic salary (high → low, the default; or low → high), name, gross or net paid, and a totals row for the lines shown ("Showing 6 of 35"). The cards and the company table keep the whole month; choices are remembered in this browser.
 - **v2026.11.03-18:35** — Profile › Pay › Bank & statutory numbers has **Edit…**: bank, account no. (digits only), EPF, SOCSO (blank = IC number) and income tax numbers are changed in the CMS — no need for MyPayroll V2.0. Needs People edit for the company, plus See bank for bank details and See IC for EPF / SOCSO / tax; every change is in the audit log (account shown by its last 4 digits).
 - **v2026.11.03-17:55** — Sick leave (PRI-014, EA s.60F): the 2- or 5-year mark reached in a year (by 31 December, or by the last day for a leaver) gives 18 / 22 days (part time 13 / 15 from 2027) for that whole year from 1 January, instead of from the anniversary; never pro-rated or deducted on leaving.
 - **v2026.11.02-20:15** — HR letters (text format): body paragraphs are justified to both margins in the preview, print and PDF; the last line of a paragraph, one-line items and table cells stay left-aligned. Word letters keep the Word file's alignment.

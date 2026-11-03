@@ -10,7 +10,7 @@ import { savePtTotal } from '../pt-hours.js';
 import { openLeaveForm } from './leave.js';
 import { OT_CATEGORIES } from '../engines/ot.js';
 import { lastDayOfMonth } from '../engines/employee.js';
-import { buildRun, recomputeLine, runTotals, lineSummary, groupItems, itemFromType, itemAmount, monthLabel, periodOf, STAT_KEYS, STAT_LABELS, STAT_COLS, STAT_COLS_EE, STAT_LEGEND, statVal, r2 } from '../engines/payroll.js';
+import { buildRun, recomputeLine, runTotals, lineSummary, groupItems, itemFromType, itemAmount, monthLabel, periodOf, STAT_KEYS, STAT_LABELS, STAT_COLS, STAT_COLS_EE, STAT_LEGEND, statVal, r2, ageForPeriod } from '../engines/payroll.js';
 import { todayIso, addDays } from '../engines/employee.js';
 
 const ym = (period) => String(period).slice(0, 7);
@@ -83,10 +83,28 @@ async function renderRun(el, ctx, param) {
   const search = h('input', { type: 'search', placeholder: 'Search name or ID', 'aria-label': 'Search' });
   let onlyWarn = false;
   const warnToggle = h('label', { class: 'check-row small' }, switchToggle(false, (v) => { onlyWarn = v; drawLines(); }, { label: 'Only lines with warnings' }), 'Only lines with warnings');
+  // filters and sort for the staff list (remembered in this browser); the cards and the company table above always show the whole month
+  const FKEY = 'myp.payroll.filters';
+  const F = (() => { try { return { co: '', sort: 'basic_desc', optOut: false, age60: false, ot: false, ...JSON.parse(localStorage.getItem(FKEY) || '{}') }; } catch { return { co: '', sort: 'basic_desc', optOut: false, age60: false, ot: false }; } })();
+  const keepF = () => { try { localStorage.setItem(FKEY, JSON.stringify(F)); } catch { /* not kept */ } };
+  const personOf = (l) => (D.people || []).find((p) => p.id === l.employee_id);
+  const ageOf = (l) => l.inputs?.age ?? (personOf(l)?.dob ? ageForPeriod(personOf(l).dob, D.period) : null);
+  const optOutOf = (l) => { if (l.inputs?.flags && 'socso_nei_opt_out' in l.inputs.flags) return !!l.inputs.flags.socso_nei_opt_out;
+    const a = (personOf(l)?.employments || []).flatMap((e) => e.assignments || []).find((x) => x.id === l.assignment_id); return !!a?.socso_nei_opt_out; };
+  const coSel = h('select', { 'aria-label': 'Company' });
+  const sortSel = h('select', { 'aria-label': 'Sort by' }, [['basic_desc', 'Basic salary (high → low)'], ['basic_asc', 'Basic salary (low → high)'], ['name', 'Name (A–Z)'], ['gross', 'Gross (high → low)'], ['net', 'Net paid (high → low)']]
+    .map(([v, t]) => h('option', { value: v, selected: F.sort === v }, t)));
+  const sw = (key, label) => h('label', { class: 'check-row small' }, switchToggle(F[key], (v) => { F[key] = v; keepF(); drawLines(); }, { label }), label);
+  const fillCo = () => { const ids = [...new Set(lines.map((l) => Number(l.company_id)))].sort((a, b) => companyName(a).localeCompare(companyName(b)));
+    clear(coSel).append(h('option', { value: '' }, `All companies (${lines.length})`), ...ids.map((id) => h('option', { value: String(id), selected: String(F.co) === String(id) }, `${companyName(id)} (${lines.filter((l) => Number(l.company_id) === id).length})`)));
+    if (F.co && !ids.includes(Number(F.co))) { F.co = ''; coSel.value = ''; } };
+  coSel.addEventListener('change', () => { F.co = coSel.value; keepF(); drawLines(); });
+  sortSel.addEventListener('change', () => { F.sort = sortSel.value; keepF(); drawLines(); });
   const linesBody = h('div', { class: 'table-wrap' });
   const bar = h('div', { class: 'import-bar' });
   el.append(head, notice, facts, compBox,
-    h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1rem' }, search, warnToggle)), linesBody), bar);
+    h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1rem;flex-wrap:wrap' }, search, coSel, sortSel, warnToggle),
+      h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1.2rem;flex-wrap:wrap;margin-top:.5rem' }, sw('optOut', 'NEI opted out'), sw('age60', 'Aged 60 and over'), sw('ot', 'With overtime'))), linesBody), bar);
   search.addEventListener('input', drawLines);
 
   const leaveGuard = (e) => { if (dirty && !locked) { e.preventDefault(); e.returnValue = ''; } };
@@ -136,7 +154,15 @@ async function renderRun(el, ctx, param) {
 
   function drawLines() {
     const q = search.value.trim().toLowerCase();
-    const shown = lines.filter((l) => (!q || `${l.emp_name} ${idOf(l)} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn')));
+    fillCo();
+    const S = new Map(lines.map((l) => [l, lineSummary(l)]));
+    const shown = lines.filter((l) => (!q || `${l.emp_name} ${idOf(l)} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn'))
+      && (!F.co || String(l.company_id) === String(F.co)) && (!F.optOut || optOutOf(l)) && (!F.age60 || (ageOf(l) ?? 0) >= 60) && (!F.ot || S.get(l).overtime > 0));
+    const by = { name: (a, b) => String(a.emp_name).localeCompare(String(b.emp_name)), basic_desc: (a, b) => S.get(b).basic - S.get(a).basic || by.name(a, b),
+      basic_asc: (a, b) => S.get(a).basic - S.get(b).basic || by.name(a, b), gross: (a, b) => (b.gross || 0) - (a.gross || 0) || by.name(a, b), net: (a, b) => (b.net_paid || 0) - (a.net_paid || 0) || by.name(a, b) };
+    shown.sort(by[F.sort] || by.basic_desc);
+    const sum = (f) => r2(shown.filter((l) => !l.excluded).reduce((a, l) => a + (Number(f(l)) || 0), 0));
+    const filtered = shown.length !== lines.length;
     clear(linesBody).append(h('table', { class: 'data clickable' },
       h('thead', {}, h('tr', {}, ['Employee', 'Company', 'Basic', 'Overtime', 'Other pay', 'Unpaid leave', 'Gross', ...STAT_COLS_EE.map((c) => c[1]), 'PCB', 'Net paid'].map((x, i) => h('th', { class: i >= 2 ? 'num' : '' }, x)))),
       h('tbody', {}, shown.length ? shown.map((l) => {
@@ -152,7 +178,11 @@ async function renderRun(el, ctx, param) {
           h('td', { class: 'num strong' }, money(l.net_paid), s.claims ? h('div', { class: 'small muted' }, `incl. claims ${money(s.claims)}`) : null));
         tr.addEventListener('click', () => openLine(l));
         return tr;
-      }) : h('tr', {}, h('td', { colspan: 13, class: 'muted' }, lines.length ? 'No lines match.' : 'Nobody is employed in this month.')))));
+      }) : h('tr', {}, h('td', { colspan: 13, class: 'muted' }, lines.length ? 'No lines match.' : 'Nobody is employed in this month.'))),
+      shown.length ? h('tfoot', {}, h('tr', {}, h('th', { colspan: 2 }, filtered ? `Showing ${shown.length} of ${lines.length}` : `All ${lines.length}`),
+        h('th', { class: 'num' }, money(sum((l) => S.get(l).basic))), h('th', { class: 'num' }, money(sum((l) => S.get(l).overtime))), h('th', { class: 'num' }, money(sum((l) => S.get(l).other))),
+        h('th', { class: 'num' }, money(sum((l) => S.get(l).unpaid))), h('th', { class: 'num' }, money(sum((l) => l.gross))), ...STAT_COLS_EE.map(([k]) => h('th', { class: 'num' }, money(sum((l) => statVal(l, k))))),
+        h('th', { class: 'num' }, money(sum((l) => l.pcb))), h('th', { class: 'num' }, money(sum((l) => l.net_paid))))) : null));
   }
 
   function drawBar() {
