@@ -4584,7 +4584,8 @@
     ].filter(Boolean);
     return `<dl class="pf-kv rs-kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
       ${c.errors?.length ? `<p class="note bad small">${icon('help')}<span>${c.errors.map(esc).join('<br>')}</span></p>` : ''}
-      ${c.notes?.length ? `<ul class="small muted rs-notes">${c.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
+      ${c.notes?.length ? `<ul class="small muted rs-notes">${c.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+      <p class="small muted">Sick leave is not part of the settlement: the year's sick leave stays available to the last day and is never deducted or pro-rated.</p>`;
   }
   /** Record or change a resignation (and see the calculation as it is typed). */
   async function resignationWindow(pid, R, preset = {}) {

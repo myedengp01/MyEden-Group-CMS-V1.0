@@ -83,7 +83,7 @@ export async function render(el, ctx) {
         h('td', {}, r.period ? h('a', { href: `#/payroll/${r.period.slice(0, 7)}` }, monthLabel(r.period)) : '—', status ? h('div', { class: 'small muted' }, status === 'finalised' ? 'Finalised' : 'Draft') : null),
         h('td', {}, status === 'finalised' || !canEdit ? null : h('button', { class: 'btn sm', type: 'button', onclick: () => edit(r, days) }, 'Edit')));
     }))))),
-    h('p', { class: 'small muted', style: 'margin-top:.8rem' }, 'Unused annual leave is paid at the daily rate (basic ÷ 26, Employment Act s.60I). Notice not served = basic ÷ the actual days of each month × the calendar days between the last working day and the end of the notice (hourly pay: working days × daily rate). A resignation recorded on the profile fills this in from its issued acceptance letter.'));
+    h('p', { class: 'small muted', style: 'margin-top:.8rem' }, 'Unused annual leave is paid at the daily rate (basic ÷ 26, Employment Act s.60I). Notice not served = basic ÷ the actual days of each month × the calendar days between the last working day and the end of the notice (hourly pay: working days × daily rate). A resignation recorded on the profile fills this in from its issued acceptance letter. Sick leave is never deducted or pro-rated when someone leaves (Employment Act s.24 / s.60F).'));
 
   function edit(r, days) {
     const st = r.st || {};

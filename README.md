@@ -127,6 +127,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.03-17:55** — Sick leave (PRI-014, EA s.60F): the 2- or 5-year mark reached in a year (by 31 December, or by the last day for a leaver) gives 18 / 22 days (part time 13 / 15 from 2027) for that whole year from 1 January, instead of from the anniversary; never pro-rated or deducted on leaving.
 - **v2026.11.02-20:15** — HR letters (text format): body paragraphs are justified to both margins in the preview, print and PDF; the last line of a paragraph, one-line items and table cells stay left-aligned. Word letters keep the Word file's alignment.
 - **v2026.10.30-21:40** — OTCF claims with more than one OT time a day (MEG-OTCF v2026.10.30-21:40: up to 3, e.g. came in early and stayed
   late): the payroll pull adds up a rest day's or public holiday's times before pricing them (half day / full day / beyond normal hours), so

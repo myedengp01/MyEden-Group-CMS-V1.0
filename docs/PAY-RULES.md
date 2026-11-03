@@ -40,7 +40,10 @@ Hourly-paid staff: the hourly rate is their pay rate; their daily rate = hourly 
 - Annual leave, full time: 8 / 12 / 16 days by service (under 2 years / 2–5 / 5 and over). Pro-rated by month: a month counts if service
   starts by the 15th or ends on or after the 15th; each period rounded half up.
 - Annual leave, part time: from 2027, 6 / 8 / 11 days; casual (30 % or less of a 45-hour week) none. Before 2027: full-time days × weekly hours ÷ 45.
-- Sick leave: 14 / 18 / 22 days by completed years (part time 10 / 13 / 15 from 2027). Hospitalisation: a 60-day pool that includes sick leave.
+- Sick leave: 14 / 18 / 22 days (part time 10 / 13 / 15 from 2027), by completed years at 31 December of the leave year — or at the last day of
+  service if earlier (PRI-014, 3 Nov 2026): reaching the 2- or 5-year mark in the year gives the higher days for the whole year from 1 January.
+  Full days in the year of joining; never pro-rated, and never deducted when someone leaves (EA s.24 / s.60F). Hospitalisation: a 60-day
+  pool that includes sick leave.
 - Carry forward: by KPI grade E 6 / S 3 / A 1 / I 0 / U 0 days, confirmed staff only; the excess bought back if approved, otherwise forfeited.
 - Notice period: letter date + 4 / 6 / 12 weeks by completed years (4 on probation).
 

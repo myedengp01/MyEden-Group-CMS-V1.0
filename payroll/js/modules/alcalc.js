@@ -88,7 +88,7 @@ export async function render(el, ctx, params, query) {
   el.append(h('section', { class: 'panel', style: 'margin-top:1.25rem' },
     h('div', { class: 'panel-head' }, h('h2', {}, 'Resignation')),
     h('div', { class: 'panel-body' },
-      h('p', { class: 'small muted' }, 'Notice = letter date + 4 / 6 / 12 weeks by completed years of service (4 on probation). Annual leave on leaving is paid at the ordinary rate of pay (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Saturday, public holidays skipped). Notice not served = basic ÷ the days of each month × the calendar days not served.'),
+      h('p', { class: 'small muted' }, 'Notice = letter date + 4 / 6 / 12 weeks by completed years of service (4 on probation). Annual leave on leaving is paid at the ordinary rate of pay (basic ÷ 26, Employment Act s.60I) or used up on the last working days (Monday–Saturday, public holidays skipped). Notice not served = basic ÷ the days of each month × the calendar days not served. Sick leave is never deducted or pro-rated when someone leaves.'),
       h('div', { class: 'form-grid' }, Object.values(R)), res, acts)));
 
   let rctx = null; let rctxFor = ''; let seq = 0; let salHist = null; let mid = null;

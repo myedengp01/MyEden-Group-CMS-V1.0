@@ -99,7 +99,7 @@ export function alEntitlement({ joinDate, resignDate = null, bands, year, legacy
 }
 
 // ---------------------------------------------------------------- other entitlements (EA)
-/** Sick leave by completed years of service on the given date (EA s60F: 14 / 18 / 22). */
+/** Sick leave by completed years of service on the given date (EA s60F: 14 / 18 / 22). leaveBalances passes 31 Dec of the year, or the last day of service if earlier. */
 export function slEntitlement(joinDate, onIso, slRule) {
   const bands = slRule?.bands || [{ until_years: 2, days: 14 }, { until_years: 5, days: 18 }, { until_years: null, days: 22 }];
   const yrs = joinDate && onIso >= joinDate ? serviceLength(joinDate, onIso).years : 0;
@@ -193,7 +193,11 @@ export function leaveBalances(input) {
 
   // SL / HPL (hospitalisation shares a 60-day pool with sick leave)
   const onIso = asOf < `${year}-12-31` ? asOf : `${year}-12-31`;
-  let slEnt = slEntitlement(em.join_date, onIso, LR.slBands ? { bands: LR.slBands } : rules.SL);
+  // PRI-014 · sick leave (EA s.60F, "in the aggregate in each calendar year"): the 2- or 5-year mark reached at any point in the year —
+  // by 31 December, or by the last day of service for a leaver — gives the higher days for that whole year, from 1 January. Never pro-rated.
+  const yEnd = `${year}-12-31`;
+  const slOn = em.resigned_date && em.resigned_date < yEnd ? em.resigned_date : yEnd;
+  let slEnt = slEntitlement(em.join_date, slOn, LR.slBands ? { bands: LR.slBands } : rules.SL);
   if (partTime && (policies.part_time?.prorate || ['AL', 'SL']).includes('SL')) {
     const p = proRate(slEnt, em.weekly_hours, policies.part_time); if (p === null) needsHours = true; else slEnt = p;
   }
