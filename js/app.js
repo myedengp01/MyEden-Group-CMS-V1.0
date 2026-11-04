@@ -5375,10 +5375,35 @@
   // headings stay in view. Scrolling down first moves the page title away, then scrolls the rows.
   const pageScroller = () => document.scrollingElement || document.documentElement;
   const topbarH = () => ($('.topbar')?.offsetHeight || 0);
+  // v2026.11.04: every long table (CMS and MyPayroll pages) gets the frozen header automatically; wide tables also freeze
+  // the name column; long tables in pop-up windows pin their header inside the window. Printed pages are left alone.
+  const FREEZE_SKIP = '.print-doc, .rp-preview, .sheet, .doc-scroll, #lw-pv, .no-freeze';
+  function autoFreeze() {
+    if (document.body.classList.contains('doc-mode')) return;
+    const room = window.innerHeight - topbarH();
+    $$('#page .table-wrap, .modal .table-wrap, .myp-dialog .table-wrap').forEach((w) => {
+      if (w.closest(FREEZE_SKIP)) return;
+      const t = $(':scope > table', w); if (!t || !$('thead th', t)) return;
+      const inModal = !!w.closest('.modal, .myp-dialog');
+      if (inModal) {
+        if (!w.classList.contains('fill-modal') && t.offsetHeight > window.innerHeight * 0.55) w.classList.add('fill-modal', 'auto-freeze');
+      } else if (!w.classList.contains('fill')) {
+        if (t.offsetHeight > room - 120) w.classList.add('fill', 'auto-freeze');
+      } else if (w.classList.contains('auto-freeze') && t.offsetHeight < room - 220) { w.classList.remove('fill', 'auto-freeze'); w.style.maxHeight = ''; }
+      // wide table: keep the first column (the name) in place, or the first two when the first is a tick box
+      if (!t.classList.contains('freeze1') && !t.classList.contains('freeze2') && t.scrollWidth > w.clientWidth + 4) {
+        const ths = $$('thead tr:first-child > th', t); const first = ths[0]; if (!first) return;
+        const sel = first.classList.contains('sel') || !!$('input[type=checkbox]', first);
+        const width = sel ? first.offsetWidth + (ths[1]?.offsetWidth || 0) : first.offsetWidth;
+        if (width <= w.clientWidth * 0.45) t.classList.add(sel ? 'freeze2' : 'freeze1', 'auto-freeze');
+      }
+    });
+  }
   function fitTables() {
     const tb = topbarH();
+    autoFreeze();
     $$('#page .table-wrap.fill').forEach((w) => {
-      const card = w.closest('.card') || w.parentElement;
+      const card = w.closest('.card, .panel') || w.parentElement;
       const inCard = w.getBoundingClientRect().top - card.getBoundingClientRect().top;
       w.style.maxHeight = `${Math.max(260, window.innerHeight - tb - inCard - 14)}px`;
       const t = $('table', w); const first = t && $('thead th', t);
@@ -5393,8 +5418,10 @@
       }
     });
   }
+  // the second frozen column starts where the first ends (any table, pages and windows)
+  const fitFrozen = () => $$('table.freeze2').forEach((t) => { const f = $('thead th', t); if (f) t.style.setProperty('--c2', `${f.offsetWidth}px`); });
   let fitQueued = false;
-  const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); }); };
+  const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); fitFrozen(); }); };
   window.addEventListener('resize', queueFit);
   new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true });
 
