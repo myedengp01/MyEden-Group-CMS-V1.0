@@ -4562,13 +4562,23 @@
     return new Proxy(real, { get: (c, k) => (k === 'from' ? (t) => { const b = c.from(t); if (t === 'eppd_employee_private') b.select = (...a) => c.from('cms_eppd_private').select(...a); return b; }
       : (typeof c[k] === 'function' ? c[k].bind(c) : c[k])) });
   }
-  const mypImport = (path) => import(asset(`payroll/js/${path}?v=${encodeURIComponent(window.CMS_VERSION || '')}`));
+  // The MyPayroll modules import each other without a version tag, so after a release the browser could reuse an older copy of one
+  // of them (e.g. "does not provide an export named …"). Once per release, re-download every payroll file (list in js/version.js)
+  // before the first one is imported, so the browser's cache holds the new copies. v2026.11.04
+  let mypFreshP = null;
+  const mypFresh = () => mypFreshP || (mypFreshP = (async () => {
+    const v = window.CMS_VERSION || ''; let seen = null; try { seen = localStorage.getItem('cms.payrollFiles'); } catch (e) { /* no storage */ }
+    if (seen === v || !(window.CMS_FILES || []).length) return;
+    await Promise.all(window.CMS_FILES.map((f) => fetch(asset(f), { cache: 'reload' }).catch(() => null)));
+    try { localStorage.setItem('cms.payrollFiles', v); } catch (e) { /* no storage */ }
+  })());
+  const mypImport = async (path) => { await mypFresh(); return import(asset(`payroll/js/${path}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); };
   async function mypPage(item, el) {
     const P = MYP_PAGES[item.route];
     document.body.classList.remove('doc-mode');
     el.innerHTML = `<div class="no-print">${pageHead(item)}</div><div class="myp" id="myp-root">${loading()}</div>`;
     const root = $('#myp-root', el);
-    let mod; try { await mypStyles(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
+    let mod; try { await mypStyles(); await mypFresh(); mod = await import(asset(`payroll/js/${P.file}?v=${encodeURIComponent(window.CMS_VERSION || '')}`)); }
     catch (e) { root.innerHTML = errorCard(`This page could not be loaded (${e.message}). Check the connection and reload.`); return; }
     const me = { user_id: state.access?.user_id, email: state.access?.email, display_name: state.access?.name, role: P.edit() ? 'admin' : 'viewer', status: 'active' };
     const sb = mypSb();
