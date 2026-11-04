@@ -290,7 +290,7 @@ export async function render(el, ctx, params, query) {
     const payCols = (ls) => { const cols = summaryColumns(ls, types); const extra = sumS(ls, 'personal_deductions') ? [['personal_deductions', 'Personal deductions (−)'], ['net_paid', 'Net paid']] : [['net_paid', 'Net paid']];
       return { cols, fixed: [...STAT, ...extra] }; };
     const payHeader = ({ cols, fixed }) => ['No.', 'Employee ID', 'Name', ...cols.map((c) => (c.kind === 'deduction' ? `${c.label} (−)` : c.label)), ...fixed.map(([, l]) => l)];
-    const payRow = ({ cols, fixed }) => (l, i) => { const m = itemsByCode(l); return [i, l.emp_code || '', l.emp_name, ...cols.map((c) => m[c.code] || 0), ...fixed.map(([k]) => statVal(l, k))]; };
+    const payRow = ({ cols, fixed }) => (l, i) => { const m = itemsByCode(l); return [i, l.emp_code || '', l.emp_name, ...cols.map((c) => m[c.code] || ''), ...fixed.map(([k]) => statVal(l, k))]; };
     const payTotal = ({ cols, fixed }, ls) => ['', '', `Total (${ls.length})`, ...cols.map((c) => n2(ls.reduce((s, l) => s + (itemsByCode(l)[c.code] || 0), 0))), ...fixed.map(([k]) => sumS(ls, k))];
     // leave: AL, SL, RL and unpaid always; hospitalisation and compassionate only when someone in the company used them this month
     const LV = [['AL', 'Annual'], ['SL', 'Sick'], ['RL', 'Replacement'], ['HPL', 'Hospitalisation'], ['CPL', 'Compassionate']];
@@ -309,7 +309,8 @@ export async function render(el, ctx, params, query) {
       h('div', {}, h('b', {}, 'Approved by (Director)'), h('span', {}, AP.approved_by || (final ? 'Finalised before approvals began' : 'Awaiting approval')), h('small', {}, AP.approved_at ? fmtDateTime(AP.approved_at) : '')),
       h('div', {}, h('b', {}, 'Finalised by'), h('span', {}, AP.finalised_by || (final ? '—' : 'Not finalised')), h('small', {}, AP.finalised_at ? fmtDateTime(AP.finalised_at) : '')));
     const numFrom = 3;
-    const docTable = (header, rows, total, num = (j) => j >= numFrom, fmtV = (v) => (typeof v === 'number' ? money(v) : v)) => h('table', { class: 'doc-table rp-table' },
+    // the font is sized so every column fits the page width: about 20 em for No. / ID / name plus 6.3 em per figure column
+    const docTable = (header, rows, total, num = (j) => j >= numFrom, fmtV = (v) => (typeof v === 'number' ? money(v) : v)) => h('table', { class: 'doc-table rp-table', style: `--rp-em:${(20 + 6.3 * Math.max(0, header.length - numFrom)).toFixed(1)}` },
       h('thead', {}, h('tr', {}, header.map((t, j) => h('th', { class: num(j) ? 'num' : '' }, t)))),
       h('tbody', {}, rows.map((r) => h('tr', {}, r.map((v, j) => h('td', { class: num(j) ? 'num' : (j === 2 ? 'nowrap' : '') }, num(j) ? fmtV(v) : v))))),
       total ? h('tfoot', {}, h('tr', {}, total.map((v, j) => h('th', { class: num(j) ? 'num' : '' }, num(j) ? fmtV(v) : v)))) : null);

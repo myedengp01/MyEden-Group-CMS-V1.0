@@ -383,3 +383,11 @@
   .myp .sheet.payrep tr {break-inside: avoid;}
 }
 .myp tr.left-out td, .myp-modal tr.left-out td { color: var(--muted); }
+
+/* payroll report: compact headings; a wide pay table is scaled down to fit the page (v2026.11.04) */
+.myp .sheet.payrep {container-type: inline-size;}
+.myp .sheet.payrep .rp-table thead th {font-size: .94em; text-transform: none; letter-spacing: 0; white-space: normal; line-height: 1.15; vertical-align: bottom; padding: .8mm .9mm;}
+.myp .sheet.payrep .rp-table thead th.num {text-align: right;}
+.myp .sheet.payrep .rp-table td, .myp .sheet.payrep .rp-table tfoot th {padding: .7mm .9mm; font-size: 1em;}
+/* the table's font follows the page width and the number of columns (set on the table), the same on screen and in print */
+.myp .sheet.payrep .rp-table {width: 100%; font-size: min(6.8pt, calc(100cqi / var(--rp-em, 120)));}
