@@ -482,6 +482,7 @@
     `<label><input type="checkbox" name="st_${k}" ${(cur[k] ?? (k !== 'socso_nei_opt_out')) ? 'checked' : ''}> ${l}</label>`).join('')}</div></fieldset>`;
   const statOf = (form) => Object.fromEntries(STAT.map(([k]) => [k, !!form[`st_${k}`].checked]));
   const statTxt = (s) => { if (!s) return ''; const off = STAT.filter(([k]) => k !== 'socso_nei_opt_out' && s[k] === false).map(([, l]) => l); return off.length ? `No ${off.join(', ')}` : 'All statutory on'; };
+  const statFull = (s) => (s ? `${statTxt(s)}${s.socso_nei_opt_out ? ' · NEI opt-out' : ''}` : '');
   const stateTag = (st) => ({ current: '<span class="tag ok xs">Paying now</span>', upcoming: '<span class="tag src xs">Starts later</span>', ended: '<span class="tag xs">Ended</span>' }[st] || '');
 
   // The paying-companies window for one person. Resolves true when something changed.
@@ -521,6 +522,7 @@
                 ${e.latest && canC && !e.left ? `<button type="button" class="btn sm" data-add="${e.id}">${icon('plus')}Add second company</button>` : ''}</div>
               <div class="table-wrap fill-modal"><table class="data pay-t"><thead><tr><th>Company</th><th>From</th><th>To</th><th>Status</th>${seeSalary ? '<th>Salary</th>' : ''}<th>Paid</th><th>Statutory</th></tr></thead><tbody>
               ${e.recs.map((r) => { const btns = !edit ? '' : [
+                  r.state !== 'ended' ? `<button type="button" class="btn sm" data-a="stat" data-id="${r.assignment_id}">Statutory…</button>` : '',
                   r.state !== 'ended' ? `<button type="button" class="btn sm" data-a="transfer" data-id="${r.assignment_id}">Transfer</button>` : '',
                   r.state !== 'ended' && !r.is_main && live.length > 1 ? `<button type="button" class="btn sm" data-a="main" data-id="${r.assignment_id}">Set main</button>` : '',
                   r.state !== 'ended' && live.length > 1 ? `<button type="button" class="btn sm" data-a="end" data-id="${r.assignment_id}">End</button>` : '',
@@ -531,18 +533,40 @@
                 <td>${stateTag(r.state)}</td>
                 ${seeSalary ? `<td class="nowrap">${r.salary == null ? '—' : `${money(r.salary)}${r.pay_basis === 'hourly' ? ' /h' : ''}`}</td>` : ''}
                 <td class="nowrap small">${r.months_paid ? `${r.months_paid} mo · ${monthTxt(r.first_paid)}–${monthTxt(r.last_paid)}${r.finalised_to ? `<br><span class="muted">finalised to ${monthTxt(r.finalised_to)}</span>` : ''}` : '<span class="muted">not yet</span>'}</td>
-                <td class="small">${esc(statTxt(r.statutory))}</td></tr>${btns ? `<tr class="pay-acts-row"><td colspan="${seeSalary ? 7 : 6}"><div class="pay-acts">${btns}</div></td></tr>` : ''}`; }).join('')}
+                <td class="small">${esc(statFull(r.statutory))}${(r.statutory?.schedule || []).map((x) => `<div class="pay-sched"><span class="tag src xs">From ${esc(monthTxt(x.from))}</span> ${esc(statFull(x.flags))}${edit ? ` <button type="button" class="btn sm ghost" data-a="unsched" data-id="${r.assignment_id}" data-from="${esc(String(x.from).slice(0, 10))}">Remove</button>` : ''}</div>`).join('')}</td></tr>${btns ? `<tr class="pay-acts-row"><td colspan="${seeSalary ? 7 : 6}"><div class="pay-acts">${btns}</div></td></tr>` : ''}`; }).join('')}
               </tbody></table></div></section>`;
           }).join('') + `<p class="muted small">${canE ? `Changes take effect from a payroll month and are logged. Months already finalised${lastFin ? ` (to ${monthTxt(lastFin)})` : ''} stay as they were paid${canA ? '' : '; correcting a record used in a finalised month needs an Admin'}.` : 'View only.'}</p>`;
-          $$('[data-a]', box).forEach((b) => b.addEventListener('click', () => act(b.dataset.a, recs.find((r) => String(r.assignment_id) === b.dataset.id), recs)));
+          $$('[data-a]', box).forEach((b) => b.addEventListener('click', () => act(b.dataset.a, recs.find((r) => String(r.assignment_id) === b.dataset.id), recs, b.dataset)));
           $$('[data-add]', box).forEach((b) => b.addEventListener('click', () => addCompany(Number(b.dataset.add), recs.filter((r) => r.employment_id === Number(b.dataset.add)))));
         };
         const done = async (msg) => { changed = true; toast(msg); await load(); };
         const firstOpen = (r) => monthNext(maxMonth(r.finalised_to, null)) > monthNow() ? monthNext(r.finalised_to) : monthNow();
         const coOpts = (skip = [], sel) => payers().filter((c) => !skip.includes(c.code)).map((c) => `<option value="${esc(c.code)}" ${sel === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
-        const act = async (a, r, recs) => {
+        const act = async (a, r, recs, ds = {}) => {
           if (!r) return;
           const live = recs.filter((x) => x.employment_id === r.employment_id && x.state !== 'ended');
+          if (a === 'stat') {
+            // statutory switches from a payroll month (v2026.11.04): open months change now; a later month is scheduled
+            const finTo = recs.reduce((m, x) => maxMonth(m, x.finalised_to), null);
+            const from = finTo ? monthNext(finTo) : monthNow();
+            const ok = await modal({ title: `Statutory · ${person.name} · ${coShort(r.company_code)}`, ok: 'Save',
+              body: `<p class="muted small">Contributions ${esc(person.name)} pays and ${esc(coShort(r.company_code))} pays for them. Choose the first payroll month the change applies to: an open month changes now (open drafts update when recalculated); a later month is scheduled and payroll uses it from that month. Finalised months never change.</p>
+                ${statBoxes(r.statutory || {})}
+                <div class="fld-2"><label class="fld"><span>From payroll month</span><input type="month" name="m" required value="${from}" ${finTo ? `min="${monthNext(finTo)}"` : ''}></label>
+                <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300" placeholder="e.g. NEI opt-out form received"></label></div>
+                ${(r.statutory?.schedule || []).length ? `<p class="small">Already scheduled: ${(r.statutory.schedule).map((x) => `from ${esc(monthTxt(x.from))} – ${esc(statFull(x.flags))}`).join('; ')}. Saving the same month replaces it.</p>` : ''}`,
+              onOk: async (f) => { if (!f.m.value) throw new Error('Choose the month.');
+                const res = await API.rpc('cms_statutory_set', { p_assignment: r.assignment_id, p_from: `${f.m.value}-01`, p_flags: statOf(f), p_note: f.note.value.trim() || null });
+                ds.scheduled = res?.scheduled; ds.m = f.m.value; } });
+            if (ok) done(ds.scheduled ? `Statutory change scheduled from ${monthTxt(`${ds.m}-01`)}` : 'Statutory switches saved; recalculate open payroll months');
+            return;
+          }
+          if (a === 'unsched') {
+            const ok = await modal({ title: 'Remove scheduled change', ok: 'Remove', danger: true, body: `<p>Remove the statutory change scheduled from ${esc(monthTxt(ds.from))} for ${esc(person.name)} (${esc(coShort(r.company_code))})?</p>`,
+              onOk: async () => { await API.rpc('cms_statutory_unschedule', { p_assignment: r.assignment_id, p_from: ds.from }); } });
+            if (ok) done('Scheduled change removed');
+            return;
+          }
           if (a === 'transfer') {
             const ok = await modal({ title: `Transfer ${person.name}`, ok: 'Transfer',
               body: `<p class="muted small">Now paid by <b>${esc(coShort(r.company_code))}</b>. From the month you choose, another company pays instead, with the same salary, allowances and statutory switches. Earlier months stay with ${esc(coShort(r.company_code))}, which keeps its record${r.is_main ? ' and its main-company mark' : ''} for those months.</p>
@@ -4867,7 +4891,7 @@
       const I = D.ids || {};
       return `${D.pay ? `<section class="card">${secHead('Salary history')}${table(['From', 'Amount', 'Basis', 'Paid by', 'Reason'], D.pay.history.map((x) => [dShort(x.from), `RM ${m2(x.amount)}`, v(x.basis), v(x.company), v(x.reason)]), 'No salary recorded.')}</section>
         <section class="card">${secHead('Current allowances')}${table(['Item', 'Amount', 'From', 'To'], D.pay.allowances.map((x) => [v(x.name), `RM ${m2(x.amount)}`, x.from ? dShort(x.from) : v(''), x.to ? dShort(x.to) : 'ongoing']), 'None.')}</section>` : locked('See salaries')}
-        ${C.bank || C.ic ? `<section class="card">${secHead('Bank & statutory numbers', H.eppd_employee_id ? '<button type="button" class="btn sm" data-priv>Edit…</button>' : '')}${kv([C.bank ? ['Bank', v(I.bank || I.bank_code)] : null, C.bank ? ['Account no.', v(I.account)] : null,
+        ${C.bank || C.ic ? `<section class="card">${secHead('Bank & statutory numbers', H.eppd_employee_id ? `${can('payroll.paying', 'E') ? '<button type="button" class="btn sm" data-stat>Statutory contributions…</button> ' : ''}<button type="button" class="btn sm" data-priv>Edit…</button>` : '')}${kv([C.bank ? ['Bank', v(I.bank || I.bank_code)] : null, C.bank ? ['Account no.', v(I.account)] : null,
           C.ic ? ['EPF no.', v(I.epf)] : null, C.ic ? ['SOCSO no.', v(I.socso)] : null, C.ic ? ['Income tax no.', v(I.tax)] : null])}<p class="small muted">${H.eppd_employee_id ? 'Changed here (HR with “See bank” / “See IC”); every change is kept in the audit log.' : 'No payroll record yet.'}</p></section>` : ''}`;
     }
     async function leave(box) {
@@ -5031,6 +5055,7 @@
       } else if (tab === 'leave') await leave(body); else if (tab === 'documents') await documents(body); else if (tab === 'timeline') await timeline(body); else if (tab === 'history') await historyTab(body);
       $$('[data-edit]', body).forEach((b) => b.addEventListener('click', () => editProfile(b.dataset.edit)));
       $('[data-priv]', body)?.addEventListener('click', () => editPrivateNumbers());
+      $('[data-stat]', body)?.addEventListener('click', () => payingWindow({ id: pid, name: H.name, employee_id: H.employee_id, previous_id: H.previous_id }));
     }
     // ---- bank and statutory numbers (payroll record), from the Pay tab
     async function editPrivateNumbers() {

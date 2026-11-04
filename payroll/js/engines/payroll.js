@@ -66,6 +66,20 @@ export function ageForPeriod(dob, period) {
   return a;
 }
 
+/**
+ * Statutory switches of a paying company record for a payroll month: the record's switches, then any change scheduled
+ * from that month or earlier (CMS › Paying Companies › Statutory, v2026.11.04).
+ */
+export function statutoryFlags(a, period) {
+  const f = { epf_ee: a.epf_ee !== false, epf_er: a.epf_er !== false, socso_ee: a.socso_ee !== false, socso_er: a.socso_er !== false,
+    eis_ee: a.eis_ee !== false, eis_er: a.eis_er !== false, socso_nei_opt_out: !!a.socso_nei_opt_out };
+  const p = String(period || '').slice(0, 10);
+  for (const x of [...(Array.isArray(a.statutory_schedule) ? a.statutory_schedule : [])].sort((m, n) => String(m.from).localeCompare(String(n.from)))) {
+    if (p && String(x.from).slice(0, 10) <= p) Object.assign(f, Object.fromEntries(Object.entries(x.flags || {}).map(([k, v]) => [k, !!v])));
+  }
+  return f;
+}
+
 /** Daily (ORP) and hourly (HRP) rates of pay, Employment Act style. */
 export function ratesOfPay(salary, employment, pol = DEFAULT_PAYROLL, period = null) {
   const H = rateHours(employment, pol || {}, period, salary?.pay_basis === 'hourly' ? 'hourly' : 'monthly');
@@ -356,8 +370,7 @@ export function buildRun(D) {
       const key = `${p.id}|${g.a.company_id || 0}`; seen.add(key);
       const old = existing.get(key);
       const isPrimary = g === primary;
-      const flags = { epf_ee: g.a.epf_ee !== false, epf_er: g.a.epf_er !== false, socso_ee: g.a.socso_ee !== false, socso_er: g.a.socso_er !== false,
-                      eis_ee: g.a.eis_ee !== false, eis_er: g.a.eis_er !== false, socso_nei_opt_out: !!g.a.socso_nei_opt_out };
+      const flags = statutoryFlags(g.a, period);
       let line;
       if (old && old.mode === 'fixed') {
         line = { ...old };

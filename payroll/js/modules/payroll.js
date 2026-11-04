@@ -10,7 +10,7 @@ import { savePtTotal } from '../pt-hours.js';
 import { openLeaveForm } from './leave.js';
 import { OT_CATEGORIES } from '../engines/ot.js';
 import { lastDayOfMonth } from '../engines/employee.js';
-import { buildRun, recomputeLine, runTotals, lineSummary, groupItems, itemFromType, itemAmount, monthLabel, periodOf, STAT_KEYS, STAT_LABELS, STAT_COLS, STAT_COLS_EE, STAT_LEGEND, statVal, r2, ageForPeriod } from '../engines/payroll.js';
+import { buildRun, recomputeLine, runTotals, lineSummary, groupItems, itemFromType, itemAmount, monthLabel, periodOf, STAT_KEYS, STAT_LABELS, STAT_COLS, STAT_COLS_EE, STAT_LEGEND, statVal, r2, ageForPeriod, statutoryFlags } from '../engines/payroll.js';
 import { todayIso, addDays } from '../engines/employee.js';
 
 const ym = (period) => String(period).slice(0, 7);
@@ -96,7 +96,7 @@ async function renderRun(el, ctx, param) {
   const personOf = (l) => (D.people || []).find((p) => p.id === l.employee_id);
   const ageOf = (l) => l.inputs?.age ?? (personOf(l)?.dob ? ageForPeriod(personOf(l).dob, D.period) : null);
   const optOutOf = (l) => { if (l.inputs?.flags && 'socso_nei_opt_out' in l.inputs.flags) return !!l.inputs.flags.socso_nei_opt_out;
-    const a = (personOf(l)?.employments || []).flatMap((e) => e.assignments || []).find((x) => x.id === l.assignment_id); return !!a?.socso_nei_opt_out; };
+    const a = (personOf(l)?.employments || []).flatMap((e) => e.assignments || []).find((x) => x.id === l.assignment_id); return a ? statutoryFlags(a, D.period).socso_nei_opt_out : false; };
   const coSel = h('select', { 'aria-label': 'Company' });
   const sortSel = h('select', { 'aria-label': 'Sort by' }, [['basic_desc', 'Basic salary (high → low)'], ['basic_asc', 'Basic salary (low → high)'], ['name', 'Name (A–Z)'], ['gross', 'Gross (high → low)'], ['net', 'Net paid (high → low)']]
     .map(([v, t]) => h('option', { value: v, selected: F.sort === v }, t)));

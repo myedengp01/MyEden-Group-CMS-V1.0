@@ -1047,3 +1047,4 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
 #lw-resign .lw-facts .pf-kv { margin-top: 8px; }
 @media (max-width: 900px) { .rs-grid { grid-template-columns: 1fr; } }
 .modal-box.wide:has(.rs-grid) { width: min(1120px, 100%); }
+.pay-sched { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
