@@ -66,7 +66,7 @@ async function renderRun(el, ctx, param) {
   const isAdmin = ctx.can(['admin']);
   // CMS: prepare / finalise / reopen follow the CMS special permissions (MyPayroll itself passes 'admin' / 'hr' roles)
   const canPrep = ctx.can(['payroll.prepare']); const canFin = ctx.can(['payroll.finalise']); const canReopen = ctx.can(['payroll.reopen']);
-  let lines; let dirty = false; let refreshed = false; let notices = [];
+  let lines; let dirty = false; let refreshed = false; let notices = []; let edited = false;   // edited = HR changed something on this page
   if (locked) lines = run.lines;
   else {
     const res = buildRun(D);
@@ -115,8 +115,23 @@ async function renderRun(el, ctx, param) {
 
   const leaveGuard = (e) => { if (dirty && !locked) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', leaveGuard);
-  const offHash = () => { window.removeEventListener('beforeunload', leaveGuard); window.removeEventListener('hashchange', offHash); };
-  window.addEventListener('hashchange', offHash);
+  // v2026.11.04: moving to another CMS page with unsaved changes asks first (the CMS router calls check() before it leaves)
+  window.CMS_LEAVE_GUARD = {
+    cleanup: () => window.removeEventListener('beforeunload', leaveGuard),
+    check: () => (!edited || !dirty || locked ? Promise.resolve(true) : new Promise((resolve) => {
+      let answered = false; const answer = (v) => { if (!answered) { answered = true; resolve(v); } };
+      openModal({ title: 'Unsaved payroll changes', onClose: () => answer(false),
+        body: h('p', {}, `You have changes in ${monthLabel(D.period)} that are not saved yet (items added, inputs changed or a recalculation). Save the draft before leaving?`),
+        actions: [{ label: 'Leave without saving', danger: true, onClick: (cl) => { dropBackup(); answer(true); cl(); return true; } },
+          { label: 'Save draft and continue', primary: true, onClick: async (cl) => { const ok = await saveRun(true); if (!ok) return false; answer(true); cl(); return true; } }] });
+    })),
+  };
+  // unsaved changes are also kept in this browser, so they can be restored if the page closes before saving
+  const BKEY = `myp.unsaved.${D.period}`;
+  const dropBackup = () => { try { localStorage.removeItem(BKEY); } catch { /* no storage */ } };
+  const keepBackup = () => { if (locked || !edited || !dirty) return; try { localStorage.setItem(BKEY, JSON.stringify({ at: new Date().toISOString(), base: run?.updated_at || null, lines })); } catch { /* full or no storage */ } };
+  let backup = null; try { backup = JSON.parse(localStorage.getItem(BKEY) || 'null'); } catch { backup = null; }
+  if (backup && (locked || backup.base !== (run?.updated_at || null))) { dropBackup(); backup = null; }   // saved or finalised since: the backup is out of date
 
   function drawHead() {
     const actions = [];
@@ -133,6 +148,10 @@ async function renderRun(el, ctx, param) {
       statusTag(run), ...actions));
     const n = [];
     if (yearOpen) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `The ${D.period.slice(0, 4)} leave year is not closed yet. Close it at `, h('a', { href: `#/leave/year-end?year=${D.period.slice(0, 4)}` }, 'Year-end close'), ' before finalising December: negative annual leave balances become unpaid leave in this payroll, then click Recalculate.'));
+    if (backup && !locked) n.push(h('div', { class: 'setup-warning', style: 'margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.6rem;align-items:center' },
+      h('span', {}, h('b', {}, 'Unsaved changes found. '), `Changes made on ${fmtDateTime(backup.at)} in this browser were not saved. Restore them?`),
+      h('button', { class: 'btn sm primary', type: 'button', onclick: () => { lines = backup.lines; backup = null; dirty = true; edited = true; toast('Unsaved changes restored. Check them, then Save draft.'); drawAll(); } }, 'Restore'),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => { backup = null; dropBackup(); drawHead(); } }, 'Discard')));
     if (refreshed) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, 'Figures were refreshed from the latest salary, leave and overtime records since this draft was saved. Save to keep them.'));
     if (AP && !locked) {
       const st = AP.approved_at ? `Approved by ${AP.approved_by} on ${fmtDateTime(AP.approved_at)}${AP.approval_note ? ` – “${AP.approval_note}”` : ''}. Ready to finalise.`
@@ -201,6 +220,7 @@ async function renderRun(el, ctx, param) {
   }
 
   function drawBar() {
+    keepBackup();
     if (locked) { clear(bar).append(h('p', { class: 'small muted' }, 'Finalised months cannot be changed. Corrections go into the next month.')); return; }
     if (!canPrep && !canFin) { clear(bar).append(h('p', { class: 'small muted' }, 'View only: you can see this month but not prepare or finalise it.')); return; }
     const save = canPrep ? h('button', { class: 'btn', type: 'button', onclick: () => saveRun() }, run ? 'Save draft' : 'Save as draft') : null;
@@ -218,7 +238,7 @@ async function renderRun(el, ctx, param) {
   // ---------------------------------------------------------- actions
   function recalc() {
     const res = buildRun({ ...D, existing: lines });
-    lines = res.lines; notices = res.notices || []; dirty = true; drawAll();
+    lines = res.lines; notices = res.notices || []; dirty = true; edited = true; drawAll();
     toast(res.skipped.length ? `Recalculated. ${res.skipped.length} line(s) removed: ${res.skipped.map((s) => s.name).join(', ')}.` : 'Recalculated from the latest records.');
   }
   const dbLine = (l) => ({ employee_id: l.employee_id, assignment_id: l.assignment_id, company_id: l.company_id, emp_name: l.emp_name, emp_code: l.emp_code,
@@ -229,7 +249,7 @@ async function renderRun(el, ctx, param) {
     const { data, error } = await ctx.sb.rpc('eppd_save_pay_run', { p: { period: D.period, notes: run?.notes || null, totals: runTotals(lines), lines: lines.map(dbLine),
       expected_updated_at: run?.updated_at || null } });
     if (failed(error, 'Save')) return null;
-    dirty = false;
+    dirty = false; edited = false; dropBackup();
     if (!quiet) { toast(`${monthLabel(D.period)} saved as a draft.`); reload(); }
     return data;
   }
@@ -274,7 +294,7 @@ async function renderRun(el, ctx, param) {
     if (!(await confirmDialog('Delete draft', `Delete the ${monthLabel(D.period)} draft and every change typed into it? Salary, leave and overtime records are not affected.`, 'Delete draft', true))) return;
     const { error } = await ctx.sb.from('eppd_pay_runs').delete().eq('id', run.id);
     if (failed(error, 'Delete')) return;
-    dirty = false; toast('Draft deleted.'); location.hash = '#/payroll';
+    dirty = false; edited = false; dropBackup(); toast('Draft deleted.'); location.hash = '#/payroll';
   }
   function reopen() {
     const f = field('Reason (kept in the audit log)', { type: 'textarea', required: true });
@@ -319,7 +339,12 @@ async function renderRun(el, ctx, param) {
       } }, 'Save total');
       const timeRow = (e) => h('li', {}, `${e.work_date.slice(8, 10)}/${e.work_date.slice(5, 7)} · ${OT_CATEGORIES[e.category]?.label || e.category} · ${Number(e.hours)} h`,
         e.source === 'otcf' ? h('span', { class: 'tag info', style: 'margin-left:.3rem' }, 'OTCF') : null,
-        e.source === 'manual' ? h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: () => editTimeEntry(ctx, { people: peopleCache, month, entry: e, employeeId: L.employee_id, onSaved: done }) }, 'edit') : null);
+        h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: () => editTimeEntry(ctx, { people: peopleCache, month, entry: e, employeeId: L.employee_id, onSaved: done }) }, 'edit'),
+        h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: async () => {
+          if (!(await confirmDialog('Remove overtime', `Remove ${OT_CATEGORIES[e.category]?.label || e.category}, ${Number(e.hours)} h on ${e.work_date}?${e.source === 'otcf' ? ' It came from an OTCF claim; you can pull the claim again later.' : ''}`, 'Remove', true))) return;
+          const { error } = await ctx.sb.from('eppd_time_entries').delete().eq('id', e.id);
+          if (!failed(error, 'Remove')) { toast('Overtime removed.'); done(); }
+        } }, 'remove'));
       clear(box).append(h('h3', {}, `Inputs for ${monthLabel(D.period)}`),
         h('div', { class: 'inputs-grid' },
           h('div', { class: 'block' }, h('h4', {}, 'Overtime'),
@@ -331,7 +356,17 @@ async function renderRun(el, ctx, param) {
             h('p', { class: 'small muted', style: 'margin:0 0 .4rem' }, pt.length ? `${ptTotal} h recorded (${pt.length} entr${pt.length === 1 ? 'y' : 'ies'})` : 'No hours recorded yet.'),
             h('div', { class: 'btn-row', style: 'align-items:center' }, h('span', { class: 'small' }, 'Total this month'), ptIn, ptSave)) : null,
           h('div', { class: 'block' }, h('h4', {}, 'Leave this month'),
-            leave.length ? h('ul', {}, leave.map((r) => h('li', {}, `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'} · ${r.date_from === r.date_to ? r.date_from : `${r.date_from} – ${r.date_to}`}${r.status === 'cancelled' ? ' (cancelled)' : ''}`))) : h('p', { class: 'small muted' }, 'No leave recorded.'),
+            leave.length ? h('ul', {}, leave.map((r) => h('li', {}, `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'} · ${r.date_from === r.date_to ? r.date_from : `${r.date_from} – ${r.date_to}`}${r.status === 'cancelled' ? ' (cancelled)' : ''}`,
+              h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: async () => {
+                const year = Number(D.period.slice(0, 4));
+                const [LY, holidays] = await Promise.all([loadLeaveYear(ctx.sb, year), loadHolidaySet(ctx.sb, [year - 1, year, year + 1])]);
+                openLeaveForm(ctx, LY, holidays, LY.ref.policies.working_week || { rest_days: [0], off_days: [6] }, r, { employeeId: L.employee_id, onSaved: done });
+              } }, 'edit'),
+              h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: async () => {
+                if (!(await confirmDialog('Delete leave record', `Delete this ${LEAVE_LABELS[r.leave_type] || r.leave_type} (${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'}, ${r.date_from}${r.date_to !== r.date_from ? ` – ${r.date_to}` : ''})? Leave balances and this payroll line update straight away. To keep a trace, use edit and mark it cancelled instead.`, 'Delete', true))) return;
+                const { error } = await ctx.sb.from('eppd_leave_records').delete().eq('id', r.id);
+                if (!failed(error, 'Delete')) { toast('Leave record deleted.'); done(); }
+              } }, 'delete')))) : h('p', { class: 'small muted' }, 'No leave recorded.'),
             h('div', { class: 'btn-row' }, h('button', { class: 'btn sm', type: 'button', onclick: async () => {
               const year = Number(D.period.slice(0, 4));
               const [LY, holidays] = await Promise.all([loadLeaveYear(ctx.sb, year), loadHolidaySet(ctx.sb, [year - 1, year, year + 1])]);
@@ -370,7 +405,7 @@ async function renderRun(el, ctx, param) {
       Object.assign(D, await loadPayInputs(ctx.sb, D.period, D.period));
       if (people) D.people = await loadPayPeople(ctx.sb, D.ref);
       const res = buildRun({ ...D, existing: lines });
-      lines = res.lines; notices = res.notices || []; dirty = true;
+      lines = res.lines; notices = res.notices || []; dirty = true; edited = true;
       const fresh = lines.find((x) => key(x) === k0);
       if (fresh) { orig = fresh; L = JSON.parse(JSON.stringify(fresh)); }
       draw(); drawAll(); holder.firstChild?.reload?.();
@@ -395,9 +430,23 @@ async function renderRun(el, ctx, param) {
           x.addEventListener('change', () => { i.amount = Number(x.value) || 0; redraw(); });
           amountCell = h('td', { class: 'num' }, x);
         }
-        return h('tr', {}, h('td', {}, i.label, i.auto ? null : h('span', { class: 'tag', style: 'margin-left:.4rem' }, L.mode === 'fixed' ? 'recorded' : 'added')),
+        // where a calculated row comes from, so it is fixed at the source (v2026.11.04)
+        const k = String(i.key || '');
+        const src = !i.auto ? null : k === 'BASIC' ? 'from salary history' : k.startsWith('OT:') ? 'from overtime entries (above)' : k === 'UPL' ? 'from leave records (above)'
+          : k.startsWith('ALLOW:') ? 'from a recurring item (below)' : k.startsWith('LOAN:') ? 'from company loans' : k.startsWith('CLAIM:') ? 'from approved claims' : k.startsWith('BUYBACK:') ? 'from the year-end close'
+          : k.startsWith('SETTLE:') ? 'from the final settlement' : null;
+        const leaveOut = !ro && L.mode !== 'fixed' && i.auto && k.startsWith('ALLOW:');
+        return h('tr', { class: i.left_out ? 'left-out' : '' }, h('td', {}, i.label,
+            i.auto ? null : h('span', { class: 'tag', style: 'margin-left:.4rem', title: L.mode === 'fixed' || ro ? '' : 'Kept in this draft only: click Apply, then Save draft' }, L.mode === 'fixed' ? 'recorded' : ro ? 'added' : 'added – not saved until Save draft'),
+            src ? h('div', { class: 'small muted' }, src) : null, i.left_out ? h('div', { class: 'small strong' }, `Left out this month: ${i.left_out}`) : null),
           h('td', { class: 'small muted' }, i.note || ''), amountCell,
-          h('td', {}, !ro && L.mode !== 'fixed' && !i.auto ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { L.items.splice(idx, 1); draw(); } }, 'Remove') : null));
+          h('td', {}, !ro && L.mode !== 'fixed' && !i.auto ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { L.items.splice(idx, 1); draw(); } }, 'Remove')
+            : leaveOut && !i.left_out ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => {
+              const f = field('Reason (kept with the line)', { type: 'text', required: true });
+              openModal({ title: `Leave out ${i.label} for ${monthLabel(D.period)}`, body: h('div', {}, h('p', { class: 'small', style: 'margin-bottom:.6rem' }, 'Pays 0 for this month only. The recurring item stays for other months; to stop it for good, end it below.'), f),
+                actions: [{ label: 'Leave out', primary: true, onClick: (cl) => { const why = f.getValue(); if (!why) { toast('Give a reason.', 'error'); return false; } i.override = 0; i.left_out = why; cl(); draw(); return true; } }] });
+            } }, 'Leave out this month')
+            : leaveOut && i.left_out ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { i.override = null; delete i.left_out; draw(); } }, 'Pay it again') : null));
       };
       const section = (title, list, sign) => list.length ? [h('tr', { class: 'sub-row' }, h('th', { colspan: 4 }, title)), ...list.map(itemRow),
         h('tr', {}, h('td', { colspan: 2, class: 'muted' }, `Total ${title.toLowerCase()}`), h('td', { class: 'num strong' }, `${sign}${money(list.reduce((s, i) => s + itemAmount(i), 0))}`), h('td', {}))] : [];
@@ -536,7 +585,7 @@ async function renderRun(el, ctx, param) {
     openModal({ title: `${L.emp_name} · ${monthLabel(D.period)}`, body: h('div', {}, holder, box), wide: true,
       actions: ro ? [] : [{ label: 'Apply', primary: true, onClick: async (close) => {
         await new Promise((r) => setTimeout(r, 0));
-        const i = lines.findIndex((x) => x === orig || (x.employee_id === L.employee_id && (x.company_id || 0) === (L.company_id || 0))); lines[i] = recomputeLine(L, D); dirty = true; close(); drawTotals(); drawLines(); drawBar(); return true;
+        const i = lines.findIndex((x) => x === orig || (x.employee_id === L.employee_id && (x.company_id || 0) === (L.company_id || 0))); lines[i] = recomputeLine(L, D); dirty = true; edited = true; close(); drawTotals(); drawLines(); drawBar(); return true;
       } }] });
   }
 

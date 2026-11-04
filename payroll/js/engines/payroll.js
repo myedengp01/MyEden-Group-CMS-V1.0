@@ -390,7 +390,7 @@ export function buildRun(D) {
           types: D.types, typesById: D.typesById, policy: pol, primary: isPrimary || g === ptLine });
         // keep HR's overrides on auto items, and every manual item
         const oldAuto = new Map((old?.items || []).filter((i) => i.auto && i.key).map((i) => [i.key, i]));
-        const items = built.items.map((i) => { const o = oldAuto.get(i.key); return o && o.override !== null && o.override !== undefined ? { ...i, override: o.override } : i; });
+        const items = built.items.map((i) => { const o = oldAuto.get(i.key); return o && o.override !== null && o.override !== undefined ? { ...i, override: o.override, ...(o.left_out ? { left_out: o.left_out } : {}) } : i; });
         for (const i of old?.items || []) if (!i.auto) items.push(i);
         const warnings = [...built.warnings];
         if (g.wins.length > 1) warnings.push({ level: 'info', text: `Two employment periods with this company in the month; the days are added together at the current salary. Check the basic pay.` });

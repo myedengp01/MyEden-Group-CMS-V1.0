@@ -5612,6 +5612,21 @@
   };
   // the app files are loaded after the page itself (latest-version loader), so the page may already be ready
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.addEventListener('hashchange', () => { if (/access_token|type=recovery/.test(location.hash)) return; render(); });
+  // a page with unsaved work (e.g. a payroll month) registers window.CMS_LEAVE_GUARD; leaving it asks first (v2026.11.04)
+  const hashPath = (h) => String(h || '').replace(/^#\/?/, '').split('?')[0];
+  let lastHash = location.hash; let guardBack = false;
+  window.addEventListener('hashchange', async () => {
+    if (/access_token|type=recovery/.test(location.hash)) return;
+    if (guardBack) { guardBack = false; return; }                      // we just went back to the page with unsaved work
+    const g = window.CMS_LEAVE_GUARD;
+    if (g && hashPath(location.hash) !== hashPath(lastHash)) {
+      const target = location.hash;
+      let ok = true; try { ok = await g.check(); } catch (e) { ok = true; }
+      if (!ok) { guardBack = true; location.hash = lastHash; return; }
+      if (location.hash !== target) return;
+    }
+    if (g) { try { g.cleanup?.(); } catch (e) { /* ignore */ } if (window.CMS_LEAVE_GUARD === g) window.CMS_LEAVE_GUARD = null; }
+    lastHash = location.hash; render();
+  });
 })();
 

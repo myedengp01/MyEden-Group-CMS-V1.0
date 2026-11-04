@@ -382,3 +382,4 @@
   .myp .sheet.payrep thead {display: table-header-group;}
   .myp .sheet.payrep tr {break-inside: avoid;}
 }
+.myp tr.left-out td, .myp-modal tr.left-out td { color: var(--muted); }
