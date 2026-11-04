@@ -173,6 +173,9 @@
     if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
     if (ob && ob.idPending && can('people')) t.push({ ic: 'users', tone: 'rose', title: `${num(ob.idPending)} Employee IDs incomplete`, sub: 'Number reserved; gender or start date missing', href: '#/onboarding' });
     if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
+    const pa = state.payAppr || []; const mLab = (p) => new Date(`${p}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    for (const r of pa.filter((x) => !x.approved_at)) if (isDirector()) t.push({ ic: 'wallet', tone: 'orange', title: `Payroll ${mLab(r.period)} waiting for your approval`, sub: 'Check the payroll report, then approve or return it', href: `#/payroll/${r.period.slice(0, 7)}` });
+    for (const r of pa.filter((x) => x.approved_at)) if (can('payroll.finalise')) t.push({ ic: 'wallet', tone: 'green', title: `Payroll ${mLab(r.period)} approved`, sub: 'Ready to finalise', href: `#/payroll/${r.period.slice(0, 7)}` });
     const rs = state.resignSum;
     if (rs?.no_letter?.length) t.push({ ic: 'file-check', tone: 'orange', title: `${num(rs.no_letter.length)} resignation${rs.no_letter.length === 1 ? '' : 's'} without an acceptance letter`, sub: `${rs.no_letter.slice(0, 3).map((x) => x.name).join(', ')}${rs.no_letter.length > 3 ? '…' : ''} · recorded over 3 days ago`, href: rs.no_letter.length === 1 ? `#/person?id=${rs.no_letter[0].person_id}&tab=employment` : '#/letters' });
     if (rs?.handover?.length) t.push({ ic: 'box', tone: 'rose', title: `${num(rs.handover.length)} leaving within 7 days with items to hand over`, sub: rs.handover.map((x) => `${x.name} (${dShort(x.last_day)})`).slice(0, 3).join(', '), href: '#/assets' });
@@ -1633,6 +1636,11 @@
   const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
   const daysTo = (s) => (s ? Math.round((new Date(s) - today0()) / 86400000) : null);
 
+  // payroll months waiting for a Director's approval, or approved and waiting to be finalised (v2026.11.04)
+  async function loadPayApproval() {
+    if (!can('payroll')) return;
+    try { const { data } = await API.sb().from('eppd_pay_runs').select('period,submitted_at,approved_at,status').eq('status', 'draft').not('submitted_at', 'is', null); state.payAppr = data || []; drawBell(); } catch (e) { /* reminders are a convenience */ }
+  }
   async function loadResignSummary() {
     if (!(can('people') || can('letters') || can('payroll'))) return;
     try { state.resignSum = await API.rpc('cms_resignation_tasks'); drawBell(); } catch (e) { /* reminders are a convenience */ }
@@ -5526,7 +5534,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

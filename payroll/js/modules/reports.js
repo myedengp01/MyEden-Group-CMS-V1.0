@@ -1,7 +1,7 @@
 // Payslips & reports: payslips (print / PDF), monthly summary, payment list, EPF / SOCSO & EIS / PCB lists,
 // year to date, EA forms. Finalised months only.
-import { h, clear, pageHead, toast, failed, money, fmtDate, field } from '../ui.js';
-import { loadRef } from '../data.js';
+import { h, clear, pageHead, toast, failed, money, fmtDate, fmtDateTime, field } from '../ui.js';
+import { loadRef, fetchAll } from '../data.js';
 import { loadFinalisedRuns, loadLines, loadPeopleDetails } from '../report-data.js';
 import { downloadXlsx } from '../xlsx-export.js';
 import { loadLeaveYear, leaveForMonth, loadPeople, MONTH_TYPES } from '../leave-data.js';
@@ -9,7 +9,7 @@ import { payslipModel, sumLines, paidLines, summaryColumns, itemsByCode, ytdRows
 import { monthLabel, periodOf, STAT_COLS, STAT_LEGEND, statVal } from '../engines/payroll.js';
 import { lastDayOfMonth, todayIso } from '../engines/employee.js';
 
-const VIEWS = [['payslips', 'Payslips'], ['summary', 'Monthly summary'], ['payment', 'Payment list'], ['epf', 'EPF'], ['socso', 'SOCSO & EIS'], ['pcb', 'PCB'], ['ytd', 'Year to date'], ['ea', 'EA forms']];
+const VIEWS = [['payslips', 'Payslips'], ['summary', 'Monthly summary'], ['report', 'Payroll report'], ['payment', 'Payment list'], ['epf', 'EPF'], ['socso', 'SOCSO & EIS'], ['pcb', 'PCB'], ['ytd', 'Year to date'], ['ea', 'EA forms']];
 const YEAR_VIEWS = new Set(['ytd', 'ea']);
 const shortMonth = (p) => new Date(periodOf(p) + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 const n2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
@@ -18,17 +18,25 @@ export async function render(el, ctx, params, query) {
   const ref = await loadRef(ctx.sb);
   const runs = await loadFinalisedRuns(ctx.sb);
   const view = VIEWS.some(([k]) => k === query.view) ? query.view : 'payslips';
-  el.append(pageHead('Payslips & reports', 'Everything here comes from finalised payroll months, so it cannot change after it is issued.'));
-  if (!runs.length) {
+  // the payroll report can also be printed from a draft month (watermarked), from Monthly payroll › the month
+  let draftRun = null;
+  if (view === 'report' && query.draft === '1' && /^\d{4}-\d{2}$/.test(query.month || '')) {
+    const { data } = await ctx.sb.from('eppd_pay_runs').select('id,period,status,totals,updated_at').eq('period', `${query.month}-01`).maybeSingle();
+    if (data && data.status !== 'finalised') draftRun = data;
+  }
+  el.append(pageHead('Payslips & reports', draftRun ? `Draft payroll report for ${monthLabel(draftRun.period)}: the figures may still change until the month is approved and finalised.`
+    : 'Everything here comes from finalised payroll months, so it cannot change after it is issued.'));
+  if (!runs.length && !draftRun) {
     el.append(h('div', { class: 'empty-state' }, h('p', {}, 'No finalised payroll months yet.'), h('p', {}, h('a', { href: '#/payroll' }, 'Payroll › Monthly payroll'), ' – finalise a month, or import past months first.')));
     return;
   }
-  const month = runs.some((r) => r.period.slice(0, 7) === query.month) ? `${query.month}-01` : runs[0].period;
+  const month = draftRun ? draftRun.period : runs.some((r) => r.period.slice(0, 7) === query.month) ? `${query.month}-01` : runs[0].period;
   const years = [...new Set(runs.map((r) => Number(r.period.slice(0, 4))))].sort((a, b) => b - a);
   const year = years.includes(Number(query.year)) ? Number(query.year) : Number(month.slice(0, 4));
   const company = query.company || '';
   const go = (patch) => {
-    const q = new URLSearchParams({ view, month: month.slice(0, 7), year: String(year), company, ...patch });
+    const q = new URLSearchParams({ view, month: month.slice(0, 7), year: String(year), company, ...(draftRun ? { draft: '1' } : {}), ...patch });
+    if (q.get('view') !== 'report' || (patch.month && patch.month !== month.slice(0, 7))) q.delete('draft');
     for (const [k, v] of [...q]) if (v === '' || v === undefined || v === 'undefined') q.delete(k);
     location.hash = `#/payroll/reports?${q}`;  // CMS route
   };
@@ -36,7 +44,9 @@ export async function render(el, ctx, params, query) {
   // ---- data
   const fromP = YEAR_VIEWS.has(view) ? `${year}-01-01` : `${month.slice(0, 4)}-01-01`;
   const toP = YEAR_VIEWS.has(view) ? `${year}-12-01` : month;
-  const [P, allLines] = await Promise.all([loadPeopleDetails(ctx.sb, ref), loadLines(ctx.sb, fromP, toP)]);
+  const [P, allLines] = await Promise.all([loadPeopleDetails(ctx.sb, ref), draftRun
+    ? fetchAll(() => ctx.sb.from('eppd_pay_lines').select('*').eq('run_id', draftRun.id).order('id')).then((rows) => rows.map((l) => ({ ...l, period: draftRun.period })))
+    : loadLines(ctx.sb, fromP, toP)]);
   // payslips and reports print the person's current Employee ID; the saved pay lines keep the one they were made with
   for (const l of allLines) { const cur = P.people.get(l.employee_id)?.emp_id; if (cur) l.emp_code = cur; }
   const coName = (id) => P.companies.get(Number(id))?.name || 'No company';
@@ -47,7 +57,8 @@ export async function render(el, ctx, params, query) {
   const person = (id) => P.people.get(id) || { priv: {}, employments: [] };
 
   // ---- toolbar
-  const monthSel = h('select', { 'aria-label': 'Month', style: 'width:auto' }, runs.map((r) => h('option', { value: r.period.slice(0, 7), selected: r.period === month }, monthLabel(r.period))));
+  const monthSel = h('select', { 'aria-label': 'Month', style: 'width:auto' }, draftRun ? h('option', { value: month.slice(0, 7), selected: true }, `${monthLabel(month)} (draft)`) : null,
+    runs.map((r) => h('option', { value: r.period.slice(0, 7), selected: !draftRun && r.period === month }, monthLabel(r.period))));
   monthSel.addEventListener('change', () => go({ month: monthSel.value, year: monthSel.value.slice(0, 4) }));
   const yearSel = h('select', { 'aria-label': 'Year', style: 'width:auto' }, years.map((y) => h('option', { value: y, selected: y === year }, y)));
   yearSel.addEventListener('change', () => go({ year: yearSel.value }));
@@ -256,6 +267,82 @@ export async function render(el, ctx, params, query) {
       ...STAT_COLS.map(([k, l]) => [money(statVal(T, k)), l]), [money(T.pcb), 'PCB'], [money(T.net_paid), 'net paid'], [money(T.employer_cost), 'employer cost']].map(([v, l]) => h('div', { class: 'fact' }, h('b', {}, v), h('span', {}, l)))),
       h('p', { class: 'small muted', style: 'margin:-.4rem 0 1rem' }, STAT_LEGEND),
       ...groups.map((g) => h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, coName(g.cid))), h('div', { class: 'table-wrap' }, tbl(g.lines, `Total (${g.lines.length})`)))));
+    return;
+  }
+
+  // ======================================================== PAYROLL REPORT (by company; draft with a watermark, or final)
+  // Pay items, statutory, net pay and leave (AL, SL, RL, unpaid; hospitalisation / compassionate when used) for each company,
+  // with Prepared by (who submitted), Approved by (the Director) and Finalised by. v2026.11.04
+  if (view === 'report') {
+    const final = !draftRun;
+    const runId = draftRun ? draftRun.id : runs.find((r) => r.period === month)?.id;
+    let AP = {}; try { const r = await ctx.sb.rpc('cms_pay_run_approval', { p_run: runId }); if (!r.error && r.data) AP = r.data; } catch { AP = {}; }
+    const types = new Map((await ctx.sb.from('eppd_payment_types').select('code,name,sort_order')).data?.map((t) => [t.code, t]) || []);
+    // leave at the month end, per person
+    const leaveOf = new Map();
+    try {
+      const L = await loadLeaveYear(ctx.sb, Number(month.slice(0, 4)));
+      const lp = new Map((await loadPeople(ctx.sb, L.ref)).map((p) => [p.id, p]));
+      for (const id of new Set(monthLines.map((l) => l.employee_id))) { try { if (lp.get(id)) leaveOf.set(id, leaveForMonth(lp.get(id), L, month)); } catch { /* not available */ } }
+    } catch { /* leave not available */ }
+    const groups = companiesIn(monthLines).map((cid) => ({ cid, lines: monthLines.filter((l) => (l.company_id || 0) === cid).sort((a, b) => a.emp_name.localeCompare(b.emp_name)) }));
+    const STAT = [['gross', 'Gross'], ...STAT_COLS, ['pcb', 'PCB'], ['net', 'Net pay']];
+    const payCols = (ls) => { const cols = summaryColumns(ls, types); const extra = sumS(ls, 'personal_deductions') ? [['personal_deductions', 'Personal deductions (−)'], ['net_paid', 'Net paid']] : [['net_paid', 'Net paid']];
+      return { cols, fixed: [...STAT, ...extra] }; };
+    const payHeader = ({ cols, fixed }) => ['No.', 'Employee ID', 'Name', ...cols.map((c) => (c.kind === 'deduction' ? `${c.label} (−)` : c.label)), ...fixed.map(([, l]) => l)];
+    const payRow = ({ cols, fixed }) => (l, i) => { const m = itemsByCode(l); return [i, l.emp_code || '', l.emp_name, ...cols.map((c) => m[c.code] || 0), ...fixed.map(([k]) => statVal(l, k))]; };
+    const payTotal = ({ cols, fixed }, ls) => ['', '', `Total (${ls.length})`, ...cols.map((c) => n2(ls.reduce((s, l) => s + (itemsByCode(l)[c.code] || 0), 0))), ...fixed.map(([k]) => sumS(ls, k))];
+    // leave: AL, SL, RL and unpaid always; hospitalisation and compassionate only when someone in the company used them this month
+    const LV = [['AL', 'Annual'], ['SL', 'Sick'], ['RL', 'Replacement'], ['HPL', 'Hospitalisation'], ['CPL', 'Compassionate']];
+    const leaveCols = (ls) => LV.filter(([t]) => ['AL', 'SL', 'RL'].includes(t) || ls.some((l) => Number(leaveOf.get(l.employee_id)?.[t]?.month) > 0));
+    const leaveHeader = (lc) => ['No.', 'Employee ID', 'Name', ...lc.flatMap(([, n]) => [`${n} – taken`, `${n} – balance`]), 'Unpaid – days'];
+    const lvNum = (v) => (v === null || v === undefined ? '—' : Number(v));
+    const leaveRow = (lc) => (l, i) => { const x = leaveOf.get(l.employee_id); return [i, l.emp_code || '', l.emp_name, ...lc.flatMap(([t]) => (x ? [lvNum(x[t]?.month), lvNum(x[t]?.balance)] : ['—', '—'])), x ? lvNum(x.UPL?.month) : '—']; };
+    const leaveTotal = (lc, ls) => ['', '', 'Total taken', ...lc.flatMap(([t]) => [n2(ls.reduce((s, l) => s + (Number(leaveOf.get(l.employee_id)?.[t]?.month) || 0), 0)), '']), n2(ls.reduce((s, l) => s + (Number(leaveOf.get(l.employee_id)?.UPL?.month) || 0), 0))];
+    const totalsOf = (ls) => { const T = sumLines(ls); return [['Staff paid', String(T.lines)], ['Gross', money(T.gross)], ['EPF (employee + employer)', money(n2(T.epf_ee) + n2(T.epf_er))],
+      ['SOCSO (employee + employer)', money(n2(T.socso_ee) + n2(T.socso_er))], ['EIS (employee + employer)', money(n2(T.eis_ee) + n2(T.eis_er))], ['PCB', money(T.pcb)], ['Net paid', money(T.net_paid)], ['Employer cost', money(T.employer_cost)]]; };
+    const printedAt = fmtDateTime(new Date().toISOString());
+    const stamp = final ? `FINAL · finalised ${AP.finalised_at ? fmtDateTime(AP.finalised_at) : ''}${AP.finalised_by ? ` by ${AP.finalised_by}` : ''} · run ${runId} · printed ${printedAt}`
+      : `DRAFT printed ${printedAt}${AP.me ? ` by ${AP.me}` : ''} · run ${runId}. Figures may still change; not for payment.`;
+    const signBlock = () => h('div', { class: 'doc-sign rp-sign' },
+      h('div', {}, h('b', {}, 'Prepared by'), h('span', {}, AP.submitted_by || (final ? '—' : 'Not submitted yet')), h('small', {}, AP.submitted_at ? fmtDateTime(AP.submitted_at) : '')),
+      h('div', {}, h('b', {}, 'Approved by (Director)'), h('span', {}, AP.approved_by || (final ? 'Finalised before approvals began' : 'Awaiting approval')), h('small', {}, AP.approved_at ? fmtDateTime(AP.approved_at) : '')),
+      h('div', {}, h('b', {}, 'Finalised by'), h('span', {}, AP.finalised_by || (final ? '—' : 'Not finalised')), h('small', {}, AP.finalised_at ? fmtDateTime(AP.finalised_at) : '')));
+    const numFrom = 3;
+    const docTable = (header, rows, total, num = (j) => j >= numFrom, fmtV = (v) => (typeof v === 'number' ? money(v) : v)) => h('table', { class: 'doc-table rp-table' },
+      h('thead', {}, h('tr', {}, header.map((t, j) => h('th', { class: num(j) ? 'num' : '' }, t)))),
+      h('tbody', {}, rows.map((r) => h('tr', {}, r.map((v, j) => h('td', { class: num(j) ? 'num' : (j === 2 ? 'nowrap' : '') }, num(j) ? fmtV(v) : v))))),
+      total ? h('tfoot', {}, h('tr', {}, total.map((v, j) => h('th', { class: num(j) ? 'num' : '' }, num(j) ? fmtV(v) : v)))) : null);
+    const lvFmt = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : (v ?? ''));
+    const sheetFor = (g) => { const pc = payCols(g.lines); const lc = leaveCols(g.lines);
+      return h('section', { class: `sheet list-sheet payrep ${final ? 'final' : 'draft'}` },
+        final ? null : h('div', { class: 'rp-wm', 'aria-hidden': 'true' }, 'DRAFT – NOT FOR PAYMENT'),
+        companyHead(g.cid, 'Monthly payroll report', `${monthLabel(month)} · ${final ? 'FINAL' : 'DRAFT'}`),
+        h('h3', { class: 'rp-h' }, 'Pay (RM)'), docTable(payHeader(pc), g.lines.map((l, i) => payRow(pc)(l, i + 1)), payTotal(pc, g.lines)),
+        h('h3', { class: 'rp-h' }, `Leave (days) · taken in ${shortMonth(month)} and balance at ${fmtDate(lastDayOfMonth(month))}`),
+        docTable(leaveHeader(lc), g.lines.map((l, i) => leaveRow(lc)(l, i + 1)), leaveTotal(lc, g.lines), (j) => j >= numFrom, lvFmt),
+        h('h3', { class: 'rp-h' }, 'Company totals'),
+        h('table', { class: 'doc-table rp-totals' }, h('tbody', {}, h('tr', {}, totalsOf(g.lines).map(([k]) => h('th', { class: 'num' }, k))), h('tr', {}, totalsOf(g.lines).map(([, v]) => h('td', { class: 'num' }, v))))),
+        signBlock(), h('div', { class: 'doc-foot rp-foot' }, h('span', {}, stamp)));
+    };
+    if (query.print === 'report') {
+      // landscape pages for this print only
+      if (!document.getElementById('rp-page')) { document.head.append(h('style', { id: 'rp-page' }, '@page { size: A4 landscape; margin: 0; }')); window.addEventListener('hashchange', () => document.getElementById('rp-page')?.remove(), { once: true }); }
+      printDoc(groups.map(sheetFor), `${final ? '' : 'DRAFT '}Payroll report ${shortMonth(month)}`); return; }
+    actions.append(h('button', { class: 'btn', type: 'button', disabled: !groups.length, onclick: () => go({ print: 'report' }) }, 'Print / PDF'),
+      h('button', { class: 'btn primary', type: 'button', disabled: !groups.length, onclick: async () => {
+        const tag = final ? '' : 'DRAFT ';
+        try {
+          await downloadXlsx(`${final ? '' : 'DRAFT_'}payroll_report_${month.slice(0, 7)}.xlsx`, groups.flatMap((g) => { const pc = payCols(g.lines); const lc = leaveCols(g.lines); const sh = String(coShort(g.cid)).slice(0, 22);
+            return [{ name: `${sh} pay`, title: [`${tag}${coName(g.cid)}`, `${tag}Monthly payroll report · ${monthLabel(month)} · ${stamp}`], header: payHeader(pc), rows: g.lines.map((l, i) => payRow(pc)(l, i + 1)), total: payTotal(pc, g.lines) },
+              { name: `${sh} leave`, title: [`${tag}${coName(g.cid)}`, `${tag}Leave (days) · ${monthLabel(month)}`], header: leaveHeader(lc), rows: g.lines.map((l, i) => leaveRow(lc)(l, i + 1)), total: leaveTotal(lc, g.lines) }]; }));
+        } catch (e) { toast(e.message || String(e), 'error'); }
+      } }, 'Download Excel'));
+    body.append(h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('div', {}, h('h2', {}, `Payroll report · ${monthLabel(month)}${final ? '' : ' · DRAFT'}`),
+      h('p', { class: 'small muted' }, final ? 'From the finalised month. One page per company: pay, leave, company totals and sign-off.'
+        : 'From the saved draft, with a DRAFT watermark. Prepared by is who submitted it; Approved by is the Director who approved it.'))),
+      h('div', { class: 'rp-sign-screen', style: 'padding:0 1.2rem 1rem' }, signBlock())),
+      h('div', { class: 'rp-preview' }, groups.map(sheetFor)));
     return;
   }
 

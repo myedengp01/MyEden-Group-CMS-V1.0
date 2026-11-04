@@ -49,6 +49,11 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 - Carry forward: by KPI grade E 6 / S 3 / A 1 / I 0 / U 0 days, confirmed staff only; the excess bought back if approved, otherwise forfeited.
 - Notice period: letter date + 4 / 6 / 12 weeks by completed years (4 on probation). Leave offset against the notice uses Monday–Friday, public holidays skipped.
 
+## Approval and the payroll report
+
+- HR prepares and saves the month, then submits it; a Director approves (or returns it with a reason); only then can it be finalised. Saving the draft again, or reopening a finalised month, clears the approval (4 Nov 2026).
+- The monthly payroll report (by company) shows every pay item, statutory and net pay, leave taken and balances, company totals and the names of who prepared, approved and finalised it. Drafts are watermarked.
+
 ## Statutory deductions
 
 - EPF, SOCSO, EIS: from the official tables in Settings, on the wages of the items each payment type is ticked for. Age is taken on the last

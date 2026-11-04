@@ -357,3 +357,28 @@
 /* Payment Types: each list scrolls in its own box so the header row stays in view (v2026.11.03) */
 .myp .pt-scroll {max-height: calc(100vh - 170px); overflow: auto; overscroll-behavior: contain;}
 .myp .pt-scroll thead th {position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--line);}
+/* Monthly payroll report by company (v2026.11.04): draft watermark, small tables, sign-off with names */
+.myp .rp-preview {display: grid; gap: 1.2rem; justify-content: start; overflow-x: auto; padding-bottom: 1rem;}
+.myp .sheet.payrep {position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 2.5mm; font-size: 8pt; padding: 10mm 10mm 9mm;}
+.myp .sheet.payrep .rp-h {font-size: 9.5pt; margin: 2.5mm 0 0; color: #222;}
+.myp .sheet.payrep .rp-table, .myp .sheet.payrep .rp-totals {width: 100%; font-size: 7pt; line-height: 1.25;}
+.myp .sheet.payrep .rp-table th, .myp .sheet.payrep .rp-table td {padding: .9mm 1.2mm; white-space: nowrap;}
+.myp .sheet.payrep .rp-table thead th {white-space: normal; vertical-align: bottom;}
+.myp .sheet.payrep .rp-totals th, .myp .sheet.payrep .rp-totals td {padding: 1mm 1.5mm; white-space: nowrap;}
+.myp .sheet.payrep .rp-sign {padding-top: 8mm; margin-top: 3mm;}
+.myp .rp-sign > div {display: grid; gap: .6mm;}
+.myp .rp-sign b {color: #333; font-weight: 650;}
+.myp .rp-sign span {color: #111; font-size: 9pt;}
+.myp .rp-sign small {color: #666;}
+.myp .rp-sign-screen .rp-sign {padding-top: .6rem; color: var(--muted);}
+.myp .sheet.payrep .rp-foot {font-size: 7.5pt; color: #555;}
+.myp .sheet.payrep.draft .rp-foot {color: #b42318; font-weight: 600;}
+.myp .sheet.payrep .rp-wm {position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 3;
+  font: 800 54pt/1 var(--font-head, sans-serif); letter-spacing: .06em; color: rgba(200, 30, 30, .13); transform: rotate(-24deg); white-space: nowrap;}
+@media print {
+  /* repeat the watermark on every printed page of a draft company that runs over one page */
+  .myp .sheet.payrep .rp-wm {position: fixed;}
+  .myp .sheet.payrep {overflow: visible; min-height: 0;}
+  .myp .sheet.payrep thead {display: table-header-group;}
+  .myp .sheet.payrep tr {break-inside: avoid;}
+}

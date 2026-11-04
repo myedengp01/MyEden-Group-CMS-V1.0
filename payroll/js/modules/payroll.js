@@ -17,12 +17,14 @@ const ym = (period) => String(period).slice(0, 7);
 const nextPeriod = (period) => periodOf(addDays(periodOf(period), 32));
 const statusTag = (run) => !run ? h('span', { class: 'tag' }, 'Not started')
   : run.status === 'finalised' ? h('span', { class: 'tag ok' }, run.source === 'import' ? 'Finalised · imported' : 'Finalised')
+  : run.approved_at ? h('span', { class: 'tag ok' }, 'Approved · not finalised')
+  : run.submitted_at ? h('span', { class: 'tag info' }, 'Waiting for approval')
   : h('span', { class: 'tag warn' }, 'Draft');
 
 // ============================================================ list of months
 export async function render(el, ctx, params, query) {
   if (params.period) return renderRun(el, ctx, params.period);
-  const runs = await fetchAll(() => ctx.sb.from('eppd_pay_runs').select('id,period,status,source,totals,finalised_at,updated_at').order('period', { ascending: false }));
+  const runs = await fetchAll(() => ctx.sb.from('eppd_pay_runs').select('id,period,status,source,totals,finalised_at,updated_at,submitted_at,approved_at').order('period', { ascending: false }));
   const thisMonth = periodOf(todayIso());
   const next = runs.length ? nextPeriod(runs[0].period) : thisMonth;
   const pick = h('input', { type: 'month', value: ym(next), 'aria-label': 'Month', style: 'width:auto' });
@@ -57,6 +59,10 @@ async function renderRun(el, ctx, param) {
   const idOf = (l) => (D.people || []).find((p) => p.id === l.employee_id)?.emp_id || l.emp_code || '';
   const run = D.run;
   const locked = run?.status === 'finalised';
+  // Director approval (v2026.11.04): saved → submitted → approved by a Director → finalised
+  let AP = null;
+  if (run?.id) { try { const r = await ctx.sb.rpc('cms_pay_run_approval', { p_run: run.id }); if (!r.error) AP = r.data; } catch { AP = null; } }
+  if (AP && run) Object.assign(run, { submitted_at: AP.submitted_at, approved_at: AP.approved_at });
   const isAdmin = ctx.can(['admin']);
   // CMS: prepare / finalise / reopen follow the CMS special permissions (MyPayroll itself passes 'admin' / 'hr' roles)
   const canPrep = ctx.can(['payroll.prepare']); const canFin = ctx.can(['payroll.finalise']); const canReopen = ctx.can(['payroll.reopen']);
@@ -115,6 +121,7 @@ async function renderRun(el, ctx, param) {
   function drawHead() {
     const actions = [];
     actions.push(h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'Export CSV'));
+    if (run) actions.push(h('button', { class: 'btn', type: 'button', onclick: openReport }, locked ? 'Payroll report' : 'Payroll report (draft)'));
     if (!locked) {
       if (canPrep) actions.push(h('button', { class: 'btn', type: 'button', onclick: recalc }, 'Recalculate'));
       if (run && canPrep) actions.push(h('button', { class: 'btn danger', type: 'button', onclick: deleteDraft }, 'Delete draft'));
@@ -127,6 +134,14 @@ async function renderRun(el, ctx, param) {
     const n = [];
     if (yearOpen) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `The ${D.period.slice(0, 4)} leave year is not closed yet. Close it at `, h('a', { href: `#/leave/year-end?year=${D.period.slice(0, 4)}` }, 'Year-end close'), ' before finalising December: negative annual leave balances become unpaid leave in this payroll, then click Recalculate.'));
     if (refreshed) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, 'Figures were refreshed from the latest salary, leave and overtime records since this draft was saved. Save to keep them.'));
+    if (AP && !locked) {
+      const st = AP.approved_at ? `Approved by ${AP.approved_by} on ${fmtDateTime(AP.approved_at)}${AP.approval_note ? ` – “${AP.approval_note}”` : ''}. Ready to finalise.`
+        : AP.submitted_at ? `Submitted for approval by ${AP.submitted_by} on ${fmtDateTime(AP.submitted_at)}. Waiting for a Director.`
+        : AP.approval_note ? `Returned by a Director: “${AP.approval_note}”. Correct, save and submit again.`
+        : 'Not submitted for approval yet. Save the draft, check it (Payroll report), then submit it for a Director to approve before finalising.';
+      n.push(h('p', { class: AP.approved_at ? 'small' : 'setup-warning', style: 'margin-bottom:1rem' }, h('b', {}, 'Approval: '), st,
+        dirty && (AP.submitted_at || AP.approved_at) ? ' The figures have changed since then; saving clears the approval and the month must be submitted again.' : ''));
+    }
     if (run?.reopen_reason && !locked) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `Reopened by an admin: ${run.reopen_reason}`));
     for (const t of locked ? [] : notices) n.push(h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, t));
     if (locked && run.source === 'import') n.push(h('p', { class: 'small muted', style: 'margin-bottom:1rem' }, 'Imported from the MEG-EPPD workbook: the figures are exactly as the workbook calculated them.'));
@@ -189,8 +204,14 @@ async function renderRun(el, ctx, param) {
     if (locked) { clear(bar).append(h('p', { class: 'small muted' }, 'Finalised months cannot be changed. Corrections go into the next month.')); return; }
     if (!canPrep && !canFin) { clear(bar).append(h('p', { class: 'small muted' }, 'View only: you can see this month but not prepare or finalise it.')); return; }
     const save = canPrep ? h('button', { class: 'btn', type: 'button', onclick: () => saveRun() }, run ? 'Save draft' : 'Save as draft') : null;
-    const fin = canFin ? h('button', { class: 'btn primary', type: 'button', onclick: finalise }, `Finalise ${monthLabel(D.period)}`) : null;
-    clear(bar).append(h('p', { class: `small ${dirty ? 'strong' : 'muted'}` }, dirty ? 'Unsaved changes.' : 'All changes saved.'), h('div', { class: 'side-actions' }, save, fin));
+    const submitted = !!run?.submitted_at; const approved = !!run?.approved_at;
+    const sub = canPrep && run && !submitted && !dirty ? h('button', { class: 'btn', type: 'button', onclick: submitRun }, 'Submit for approval') : null;
+    const dec = AP?.can_approve && submitted && !approved && !dirty ? [h('button', { class: 'btn', type: 'button', onclick: () => decide('return') }, 'Return'),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => decide('approve') }, `Approve ${monthLabel(D.period)}`)] : [];
+    const fin = canFin ? h('button', { class: 'btn primary', type: 'button', onclick: finalise, disabled: !approved || dirty,
+      title: approved && !dirty ? '' : 'A Director must approve the saved figures first' }, `Finalise ${monthLabel(D.period)}`) : null;
+    clear(bar).append(h('p', { class: `small ${dirty ? 'strong' : 'muted'}` }, dirty ? 'Unsaved changes.' : approved ? 'Saved and approved.' : submitted ? 'Saved; waiting for approval.' : 'All changes saved.'),
+      h('div', { class: 'side-actions' }, save, sub, ...dec, fin));
   }
   const drawAll = () => { drawHead(); drawTotals(); drawLines(); drawBar(); };
 
@@ -218,11 +239,36 @@ async function renderRun(el, ctx, param) {
     const noPcb = lines.filter((l) => !l.excluded && !Number(l.pcb)).length;
     const msg = `${warn ? `${warn} line(s) still have warnings. ` : ''}Lock ${monthLabel(D.period)}: ${a.lines} staff, gross RM${money(a.gross)}, net paid RM${money(a.net_paid)}. ` +
       `${noPcb} line(s) have no PCB. After finalising nobody can change this month; corrections go into the next month.`;
+    if (dirty) { toast('The figures changed since they were approved. Save, submit and have them approved again.', 'error', 7000); return; }
+    if (!run?.approved_at) { toast('A Director must approve this month first.', 'error'); return; }
     if (!(await confirmDialog(`Finalise ${monthLabel(D.period)}`, msg, 'Finalise'))) return;
-    const saved = await saveRun(true); if (!saved) return;
-    const { error } = await ctx.sb.rpc('eppd_finalise_pay_run', { p_run: saved.run_id });
+    const { error } = await ctx.sb.rpc('eppd_finalise_pay_run', { p_run: run.id });
     if (failed(error, 'Finalise')) { reload(); return; }
     toast(`${monthLabel(D.period)} finalised.`); reload();
+  }
+  async function submitRun() {
+    if (dirty) { toast('Save the draft first.', 'error'); return; }
+    const a = runTotals(lines).all;
+    if (!(await confirmDialog(`Submit ${monthLabel(D.period)} for approval`, `${a.lines} staff, gross RM${money(a.gross)}, net paid RM${money(a.net_paid)}. A Director approves it before it can be finalised. Saving again later clears the submission.`, 'Submit'))) return;
+    const { error } = await ctx.sb.rpc('cms_pay_run_submit', { p_run: run.id });
+    if (failed(error, 'Submit')) return;
+    toast(`${monthLabel(D.period)} submitted for approval.`); reload();
+  }
+  function decide(kind) {
+    const f = field(kind === 'approve' ? 'Note (optional)' : 'Reason (shown to HR)', { type: 'textarea', required: kind === 'return' });
+    const a = runTotals(lines).all;
+    openModal({ title: `${kind === 'approve' ? 'Approve' : 'Return'} ${monthLabel(D.period)}`, body: h('div', {},
+      h('p', { style: 'margin-bottom:.8rem' }, kind === 'approve' ? `Approve the saved figures: ${a.lines} staff, gross RM${money(a.gross)}, net paid RM${money(a.net_paid)}. Check the payroll report first. HR can then finalise the month.` : 'Send it back to HR to correct. They save and submit it again.'), f),
+      actions: [{ label: kind === 'approve' ? 'Approve' : 'Return to HR', primary: kind === 'approve', danger: kind === 'return', onClick: async (close) => {
+        const note = f.getValue(); if (kind === 'return' && !note) { toast('Give a reason.', 'error'); return false; }
+        const { error } = await ctx.sb.rpc('cms_pay_run_decide', { p_run: run.id, p_decision: kind, p_note: note || null });
+        if (failed(error, kind === 'approve' ? 'Approve' : 'Return')) return false;
+        close(); toast(kind === 'approve' ? `${monthLabel(D.period)} approved.` : `${monthLabel(D.period)} returned to HR.`); reload(); return true;
+      } }] });
+  }
+  function openReport() {
+    if (dirty && !locked) { toast('Save the draft first, so the report shows the saved figures.', 'error'); return; }
+    location.hash = `#/payroll/reports?view=report&month=${ym(D.period)}${locked ? '' : '&draft=1'}`;
   }
   async function deleteDraft() {
     if (!(await confirmDialog('Delete draft', `Delete the ${monthLabel(D.period)} draft and every change typed into it? Salary, leave and overtime records are not affected.`, 'Delete draft', true))) return;
