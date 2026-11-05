@@ -3418,7 +3418,9 @@
     const top = head ? `<img class="lt-head" src="${esc(asset(head))}" alt="${esc(c.name || coCode || '')} letterhead">`
       : `<div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}<div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div>
         <div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div></div></div>`;
-    return `<section class="sheet letter">${top}<div class="lt-body">${lines}</div></section>`;
+    // the letterhead repeats at the top of every printed page, with the page margins kept on continuation pages (v2026.11.05)
+    return `<section class="sheet letter"><table class="lt-frame"><thead><tr><td>${top}</td></tr></thead><tfoot><tr><td><div class="lt-foot-space"></div></td></tr></tfoot>
+      <tbody><tr><td><div class="lt-body">${lines}</div></td></tr></tbody></table></section>`;
   }
 
   // ---- Word (.docx) tools: read, find & replace across styled runs, fill, preview (no document leaves the browser except to our storage)

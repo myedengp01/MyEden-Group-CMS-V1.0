@@ -1050,3 +1050,15 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
 .pay-sched { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ent-check { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 6px 0; display: grid; gap: 4px; font-size: 13px; }
 .sheet.letter .lt-line { height: 1.5em; }
+/* letters: letterhead repeated on every printed page; top and bottom margins kept on continuation pages (v2026.11.05) */
+.sheet.letter .lt-frame { width: 100%; border-collapse: collapse; }
+.sheet.letter .lt-frame > thead > tr > td, .sheet.letter .lt-frame > tbody > tr > td, .sheet.letter .lt-frame > tfoot > tr > td { padding: 0; border: 0; vertical-align: top; }
+.sheet.letter .lt-foot-space { height: 0; }
+@media print {
+  body.doc-mode .sheet.letter { padding: 0 14mm; min-height: 0; display: block; }
+  body.doc-mode .sheet.letter .lt-frame > thead { display: table-header-group; }
+  body.doc-mode .sheet.letter .lt-frame > tfoot { display: table-footer-group; }
+  body.doc-mode .sheet.letter .lt-frame > thead > tr > td { padding-top: 8mm; }
+  body.doc-mode .sheet.letter .lt-foot-space { height: 12mm; }
+  body.doc-mode .sheet.letter .lt-body tr, body.doc-mode .sheet.letter .lt-body p { break-inside: avoid; }
+}

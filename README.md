@@ -134,6 +134,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.05-20:00** — Fix: a text letter longer than one page printed the letterhead on page 1 only, with no top margin on the next pages. The letterhead now repeats at the top of every printed page, each page keeps its top and bottom margins, and paragraphs are not split across pages.
 - **v2026.11.05-19:20** — Letters: room to sign. The resignation acceptance (all three), confirmation, increment, promotion and confirmation-and-increment letters now leave three lines above the company signatory (with a signature line) and above the employee signature. In text letters, two or more blank lines in a row print as full lines; a single blank line is still a small paragraph gap.
 - **v2026.11.05-16:00** — Fix: "Open employee profile" (and "Open employee (new tab)") in a payroll line window opened the dashboard behind the window. They now open the person's CMS profile on the Pay tab; a payroll pop-up window closes when another page opens.
 - **v2026.11.05-15:45** — Frozen headers with two rows (e.g. Leave Balances: Annual leave / Sick … above the column names): each row now pins below the one above, so the group row stays visible when scrolling.
