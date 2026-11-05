@@ -5484,7 +5484,15 @@
     });
   }
   // the second frozen column starts where the first ends (any table, pages and windows)
-  const fitFrozen = () => $$('table.freeze2').forEach((t) => { const f = $('thead th', t); if (f) t.style.setProperty('--c2', `${f.offsetWidth}px`); });
+  const fitFrozen = () => {
+    $$('table.freeze2').forEach((t) => { const f = $('thead th', t); if (f) t.style.setProperty('--c2', `${f.offsetWidth}px`); });
+    // headers of two or more rows (e.g. Leave Balances): each row pins below the one above it, so the group row stays visible (v2026.11.05)
+    $$('#page thead, .modal thead, .myp-dialog thead').forEach((th) => {
+      const rows = [...th.rows]; if (rows.length < 2) return;
+      let top = 0;
+      rows.forEach((r) => { [...r.cells].forEach((c) => { if (c.rowSpan === 1 || r === rows[0]) c.style.top = `${top}px`; }); top += r.offsetHeight; });
+    });
+  };
   let fitQueued = false;
   const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); fitFrozen(); }); };
   window.addEventListener('resize', queueFit);
