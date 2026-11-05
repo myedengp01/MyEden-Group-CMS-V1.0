@@ -126,11 +126,21 @@ export function classByHours(weeklyHours, ptPolicy) {
   if (pct <= Number(ptPolicy?.part_time_max_pct ?? 70) + 1e-9) return 'PT';
   return 'FT';
 }
+/** Full-time week a person is compared with: their own setting (e.g. 40 h for 8-hour staff), else the policy (45 h). v2026.11.05 */
+export const ftWeekFor = (em, ptPolicy) => Number(em?.fte_weekly_hours) || Number(ptPolicy?.full_time_weekly_hours) || 45;
 /** The class the leave rules use: HR's marking first, else the contracted weekly hours, else the job status. */
 export function workClass(em, ptPolicy) {
   if (em?.hours_class) return em.hours_class;
-  return classByHours(em?.weekly_hours, ptPolicy) || (em?.job_status === 'PT' ? 'PT' : 'FT');
+  return classByHours(em?.weekly_hours, { ...(ptPolicy || {}), full_time_weekly_hours: ftWeekFor(em, ptPolicy) }) || (em?.job_status === 'PT' ? 'PT' : 'FT');
 }
+/**
+ * Part-time annual leave method (Payroll Settings › Part-time and casual staff; Admin only):
+ *   'current'    – earlier years: full-time days × weekly hours ÷ full-time hours; from part_time.from_year: the Regulations' days (6 / 8 / 11)
+ *   'same_as_ft' – JTK, 5 Nov 2026: part time gets the full-time days (8 / 12 / 16), pro-rated by months only; 1 day not worked = 1 day of leave;
+ *                  casual (weekly hours up to the casual share) gets none. From part_time.al_method_from (leave year).
+ * Sick leave always follows the 'current' rule.
+ */
+export const AL_METHODS = [['current', 'Pro-rata by hours, then the Part-Time Regulations’ days from the new-rules year'], ['same_as_ft', 'Same as full time (JTK, 5 Nov 2026): 8 / 12 / 16 days, casual none']];
 /**
  * Leave rules for one employment and leave year. From part_time.from_year (2027): part time gets the Regulations' days
  * (AL 6 / 8 / 11, SL 10 / 13 / 15 by service), casual gets no paid annual or sick leave, full time the normal bands.
@@ -139,6 +149,17 @@ export function workClass(em, ptPolicy) {
 export function leaveRules(em, year, policies = {}) {
   const pt = policies.part_time || {};
   const ftBands = policies.al_entitlement?.bands || [{ until_months: 24, days: 8 }, { until_months: 60, days: 12 }, { until_months: null, days: 16 }];
+  const base = baseRules(em, year, pt, ftBands);
+  const R = { ...base, alProrate: base.prorate, slProrate: base.prorate, alMode: base.mode, alCls: base.cls, alMethod: 'current' };
+  const mFrom = Number(pt.al_method_from || 0);
+  if (pt.al_method === 'same_as_ft' && mFrom && Number(year) >= mFrom) {
+    const cls = workClass(em, pt);
+    Object.assign(R, { alMethod: 'same_as_ft', alProrate: false, alCls: cls, alMode: cls === 'CASUAL' ? 'casual' : cls === 'PT' ? 'pt_ft' : 'ft',
+      alBands: cls === 'CASUAL' ? ftBands.map((b) => ({ ...b, days: 0 })) : ftBands });
+  }
+  return R;
+}
+function baseRules(em, year, pt, ftBands) {
   const from = Number(pt.from_year || 0);
   if (!from || Number(year) < from) {
     const prorate = em?.job_status === 'PT';
@@ -163,7 +184,6 @@ export function leaveBalances(input) {
   const asOf = input.asOf || todayIso();
   const rules = policies.leave_rules || {};
   const LR = leaveRules(em, year, policies);
-  const partTime = LR.prorate;
   // cutoff (optional): only leave taken / adjustments dated on or before it count (payslips and the monthly audit)
   const cut = input.cutoff || null;
   const recs = (input.records || []).filter((r) => r.status !== 'cancelled' && String(r.date_from).slice(0, 4) === String(year) && (!cut || String(r.date_from) <= cut));
@@ -176,7 +196,7 @@ export function leaveBalances(input) {
   const bands = LR.alBands;
   const al = em.join_date ? alEntitlement({ joinDate: em.join_date, resignDate: em.resigned_date, bands, year }) : { days: 0, periods: [] };
   let alEnt = al.days, needsHours = false;
-  if (partTime && (policies.part_time?.prorate || ['AL', 'SL']).includes('AL')) {
+  if (LR.alProrate && (policies.part_time?.prorate || ['AL', 'SL']).includes('AL')) {
     const p = proRate(alEnt, em.weekly_hours, policies.part_time);
     if (p === null) needsHours = true; else alEnt = p;
   }
@@ -188,7 +208,17 @@ export function leaveBalances(input) {
     carriedExpired = r2(carriedExpired + Math.max(0, Number(a.days) - usedBefore));
   }
   const alTaken = taken('AL'), adjusted = adj('AL', ['manual']), buyback = adj('AL', ['buyback']), forfeit = adj('AL', ['forfeit']);
-  out.AL = { entitled: alEnt, carried, carriedExpired, adjusted, taken: alTaken, buyback, forfeit, periods: al.periods, needsHours, cls: LR.cls, mode: LR.mode,
+  // earned to date: this year's entitlement for the months counted up to asOf (or the last day of service), not rounded; one decimal
+  let earned = 0;
+  if (em.join_date && alEnt > 0) {
+    const upTo = em.resigned_date && em.resigned_date < asOf ? em.resigned_date : asOf;
+    if (upTo >= `${year}-01-01`) {
+      const raw = alEntitlement({ joinDate: em.join_date, resignDate: upTo < `${year}-12-31` ? upTo : em.resigned_date, bands, year }).periods.reduce((x, p2) => x + Number(p2.raw || 0), 0);
+      const scale = al.days > 0 ? alEnt / al.days : 1;   // old hours pro-rata method: earned follows the same share
+      earned = Math.min(alEnt, Math.round(raw * scale * 10) / 10);
+    }
+  }
+  out.AL = { entitled: alEnt, earned, carried, carriedExpired, adjusted, taken: alTaken, buyback, forfeit, periods: al.periods, needsHours, cls: LR.alCls, mode: LR.alMode, method: LR.alMethod,
              balance: r2(alEnt + carried + adjusted - carriedExpired - alTaken - buyback - forfeit) };
 
   // SL / HPL (hospitalisation shares a 60-day pool with sick leave)
@@ -198,7 +228,7 @@ export function leaveBalances(input) {
   const yEnd = `${year}-12-31`;
   const slOn = em.resigned_date && em.resigned_date < yEnd ? em.resigned_date : yEnd;
   let slEnt = slEntitlement(em.join_date, slOn, LR.slBands ? { bands: LR.slBands } : rules.SL);
-  if (partTime && (policies.part_time?.prorate || ['AL', 'SL']).includes('SL')) {
+  if (LR.slProrate && (policies.part_time?.prorate || ['AL', 'SL']).includes('SL')) {
     const p = proRate(slEnt, em.weekly_hours, policies.part_time); if (p === null) needsHours = true; else slEnt = p;
   }
   const slTaken = taken('SL'), hplTaken = taken('HPL');

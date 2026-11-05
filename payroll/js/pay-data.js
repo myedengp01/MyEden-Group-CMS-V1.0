@@ -35,7 +35,8 @@ export async function loadPayInputs(sb, fromPeriod, toPeriod) {
   const from = periodOf(fromPeriod), to = lastDayOfMonth(toPeriod);
   const [time, leave, buybacks] = await Promise.all([
     fetchAll(() => sb.from('eppd_time_entries').select('employee_id,work_date,category,hours').gte('work_date', from).lte('work_date', to)),
-    fetchAll(() => sb.from('eppd_leave_records').select('employee_id,leave_type,date_from,days,status').eq('leave_type', 'UPL').gte('date_from', from).lte('date_from', to)),
+    // unpaid leave and unpaid hours start in the month; maternity leave may have started earlier (v2026.11.05)
+    fetchAll(() => sb.from('eppd_leave_records').select('employee_id,leave_type,date_from,date_to,days,hours,status,details').in('leave_type', ['UPL', 'UPH', 'MTL']).lte('date_from', to).gte('date_to', from)),
     fetchAll(() => sb.from('eppd_leave_adjustments').select('id,employee_id,days,buyback_pct,close_year').eq('kind', 'buyback').eq('source', 'year_close')),
   ]);
   return { time, leave, buybacks };

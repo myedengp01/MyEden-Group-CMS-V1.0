@@ -120,9 +120,11 @@ export function resignCalc(input, policy) {
   if (alUse !== 'offset' && last === noticeEnd) end = noticeEnd;
   const bal = A ? r2(A.balance) : null;
   const payoutDays = bal === null ? null : alUse === 'offset' ? r2(bal - W.days) : alUse === 'payout' ? bal : Math.min(0, bal);
-  const alAmount = payoutDays === null ? 0 : r2(payoutDays * orp);
+  // leave taken beyond what was earned is unpaid leave (CLC 5 Nov 2026): basic ÷ the calendar days of the final month, not ÷ 26
+  const excessRate = hourly ? orp : basic / daysInMonth(end);
+  const alAmount = payoutDays === null ? 0 : r2(payoutDays < 0 ? payoutDays * excessRate : payoutDays * orp);
   if (alUse === 'offset' && bal !== null && bal > W.days && W.available <= W.days) out.notes.push(`Only ${W.available} working day(s) are left in the notice, so ${num(bal - W.days)} day(s) of leave are paid out instead.`);
-  if (bal !== null && bal < 0) out.notes.push(`More leave was taken than earned: ${num(-bal)} day(s) are deducted at the daily rate.`);
+  if (bal !== null && bal < 0) out.notes.push(`More leave was taken than earned: ${num(-bal)} day(s) are treated as unpaid leave (basic ÷ ${hourly ? 'the daily rate' : `${daysInMonth(end)} calendar days of the final month`}).`);
 
   // notice not served: the calendar days after employment ends, to the notice end
   const shortFrom = end < noticeEnd ? addDays(end, 1) : null;
@@ -143,7 +145,7 @@ export function resignCalc(input, policy) {
 
   Object.assign(out, {
     ok: !out.errors.length, years: N.years, weeks: N.weeks, basis: N.basis, onProbation: N.onProbation, noticeStart: N.start, noticeEndPolicy: N.end, noticeEnd,
-    lastPhysical: last, employmentEnd: end, alUse, payer, orp: r2(orp), hourly, basic,
+    lastPhysical: last, employmentEnd: end, alUse, payer, orp: r2(orp), excessRate: r2(excessRate), hourly, basic,
     al: A ? { ...A, balance: bal } : null, offset: W, payoutDays, alAmount,
     short: { from: shortFrom, to: shortFrom ? noticeEnd : null, calendar: shortCal, working: shortWork, parts: P ? P.parts : [] }, noticeAmount, noticeSigned, net, lastMonthBasic, finalEst,
     owed: finalEst !== null && finalEst < 0 ? r2(-finalEst) : 0,
@@ -167,7 +169,7 @@ export function letterFields(c, input) {
     al_asofdate: longDate(A.asOf), al_balance: c.al ? num(c.al.balance) : '',
     al_offset_period: c.offset?.days > 0 ? (c.offset.from === c.offset.to ? longDate(c.offset.from) : `${longDate(c.offset.from)} to ${longDate(c.offset.to)}`) : 'Not applicable',
     al_offset_days: c.offset?.days > 0 ? num(c.offset.days) : '0',
-    al_payout_days: c.payoutDays != null ? num(c.payoutDays) : '', al_payout_amount: rm(c.alAmount), daily_rate: rm(c.orp),
+    al_payout_days: c.payoutDays != null ? num(c.payoutDays) : '', al_payout_amount: c.alAmount < 0 ? `−${rm(-c.alAmount)} (${num(-c.payoutDays)} day(s) taken in excess, treated as unpaid leave: ${c.hourly ? 'daily rate' : `basic ÷ ${daysInMonth(c.employmentEnd)} days`})` : rm(c.alAmount), daily_rate: rm(c.orp),
     short_notice_days: String(c.short.calendar || 0), notice_in_lieu_amount: rm(c.noticeAmount),
     net_settlement: `${c.net < 0 ? '−' : ''}${rm(Math.abs(c.net))}`,
     notice_in_lieu_terms: noticeTerms(c),

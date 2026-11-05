@@ -1,7 +1,8 @@
 // HR policies: notice period, AL entitlement bands, OT defaults, statutory rules
 import { h, clear, pageHead, toast, failed, fmtDate, field } from '../ui.js';
 import { computeNotice } from '../engines/notice.js';
-import { gradeOrder } from '../engines/leave.js';
+import { gradeOrder, AL_METHODS } from '../engines/leave.js';
+import { loadLeaveYear, balancesFor } from '../leave-data.js';
 
 export async function render(el, ctx) {
   const isAdmin = ctx.can(['admin']);
@@ -182,6 +183,42 @@ export async function render(el, ctx) {
   pt.al_bands = pt.al_bands || [{ until_months: 24, days: 6 }, { until_months: 60, days: 8 }, { until_months: null, days: 11 }];
   pt.sl_bands = pt.sl_bands || [{ until_years: 2, days: 10 }, { until_years: 5, days: 13 }, { until_years: null, days: 15 }];
   const bandRow = (label, b) => h('tr', {}, h('td', {}, label), h('td', {}, n(b.days, (v) => { b.days = v; })));
+  // part-time annual leave method (v2026.11.05, JTK 5 Nov 2026): Admin chooses; a preview shows every affected person before it is switched on
+  function alMethodBlock() {
+    const cur = pt.al_method || 'current';
+    const sel = h('select', { disabled: !isAdmin, 'aria-label': 'Part-time annual leave method', style: 'width:auto;max-width:100%' }, AL_METHODS.map(([v, l]) => h('option', { value: v, selected: cur === v }, l)));
+    const fromY = n(pt.al_method_from ?? 2026, () => {}, '6rem');
+    const half = h('input', { type: 'checkbox', checked: !!pt.block_half_day_pt, disabled: !isAdmin });
+    const out = h('div', {});
+    const proposed = () => ({ ...pt, al_method: sel.value, al_method_from: Number(fromY.value) || null, block_half_day_pt: half.checked });
+    async function preview() {
+      clear(out).append(h('p', { class: 'small muted' }, 'Working out every part-time and casual person…'));
+      const year = Number(fromY.value) || new Date().getFullYear(); const yNow = Math.max(year, new Date().getFullYear());
+      const D = await loadLeaveYear(ctx.sb, yNow); const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+      const Dnew = { ...D, ref: { ...D.ref, policies: { ...D.ref.policies, part_time: proposed() } } };
+      const rows = D.people.filter((p) => p.status?.key !== 'former' && p.employment).map((p) => {
+        const a = balancesFor(p, D, today).AL, b = balancesFor(p, Dnew, today).AL;
+        return { p, a, b, changed: a.entitled !== b.entitled || a.cls !== b.cls };
+      }).filter((r) => r.changed || r.b.cls !== 'FT' || r.a.cls !== 'FT');
+      const f = (x) => (x === null || x === undefined ? '—' : String(x));
+      clear(out).append(h('p', { class: 'small', style: 'margin:.6rem 0' }, `${yNow} leave year: ${rows.filter((r) => r.changed).length} of ${rows.length} part-time / casual staff change. Nothing is saved until you click “Save part-time rule”.`),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'data dense' },
+          h('thead', {}, h('tr', {}, ['Employee', 'Class now → new', 'Entitled now', 'Entitled new', 'Earned to date (new)', 'Taken', 'Balance now', 'Balance new'].map((t, i) => h('th', { class: i >= 2 ? 'num' : '' }, t)))),
+          h('tbody', {}, rows.map((r) => h('tr', { class: r.changed ? 'hit' : '' }, h('td', {}, r.p.full_name, h('div', { class: 'small muted' }, r.p.emp_id || '')),
+            h('td', { class: 'small' }, `${f(r.a.cls)} → ${f(r.b.cls)}`), h('td', { class: 'num' }, f(r.a.entitled)), h('td', { class: 'num strong' }, f(r.b.entitled)),
+            h('td', { class: 'num' }, f(r.b.earned)), h('td', { class: 'num' }, f(r.a.taken)), h('td', { class: 'num' }, f(r.a.balance)), h('td', { class: 'num strong' }, f(r.b.balance))))))));
+    }
+    sel.addEventListener('change', () => { pt.al_method = sel.value; });
+    fromY.addEventListener('input', () => { pt.al_method_from = Number(fromY.value) || null; });
+    half.addEventListener('change', () => { pt.block_half_day_pt = half.checked; });
+    return h('div', { class: 'block', style: 'margin-top:1rem' }, h('h3', {}, 'Part-time annual leave method'),
+      h('div', { style: 'display:flex;flex-wrap:wrap;gap:.6rem 1.2rem;align-items:center;margin:.5rem 0' }, sel,
+        h('label', { class: 'check-row' }, 'From leave year', fromY),
+        h('label', { class: 'check-row' }, half, 'Part-timers take whole days only (no half days)'),
+        h('button', { class: 'btn sm', type: 'button', onclick: () => preview().catch((e) => { clear(out).append(h('p', { class: 'form-err' }, e.message || String(e))); }) }, 'Preview who changes')),
+      h('p', { class: 'small muted' }, 'Same as full time: part-timers get 8 / 12 / 16 days by service, pro-rated by months only in the year they join or leave; 1 day not worked = 1 day of leave; hours off are unpaid hours. Casual staff get none. Sick leave is not affected. Each person’s full-time week (45 h unless set on Working hours) decides part time or casual.'),
+      out);
+  }
   el.append(panel('Part-time and casual staff', `Employment (Part-Time Employees) Regulations 2010. From the leave year ${pt.from_year || 2027}: weekly hours above ${pt.casual_max_pct ?? 30} % and up to ${pt.part_time_max_pct ?? 70} % of a full-time week are part time (annual leave by service below, pro-rated by months; sick leave by service); ${pt.casual_max_pct ?? 30} % or less is casual (no paid annual or sick leave); above ${pt.part_time_max_pct ?? 70} % counts as full time. HR marks each person under Working hours on the profile. Earlier years keep the earlier rule (full-time days × weekly hours ÷ full-time hours).`,
     h('div', { class: 'grid-2', style: 'gap:.8rem 2rem' },
       h('label', { class: 'check-row' }, 'Full-time weekly hours', n(pt.full_time_weekly_hours, (v) => { pt.full_time_weekly_hours = v; })),
@@ -194,6 +231,7 @@ export async function render(el, ctx) {
       h('table', { class: 'data' }, h('thead', {}, h('tr', {}, h('th', {}, 'Part-time sick leave (days a year)'), h('th', {}, 'Days'))),
         h('tbody', {}, bandRow('Less than 2 years', pt.sl_bands[0]), bandRow('2 to less than 5 years', pt.sl_bands[1]), bandRow('5 years or more', pt.sl_bands[2])))),
     h('p', { class: 'small muted' }, 'The Regulations set these as minimums (annual leave reg. 7: 6 / 8 / 11; sick leave reg. 8: 10 / 13 / 15).'),
+    alMethodBlock(),
     saveBtn('Save part-time rule', () => {
       if (pt.al_bands.some((b) => Number(b.days) < [6, 8, 11][pt.al_bands.indexOf(b)]) || pt.sl_bands.some((b) => Number(b.days) < [10, 13, 15][pt.sl_bands.indexOf(b)])) { toast('Part-time leave cannot be below the Regulations’ minimum days.', 'error'); return; }
       save('part_time', pt, 'Part-time rule');
@@ -229,6 +267,22 @@ export async function render(el, ctx) {
       if (pay.hours_rule.mode === 'cap' && !(pay.hours_rule.cap > 0)) { toast('The hours cap must be above 0.', 'error'); return; }
       save('payroll', pay, 'Payroll rules');
     })));
+
+  // ---------------- minimum wage (warning only; v2026.11.05)
+  const mw = { from: '2025-02-01', monthly: 1700, hourly: 8.72, daily: { 4: 98.08, 5: 78.46, 6: 65.38 }, ...structuredClone(P.minimum_wage?.value || {}) };
+  mw.daily = { 4: 98.08, 5: 78.46, 6: 65.38, ...(mw.daily || {}) };
+  const mwFrom = h('input', { type: 'date', value: mw.from || '', disabled: !isAdmin, 'aria-label': 'Minimum wage from', style: 'width:auto' });
+  mwFrom.addEventListener('input', () => { mw.from = mwFrom.value || null; });
+  el.append(panel('Minimum wage', 'Minimum Wages Order, checked against basic salary only (allowances, overtime and claims do not count). Payroll lines below it show a warning and can be filtered; nothing is blocked. Full time: the monthly figure. Part time: basic ÷ (weekly hours × 52 ÷ 12) against the hourly figure. Hourly-paid: the hourly rate.',
+    h('div', { class: 'grid-2', style: 'gap:.8rem 2rem' },
+      h('label', { class: 'check-row' }, 'In force from', mwFrom),
+      h('label', { class: 'check-row' }, 'Monthly (RM)', n(mw.monthly, (v) => { mw.monthly = v; })),
+      h('label', { class: 'check-row' }, 'Hourly (RM)', n(mw.hourly, (v) => { mw.hourly = v; })),
+      h('label', { class: 'check-row' }, 'Daily, 5-day week (RM)', n(mw.daily[5], (v) => { mw.daily[5] = v; })),
+      h('label', { class: 'check-row' }, 'Daily, 6-day week (RM)', n(mw.daily[6], (v) => { mw.daily[6] = v; })),
+      h('label', { class: 'check-row' }, 'Daily, 4-day week (RM)', n(mw.daily[4], (v) => { mw.daily[4] = v; }))),
+    h('p', { class: 'small muted' }, 'Hourly RM8.72 = RM1,700 × 12 ÷ 52 ÷ 45 h (the 45-hour week). The Order’s own table may show RM8.17 (a 48-hour week); the higher figure is used to be safe.'),
+    saveBtn('Save minimum wage', () => { if (!(mw.monthly > 0) || !(mw.hourly > 0)) { toast('Enter the monthly and hourly figures.', 'error'); return; } save('minimum_wage', mw, 'Minimum wage'); })));
 
   // ---------------- Phase 6: optional modules, PCB rules, final settlement
   const mods = { pcb_auto: false, claims: { enabled: false, scf: true, mtcf: true }, loans: false, settlement: false, ...structuredClone(P.modules?.value || {}) };

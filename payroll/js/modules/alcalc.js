@@ -48,15 +48,16 @@ export async function render(el, ctx, params, query) {
     const periods = alPeriods({ joinDate: join, resignDate: resign, bands, toYear: year });
     const inYear = periods.filter((x) => Number(x.end.slice(0, 4)) === year);
     const total = inYear.reduce((s, x) => s + x.entitled, 0);
-    const pro = LR.mode === 'hours' && hrs ? proRate(total, hrs, pt) : null;
+    const pro = LR.alProrate && hrs ? proRate(total, hrs, pt) : null;
     const bandName = (i) => ['First 2 years', '2nd to 5th year', '5 years and above'][i] || '';
     const bandIdx = (d) => Math.max(0, bands.findIndex((b) => b.days === d));
-    const rule = LR.mode === 'pt' ? `Part time (${CLASS_LABEL.PT.toLowerCase()} rules from ${pt.from_year}): ${bands.map((b) => b.days).join(' / ')} days by service`
-      : LR.mode === 'casual' ? 'Casual (30 % or less of a full-time week): no paid annual leave' : LR.mode === 'hours' ? 'Part time before the new rules: full-time days × weekly hours ÷ full-time hours' : 'Full time';
+    const rule = LR.alMode === 'pt_ft' ? 'Part time: the same days as full time (JTK, 5 Nov 2026); 1 day not worked = 1 day of leave'
+      : LR.alMode === 'pt' ? `Part time (${CLASS_LABEL.PT.toLowerCase()} rules from ${pt.from_year}): ${bands.map((b) => b.days).join(' / ')} days by service`
+      : LR.alMode === 'casual' ? 'Casual (30 % or less of a full-time week): no paid annual leave' : LR.alMode === 'hours' ? 'Part time before the new rules: full-time days × weekly hours ÷ full-time hours' : 'Full time';
     out.append(
       h('div', { class: 'facts' }, h('div', { class: 'fact big' }, h('b', {}, pro ?? total), h('span', {}, `days annual leave for ${year}`)),
         pro !== null ? h('div', { class: 'fact' }, h('b', {}, total), h('span', {}, `full-time days × ${hrs} ÷ ${pt.full_time_weekly_hours || 45} hours`)) : null,
-        h('div', { class: 'fact' }, h('b', {}, LR.cls === 'CASUAL' ? 'Casual' : LR.cls === 'PT' ? 'Part time' : 'Full time'), h('span', {}, rule))),
+        h('div', { class: 'fact' }, h('b', {}, LR.alCls === 'CASUAL' ? 'Casual' : LR.alCls === 'PT' ? 'Part time' : 'Full time'), h('span', {}, rule))),
       h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'How it is worked out')),
         h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
           h('thead', {}, h('tr', {}, ['Service band', 'From', 'To', 'Months counted', 'Days a year', 'Exact', 'Rounded', ''].map((t, i) => h('th', { class: i >= 3 && i <= 6 ? 'num' : '' }, t)))),
@@ -124,8 +125,8 @@ export async function render(el, ctx, params, query) {
         const taken = Number(R.taken.getValue()) || 0;
         const alAt = (end) => { const y = Number(end.slice(0, 4)); const LR = leaveRules(em, y, ref.policies);
           const per = alPeriods({ joinDate: join, resignDate: end, bands: LR.alBands, toYear: y }).filter((x) => Number(x.end.slice(0, 4)) === y);
-          let ent = per.reduce((s, x) => s + x.entitled, 0); if (LR.mode === 'hours' && hrs) ent = proRate(ent, hrs, pt) ?? ent;
-          return { balance: r2(ent - taken), entitled: ent, carried: 0, taken, months: per.reduce((s, x) => s + x.months, 0), bandDays: per.length ? per[per.length - 1].days : null, asOf: today < end ? today : end, mode: LR.mode }; };
+          let ent = per.reduce((s, x) => s + x.entitled, 0); if (LR.alProrate && hrs) ent = proRate(ent, hrs, pt) ?? ent;
+          return { balance: r2(ent - taken), entitled: ent, carried: 0, taken, months: per.reduce((s, x) => s + x.months, 0), bandDays: per.length ? per[per.length - 1].days : null, asOf: today < end ? today : end, mode: LR.alMode }; };
         const basic = R.basic.getValue();
         c = resignCalc({ ...inp, joinDate: join, confirmationStatus: R.prob.getValue() ? 'UP' : 'C', salary: basic ? { amount: basic, pay_basis: 'monthly' } : null, holidays: new Set(), alAt,
           workDays: ref.policies.settlement?.work_days || [1, 2, 3, 4, 5], divisor: ref.policies.payroll?.daily_rate_divisor || 26 }, ref.policies.notice_period);

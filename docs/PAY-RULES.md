@@ -1,4 +1,4 @@
-# MyEden Group CMS V1.0 · How pay is worked out (as built, 3 Nov 2026)
+# MyEden Group CMS V1.0 · How pay is worked out (as built, 5 Nov 2026)
 
 Taken from the payroll engine (`payroll/js/engines/payroll.js`, `ot.js`, `leave.js`, `resign.js`, `statutory.js`, `pcb.js`) and the
 settings in force. Recorded as PRI-013; the open points at the end are waiting for CLC's decision.
@@ -32,6 +32,9 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 | Annual leave paid out on leaving | Unused days × daily rate (more taken than earned is deducted at the same rate) |
 | Annual leave buy-back (year-end, approved) | Days × daily rate × buy-back % (50 / 25 / 10 %) |
 | Notice not served | Calendar days × calendar-day rate of each month; employee pays, company pays, or waived |
+| Unpaid hours (hours off, unearned wages) | Basic ÷ calendar days of the month ÷ the person's own normal daily hours × hours; at most one day's pay for any date (EA s.18A calendar basis). All staff; hourly-paid staff are simply not paid the hours |
+| Annual leave taken beyond what was earned, on leaving | Unpaid leave: days × basic ÷ calendar days of the final month (5 Nov 2026) |
+| Maternity allowance (EA s.37) | Monthly-paid: salary continues. Not monthly-paid: ORP (basic earned in the 3 months before ÷ days worked) × each of the 98 days, paid month by month. Not eligible: the leave is unpaid |
 | Negative leave balance at year end | Becomes unpaid leave in December (calendar-day rate) |
 | Company loans | Monthly instalment, or the whole balance in the final month |
 | Staff claims (SCF / MTCF) | Added on top of net pay; not wages |
@@ -41,7 +44,13 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 
 - Annual leave, full time: 8 / 12 / 16 days by service (under 2 years / 2–5 / 5 and over). Pro-rated by month: a month counts if service
   starts by the 15th or ends on or after the 15th; each period rounded half up.
-- Annual leave, part time: from 2027, 6 / 8 / 11 days; casual (30 % or less of a 45-hour week) none. Before 2027: full-time days × weekly hours ÷ 45.
+- Annual leave, part time (decided 5 Nov 2026, confirmed with a JTK officer): **the same days as full time** (8 / 12 / 16 by service), pro-rated by months
+  only in the year of joining or leaving; **1 day not worked = 1 day of annual leave**; part of a day off is **unpaid hours**, not half or partial leave.
+  Casual (30 % or less of the person's full-time week) gets none. Each person's full-time week is 45 h unless set to 40 h (8-hour staff) on Working hours.
+  From the 1 January 2026 leave year, switched on by an Admin in Payroll Settings after the preview. The earlier methods (hours pro-rata; the Part-Time
+  Regulations' 6 / 8 / 11 from 2027) are kept, inactive. Half days for part-timers are allowed unless an Admin switches on "whole days only".
+- Annual leave earned to date: the year's entitlement × the months counted so far ÷ 12, one decimal, not rounded; shown on Leave Balances and the payslip as
+  "Earned to date (Entitled)".
 - Sick leave: 14 / 18 / 22 days (part time 10 / 13 / 15 from 2027), by completed years at 31 December of the leave year — or at the last day of
   service if earlier (PRI-014, 3 Nov 2026): reaching the 2- or 5-year mark in the year gives the higher days for the whole year from 1 January.
   Full days in the year of joining; never pro-rated, and never deducted when someone leaves (EA s.24 / s.60F). Hospitalisation: a 60-day
@@ -54,6 +63,19 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 - HR prepares and saves the month, then submits it; a Director approves (or returns it with a reason); only then can it be finalised. Saving the draft again, or reopening a finalised month, clears the approval (4 Nov 2026).
 - The monthly payroll report (by company) shows every pay item, statutory and net pay, leave taken and balances, company totals and the names of who prepared, approved and finalised it. Drafts are watermarked.
 
+## Minimum wage (warning only)
+
+- Minimum Wages Order: RM1,700 a month; daily RM78.46 (5-day week), RM65.38 (6-day), RM98.08 (4-day); hourly **RM8.72** (RM1,700 × 12 ÷ 52 ÷ 45 h —
+  the Order's own table may show RM8.17 on a 48-hour week; the higher figure is used). Checked on basic salary only: full time against the monthly
+  figure; part time: basic ÷ (weekly hours × 52 ÷ 12) against the hourly figure; hourly-paid: the hourly rate. Payroll lines below it are flagged.
+
+## Maternity and paternity checks
+
+- Maternity (s.37): 98 consecutive days; the allowance needs ≥ 90 days employed in the 9 months before confinement, employment at some time in the
+  4 months before, and fewer than five surviving children (ticked by HR). Leave may start up to 30 days before the due date.
+- Paternity (s.60FA): 7 consecutive days; male, at least 12 months' service, up to 5 confinements.
+- The check shows when staff apply (My Leave), to the approver, and on the HR leave form. Verify the conditions against the current Act with the advisor.
+
 ## Statutory deductions
 
 - EPF, SOCSO, EIS: from the official tables in Settings, on the wages of the items each payment type is ticked for. Age is taken on the last
@@ -64,8 +86,7 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 
 ## Open points (waiting for CLC)
 
-1. Two different day rates: leave pay-outs and overtime use basic ÷ 26; unpaid leave, part months and notice not served use basic ÷ calendar
-   days (both follow the workbook). Mismatch: a negative leave balance is deducted at ÷ 26 on leaving but at ÷ calendar days at year end.
+1. ~~Two different day rates~~ — decided 5 Nov 2026: ORP (÷ 26) for overtime, rest days, public holidays, leave pay-outs and maternity; calendar days for part months, unpaid leave, unpaid hours, notice not served and leave taken in excess on leaving.
 2. Basic only: every rate uses basic salary. Under the Employment Act the daily rate for overtime and leave pay can arguably include fixed
    allowances (e.g. a position allowance). Confirm with the advisor.
 3. Overtime above RM 4,000: the CMS pays Employment Act overtime to everyone; the Act does not require it above RM 4,000. Company policy?

@@ -127,10 +127,13 @@ export async function render(el, ctx, params, query) {
     if (!leave) return h('table', { class: 'doc-table small leave-slip' }, head, h('tbody', {}, h('tr', {}, h('td', { colspan: 5, class: 'muted' }, 'Leave not available'))));
     const show = MONTH_TYPES.filter(([t]) => t === 'AL' || t === 'SL' || (leave[t] && (leave[t].toDate || leave[t].month || (t === 'RL' && leave[t].entitled))));
     const f = (v) => (v === null || v === undefined ? '—' : String(v));
-    return h('table', { class: 'doc-table small leave-slip' }, head, h('tbody', {}, show.map(([t, label]) => {
+    return h('table', { class: 'doc-table small leave-slip' }, head, h('tbody', {}, show.flatMap(([t, label]) => {
       const x = leave[t];
-      return h('tr', {}, h('td', {}, label, t === 'AL' && x.carried ? h('span', { class: 'muted' }, ` (incl. ${x.carried} brought forward)`) : null),
+      const row = h('tr', {}, h('td', {}, label, t === 'AL' && x.carried ? h('span', { class: 'muted' }, ` (incl. ${x.carried} brought forward)`) : null),
         h('td', { class: 'num' }, f(x.entitled)), h('td', { class: 'num' }, x.month ? String(x.month) : '0'), h('td', { class: 'num' }, f(x.toDate)), h('td', { class: 'num strong' }, f(x.balance)));
+      // earned to date (entitled): this year's annual leave earned by the month end, against the full year (v2026.11.05)
+      return t === 'AL' && x.earned !== undefined && x.earned !== null
+        ? [row, h('tr', { class: 'earned-row' }, h('td', { colspan: 5, class: 'small' }, `Annual leave earned to date: ${x.earned} (Entitled ${month.slice(0, 4)}: ${x.yearEntitled ?? x.entitled})`))] : [row];
     })));
   }
 

@@ -3,13 +3,13 @@ import { fetchAll, loadRef } from './data.js';
 import { leaveBalances, closeYearFor } from './engines/leave.js';
 import { employmentStatus, todayIso } from './engines/employee.js';
 
-export const LEAVE_LABELS = { AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', MTL: 'Maternity', PTL: 'Paternity', RL: 'Replacement', CPL: 'Compassionate', UPL: 'Unpaid' };
+export const LEAVE_LABELS = { AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', MTL: 'Maternity', PTL: 'Paternity', RL: 'Replacement', CPL: 'Compassionate', UPL: 'Unpaid', UPH: 'Unpaid hours' };
 
 /** Every employee with their latest employment period, status and display fields. */
 export async function loadPeople(sb, ref) {
   const [people, empls] = await Promise.all([
     fetchAll(() => sb.from('eppd_employee_list').select('id,emp_id,full_name,gender,company_name,department_code,job_title').order('full_name')),
-    fetchAll(() => sb.from('eppd_employments').select('id,employee_id,join_date,resigned_date,resignation_letter_date,notice_until,confirmed_date,confirmation_status,job_status,weekly_hours,work_days_per_week,hours_class,work_from,work_to,meal_hours').order('join_date', { ascending: false, nullsFirst: false })),
+    fetchAll(() => sb.from('eppd_employments').select('id,employee_id,join_date,resigned_date,resignation_letter_date,notice_until,confirmed_date,confirmation_status,job_status,weekly_hours,work_days_per_week,hours_class,fte_weekly_hours,work_from,work_to,meal_hours').order('join_date', { ascending: false, nullsFirst: false })),
   ]);
   const latest = new Map();
   for (const e of empls) if (!latest.has(e.employee_id)) latest.set(e.employee_id, e);
@@ -94,7 +94,7 @@ export function leaveForMonth(person, D, month) {
   const recs = D.records.filter((r) => r.employee_id === person.id && r.status !== 'cancelled');
   const inMonth = (t) => r2(recs.filter((r) => r.leave_type === t && String(r.date_from) >= month && String(r.date_from) <= end).reduce((s, r) => s + Number(r.days), 0));
   return {
-    AL: { entitled: r2(b.AL.entitled + b.AL.carried), month: inMonth('AL'), toDate: b.AL.taken, balance: b.AL.balance, carried: b.AL.carried, needsHours: b.AL.needsHours },
+    AL: { entitled: r2(b.AL.entitled + b.AL.carried), month: inMonth('AL'), toDate: b.AL.taken, balance: b.AL.balance, carried: b.AL.carried, needsHours: b.AL.needsHours, earned: b.AL.earned, yearEntitled: b.AL.entitled },
     SL: { entitled: b.SL.entitled, month: inMonth('SL'), toDate: b.SL.taken, balance: b.SL.balance },
     HPL: { entitled: b.HPL.entitled, month: inMonth('HPL'), toDate: b.HPL.taken, balance: b.HPL.balance },
     RL: { entitled: b.RL.earned, month: inMonth('RL'), toDate: b.RL.taken, balance: b.RL.balance },

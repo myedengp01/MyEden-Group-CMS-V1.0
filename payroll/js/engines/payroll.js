@@ -10,6 +10,7 @@ import { computeEPF, computeSOCSO, computeEIS, statutoryBases, splitSocsoTotal }
 import { salaryForMonth, allowancesForMonth, lastDayOfMonth, isoToMs, addDays } from './employee.js';
 import { normalHours, rateHours, OT_CATEGORIES } from './ot.js';
 import { computePCB, taxablePay, pcbYtd, pcbPolicy } from './pcb.js';
+import { minWageCheck } from './minwage.js';
 
 export const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
 const DAY = 86400000;
@@ -144,6 +145,32 @@ export function buildAutoItems(ctx) {
     else warnings.push({ level: 'info', text: `${unpaidDays} day(s) of unpaid leave recorded; hourly pay already excludes them.` });
   }
 
+  // ---- unpaid hours (unearned wages, EA s.18A calendar-day basis): basic ÷ calendar days ÷ the person's own normal daily hours × hours,
+  //      at most one day's pay for any date (v2026.11.05) ----
+  const uph = ctx.unpaidHours || [];
+  if (uph.length) {
+    if (R.basis === 'monthly') {
+      const cal = win?.calDays || daysInMonth(period); const day = R.full / cal; const own = Number(R.own) || normalHours(employment, pol.default_normal_hours || 8);
+      const byDate = new Map(); for (const u of uph) byDate.set(u.date, (byDate.get(u.date) || 0) + u.hours);
+      let amt = 0, hrs = 0, capped = 0;
+      for (const [, hh] of byDate) { hrs += hh; const v = (day / own) * hh; if (v > day) capped += 1; amt += Math.min(day, v); }
+      add('UNPAID_HOURS', { key: 'UPH', amount: amt, qty: r2(hrs), unit: 'hours', rate: day / own, note: `${fmt(hrs)} h × RM${fmt(R.full)} ÷ ${cal} ÷ ${fmt(own, own % 1 ? 1 : 0)} h` });
+      if (capped) warnings.push({ level: 'warn', text: `Unpaid hours on ${capped} date(s) reach a full day: capped at one day's pay. Record a full day as unpaid leave instead.` });
+    } else warnings.push({ level: 'info', text: 'Unpaid hours recorded; hourly pay already excludes hours not worked.' });
+  }
+
+  // ---- maternity (EA s.37): monthly salary continues; not monthly-paid → allowance at ORP for each day; not eligible → the days are unpaid ----
+  for (const m of ctx.maternity || []) {
+    const cal = win?.calDays || daysInMonth(period);
+    if (m.allowance === 'unpaid') {
+      if (R.basis === 'monthly') add('UNPAID_LEAVE', { key: `MTL_UNPAID:${m.from}`, label: 'Maternity leave (no allowance)', amount: (R.full / cal) * m.days, qty: m.days, unit: 'days', rate: R.full / cal,
+        note: `${m.days} day(s) ${m.from} – ${m.to} × RM${fmt(R.full)} ÷ ${cal} (not eligible for the allowance)` });
+    } else if (R.basis !== 'monthly') {
+      if (m.orp > 0) add('MATERNITY_ALLOW', { key: `MATERNITY:${m.from}`, amount: m.orp * m.days, qty: m.days, unit: 'days', rate: m.orp, note: `${m.days} day(s) ${m.from} – ${m.to} × ORP RM${fmt(m.orp)}` });
+      else warnings.push({ level: 'warn', text: 'Maternity leave this month but no ordinary rate of pay on the record: open the leave record and enter the days worked so the allowance can be worked out.' });
+    }
+  }
+
   // ---- overtime (Employment Act rates) ----
   const cat = (c) => time.filter((e) => e.category === c && Number(e.hours) > 0);
   const hrs = (list) => r2(list.reduce((s, e) => s + Number(e.hours || 0), 0));
@@ -204,11 +231,14 @@ export function buildAutoItems(ctx) {
   if (st) {
     const alMode = st.al_mode || 'auto';
     let days = null, amount = null;
-    if (alMode === 'auto' && st.al_balance !== null && st.al_balance !== undefined) { days = r2(st.al_balance); amount = r2(days * R.orp); }
-    if (alMode === 'custom') { days = st.al_days !== null && st.al_days !== undefined && st.al_days !== '' ? Number(st.al_days) : null; amount = st.al_amount !== null && st.al_amount !== undefined && st.al_amount !== '' ? Number(st.al_amount) : (days !== null ? r2(days * R.orp) : null); }
+    // unused days are paid at ORP (÷ 26); days taken beyond what was earned are unpaid leave: basic ÷ calendar days of the month (CLC 5 Nov 2026)
+    const cal = daysInMonth(period); const xRate = R.basis === 'monthly' ? R.full / cal : R.orp;
+    const val = (d) => (d < 0 ? r2(d * xRate) : r2(d * R.orp));
+    if (alMode === 'auto' && st.al_balance !== null && st.al_balance !== undefined) { days = r2(st.al_balance); amount = val(days); }
+    if (alMode === 'custom') { days = st.al_days !== null && st.al_days !== undefined && st.al_days !== '' ? Number(st.al_days) : null; amount = st.al_amount !== null && st.al_amount !== undefined && st.al_amount !== '' ? Number(st.al_amount) : (days !== null ? val(days) : null); }
     if (amount && amount > 0) add('AL_ENCASH', { key: 'SETTLE:AL', amount, qty: days, unit: 'days', rate: R.orp, note: `${days ?? '—'} unused day(s) × RM${fmt(R.orp)} (final settlement)` });
-    if (amount && amount < 0) add('UNPAID_LEAVE', { key: 'SETTLE:AL', label: 'Annual leave taken in advance', amount: -amount, qty: days === null ? null : -days, unit: 'days', rate: R.orp,
-      note: `${days === null ? '' : `${-days} day(s) `}more than earned × RM${fmt(R.orp)} (final settlement)` });
+    if (amount && amount < 0) add('UNPAID_LEAVE', { key: 'SETTLE:AL', label: 'Annual leave taken in advance (unpaid leave)', amount: -amount, qty: days === null ? null : -days, unit: 'days', rate: xRate,
+      note: `${days === null ? '' : `${-days} day(s) `}more than earned × ${R.basis === 'monthly' ? `RM${fmt(R.full)} ÷ ${cal}` : `RM${fmt(R.orp)}`} (final settlement)` });
     if (alMode === 'auto' && (st.al_balance === null || st.al_balance === undefined)) warnings.push({ level: 'warn', text: 'Final settlement: annual leave balance not available; check the leave records.' });
     const nd = st.notice_days !== null && st.notice_days !== undefined && st.notice_days !== '' ? Number(st.notice_days) : null;
     // notice days are calendar days (basic ÷ the days of the month); the amount saved with the settlement is used as it is
@@ -363,6 +393,13 @@ export function buildRun(D) {
     const time = (D.time || []).filter((e) => e.employee_id === p.id && periodOf(e.work_date) === period);
     const unpaidDays = r2((D.leave || []).filter((r) => r.employee_id === p.id && r.leave_type === 'UPL' && r.status !== 'cancelled' && periodOf(r.date_from) === period)
       .reduce((s, r) => s + Number(r.days || 0), 0));
+    // v2026.11.05: unpaid hours (hours off) dated in the month; maternity leave days falling in the month
+    const pEnd = lastDayOfMonth(period);
+    const unpaidHours = (D.leave || []).filter((r) => r.employee_id === p.id && r.leave_type === 'UPH' && r.status !== 'cancelled' && periodOf(r.date_from) === period)
+      .map((r) => ({ date: r.date_from, hours: Number(r.hours) || 0 }));
+    const maternity = (D.leave || []).filter((r) => r.employee_id === p.id && r.leave_type === 'MTL' && r.status !== 'cancelled' && r.date_from <= pEnd && (r.date_to || r.date_from) >= period)
+      .map((r) => { const a = r.date_from > period ? r.date_from : period; const b = (r.date_to || r.date_from) < pEnd ? (r.date_to || r.date_from) : pEnd;
+        return { days: Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) + 1, allowance: r.details?.allowance || 'paid', orp: Number(r.details?.orp) || 0, from: a, to: b }; });
     const buybacks = isJan ? (D.buybacks || []).filter((b) => b.employee_id === p.id && Number(b.close_year) === Number(period.slice(0, 4)) - 1) : [];
     const age = ageForPeriod(p.dob, period);
 
@@ -386,6 +423,7 @@ export function buildRun(D) {
           ...(D.settlements?.get(g.em.id) || {}), al_balance: D.leaverAL?.get(p.id) ?? null } : null;
         const built = buildAutoItems({ period, employment: g.em, assignment: g.a, salary: g.salary, window: g.window, allowances: g.a.allowances || [],
           time: myTime, unpaidDays: isPrimary ? unpaidDays : 0, buybacks: isPrimary ? buybacks : [],
+          unpaidHours: isPrimary ? unpaidHours : [], maternity: isPrimary ? maternity : [],
           claims: myClaims, loans: myLoans, settlement, zakat: pcbAuto && isPrimary && profile && !profile.pcb_manual ? Number(profile.zakat_monthly) || 0 : 0,
           types: D.types, typesById: D.typesById, policy: pol, primary: isPrimary || g === ptLine });
         // keep HR's overrides on auto items, and every manual item
@@ -395,6 +433,8 @@ export function buildRun(D) {
         const warnings = [...built.warnings];
         if (g.wins.length > 1) warnings.push({ level: 'info', text: `Two employment periods with this company in the month; the days are added together at the current salary. Check the basic pay.` });
         if (!p.dob) warnings.push({ level: 'info', text: 'No date of birth on record: statutory rates for under-60s used.' });
+        // minimum wage on basic salary (warning only, v2026.11.05)
+        const mwc = minWageCheck(g.salary, g.em, D.policies || {}, period); if (mwc) warnings.push({ level: mwc.level, text: mwc.text, minwage: mwc.code });
         const autoPcb = pcbAuto && !(profile && profile.pcb_manual);
         let pcb = old ? Number(old.pcb) || 0 : 0;
         if (!autoPcb && !old && pol.pcb_carry_forward && prevPcb.has(key)) {

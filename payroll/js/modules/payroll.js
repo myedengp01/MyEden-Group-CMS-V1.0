@@ -97,6 +97,7 @@ async function renderRun(el, ctx, param) {
   const ageOf = (l) => l.inputs?.age ?? (personOf(l)?.dob ? ageForPeriod(personOf(l).dob, D.period) : null);
   const optOutOf = (l) => { if (l.inputs?.flags && 'socso_nei_opt_out' in l.inputs.flags) return !!l.inputs.flags.socso_nei_opt_out;
     const a = (personOf(l)?.employments || []).flatMap((e) => e.assignments || []).find((x) => x.id === l.assignment_id); return a ? statutoryFlags(a, D.period).socso_nei_opt_out : false; };
+  const belowMin = (l) => (l.warnings || []).some((w) => w.minwage === 'below');   // minimum wage (v2026.11.05)
   const coSel = h('select', { 'aria-label': 'Company' });
   const sortSel = h('select', { 'aria-label': 'Sort by' }, [['basic_desc', 'Basic salary (high → low)'], ['basic_asc', 'Basic salary (low → high)'], ['name', 'Name (A–Z)'], ['gross', 'Gross (high → low)'], ['net', 'Net paid (high → low)']]
     .map(([v, t]) => h('option', { value: v, selected: F.sort === v }, t)));
@@ -110,7 +111,7 @@ async function renderRun(el, ctx, param) {
   const bar = h('div', { class: 'import-bar' });
   el.append(head, notice, facts, compBox,
     h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1rem;flex-wrap:wrap' }, search, coSel, sortSel, warnToggle),
-      h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1.2rem;flex-wrap:wrap;margin-top:.5rem' }, sw('optOut', 'NEI opted out'), sw('age60', 'Aged 60 and over'), sw('ot', 'With overtime'))), linesBody), bar);
+      h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:1.2rem;flex-wrap:wrap;margin-top:.5rem' }, sw('optOut', 'NEI opted out'), sw('age60', 'Aged 60 and over'), sw('ot', 'With overtime'), sw('minw', 'Below minimum wage'))), linesBody), bar);
   search.addEventListener('input', drawLines);
 
   const leaveGuard = (e) => { if (dirty && !locked) { e.preventDefault(); e.returnValue = ''; } };
@@ -191,7 +192,7 @@ async function renderRun(el, ctx, param) {
     fillCo();
     const S = new Map(lines.map((l) => [l, lineSummary(l)]));
     const shown = lines.filter((l) => (!q || `${l.emp_name} ${idOf(l)} ${l.emp_code || ''}`.toLowerCase().includes(q)) && (!onlyWarn || (l.warnings || []).some((w) => w.level === 'warn'))
-      && (!F.co || String(l.company_id) === String(F.co)) && (!F.optOut || optOutOf(l)) && (!F.age60 || (ageOf(l) ?? 0) >= 60) && (!F.ot || S.get(l).overtime > 0));
+      && (!F.co || String(l.company_id) === String(F.co)) && (!F.optOut || optOutOf(l)) && (!F.age60 || (ageOf(l) ?? 0) >= 60) && (!F.ot || S.get(l).overtime > 0) && (!F.minw || belowMin(l)));
     const by = { name: (a, b) => String(a.emp_name).localeCompare(String(b.emp_name)), basic_desc: (a, b) => S.get(b).basic - S.get(a).basic || by.name(a, b),
       basic_asc: (a, b) => S.get(a).basic - S.get(b).basic || by.name(a, b), gross: (a, b) => (b.gross || 0) - (a.gross || 0) || by.name(a, b), net: (a, b) => (b.net_paid || 0) - (a.net_paid || 0) || by.name(a, b) };
     shown.sort(by[F.sort] || by.basic_desc);
@@ -324,7 +325,7 @@ async function renderRun(el, ctx, param) {
     const load = async () => {
       const [time, leave, monthOtcf] = await Promise.all([
         fetchAll(() => ctx.sb.from('eppd_time_entries').select('*').eq('employee_id', L.employee_id).gte('work_date', start).lte('work_date', end).order('work_date')),
-        fetchAll(() => ctx.sb.from('eppd_leave_records').select('*').eq('employee_id', L.employee_id).gte('date_from', start).lte('date_from', end).order('date_from')),
+        fetchAll(() => ctx.sb.from('eppd_leave_records').select('*').eq('employee_id', L.employee_id).lte('date_from', end).gte('date_to', start).order('date_from')),
         fetchAll(() => ctx.sb.from('eppd_time_entries').select('employee_id,otcf_submission_id').gte('work_date', start).lte('work_date', end).not('otcf_submission_id', 'is', null)),
       ]);
       if (!peopleCache) peopleCache = await loadPeople(ctx.sb, D.ref);
@@ -356,7 +357,7 @@ async function renderRun(el, ctx, param) {
             h('p', { class: 'small muted', style: 'margin:0 0 .4rem' }, pt.length ? `${ptTotal} h recorded (${pt.length} entr${pt.length === 1 ? 'y' : 'ies'})` : 'No hours recorded yet.'),
             h('div', { class: 'btn-row', style: 'align-items:center' }, h('span', { class: 'small' }, 'Total this month'), ptIn, ptSave)) : null,
           h('div', { class: 'block' }, h('h4', {}, 'Leave this month'),
-            leave.length ? h('ul', {}, leave.map((r) => h('li', {}, `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'} · ${r.date_from === r.date_to ? r.date_from : `${r.date_from} – ${r.date_to}`}${r.status === 'cancelled' ? ' (cancelled)' : ''}`,
+            leave.length ? h('ul', {}, leave.map((r) => h('li', {}, `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${r.leave_type === 'UPH' ? `${Number(r.hours || 0)} h` : `${Number(r.days)} day${Number(r.days) === 1 ? '' : 's'}`} · ${r.date_from === r.date_to ? r.date_from : `${r.date_from} – ${r.date_to}`}${r.status === 'cancelled' ? ' (cancelled)' : ''}`,
               h('button', { class: 'linkish small', type: 'button', style: 'margin-left:.4rem', onclick: async () => {
                 const year = Number(D.period.slice(0, 4));
                 const [LY, holidays] = await Promise.all([loadLeaveYear(ctx.sb, year), loadHolidaySet(ctx.sb, [year - 1, year, year + 1])]);
@@ -432,7 +433,7 @@ async function renderRun(el, ctx, param) {
         }
         // where a calculated row comes from, so it is fixed at the source (v2026.11.04)
         const k = String(i.key || '');
-        const src = !i.auto ? null : k === 'BASIC' ? 'from salary history' : k.startsWith('OT:') ? 'from overtime entries (above)' : k === 'UPL' ? 'from leave records (above)'
+        const src = !i.auto ? null : k === 'BASIC' ? 'from salary history' : k.startsWith('OT:') ? 'from overtime entries (above)' : k === 'UPL' ? 'from leave records (above)' : k === 'UPH' ? 'from unpaid hours in the leave records (above)' : k.startsWith('MATERNITY') || k.startsWith('MTL_UNPAID') ? 'from the maternity leave record'
           : k.startsWith('ALLOW:') ? 'from a recurring item (below)' : k.startsWith('LOAN:') ? 'from company loans' : k.startsWith('CLAIM:') ? 'from approved claims' : k.startsWith('BUYBACK:') ? 'from the year-end close'
           : k.startsWith('SETTLE:') ? 'from the final settlement' : null;
         const leaveOut = !ro && L.mode !== 'fixed' && i.auto && k.startsWith('ALLOW:');

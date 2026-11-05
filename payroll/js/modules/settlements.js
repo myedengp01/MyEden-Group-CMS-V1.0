@@ -7,6 +7,8 @@ import { computeNotice } from '../engines/notice.js';
 import { ratesOfPay, monthLabel, periodOf } from '../engines/payroll.js';
 import { salaryAsOf, todayIso, addDays } from '../engines/employee.js';
 import { calendarPay } from '../engines/resign.js';
+// days in the final month (leave taken beyond what was earned is unpaid leave at basic ÷ these days)
+const dimOf = (r) => { const d = r.em?.resigned_date || todayIso(); const [y, m] = d.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
 
 const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
 const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
@@ -99,7 +101,7 @@ export async function render(el, ctx) {
     const preview = h('p', { class: 'small', style: 'grid-column:1/-1' });
     const upd = () => {
       const m = alMode.getValue();
-      const alV = m === 'auto' ? (days ?? 0) * r.R.orp : m === 'custom' ? (alAmt.getValue() ?? (Number(alDays.getValue()) || 0) * r.R.orp) : 0;
+      const xr = (d) => (d < 0 && r.R.basis === 'monthly' ? r.R.full / dimOf(r) : r.R.orp); const alV = m === 'auto' ? (days ?? 0) * xr(days ?? 0) : m === 'custom' ? (alAmt.getValue() ?? (Number(alDays.getValue()) || 0) * xr(Number(alDays.getValue()) || 0)) : 0;
       const nm = nMode.getValue(); const nv = nm === 'none' ? 0 : (nAmt.getValue() ?? (Number(nDays.getValue()) || 0) * r.R.orp);
       preview.textContent = `Daily rate RM${money(r.R.orp)}. Leave: ${alV >= 0 ? '+' : '−'}RM${money(Math.abs(alV))} · Notice: ${nm === 'employee_pays' ? '−' : '+'}RM${money(nv)}${loansF.getValue() && r.loanBal ? ` · Loan recovered: −RM${money(r.loanBal)}` : ''}`;
     };

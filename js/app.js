@@ -726,7 +726,7 @@
               <p class="muted small" data-diff></p>
               <label class="fld"><span>Reason</span><select name="reason"><option>Annual increment</option><option>Confirmation increment</option><option>Promotion</option><option>Merit increment</option><option>Adjustment</option></select></label>
               <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>`,
-            onOpen: (w) => { const f = $('form', w); const upd = () => { const d = mval(f.amt.value) - Number(r.current_salary || 0); $('[data-diff]', w).textContent = f.amt.value ? `Change: ${d < 0 ? '−' : '+'}${money(Math.abs(d))}${r.current_salary ? ` (${(d / r.current_salary * 100).toFixed(1)}%)` : ''}` : ''; }; f.amt.addEventListener('input', upd); upd(); setTimeout(() => f.amt.select(), 30); },
+            onOpen: (w) => { const f = $('form', w); const upd = () => { const d = mval(f.amt.value) - Number(r.current_salary || 0); const lowMw = r.pay_basis !== 'hourly' && f.amt.value && mval(f.amt.value) < 1700; $('[data-diff]', w).textContent = (lowMw ? '⚠ Below the RM1,700 minimum wage for full-time staff (part-timers: at least RM8.72 an hour). ' : '') + (f.amt.value ? `Change: ${d < 0 ? '−' : '+'}${money(Math.abs(d))}${r.current_salary ? ` (${(d / r.current_salary * 100).toFixed(1)}%)` : ''}` : ''); }; f.amt.addEventListener('input', upd); upd(); setTimeout(() => f.amt.select(), 30); },
             onOk: async (f) => { if (!f.amt.value || !f.m.value) throw new Error('Enter the new salary and the month.');
               await API.rpc('cms_record_increment', { p_employment: r.employment_id, p_from: `${f.m.value}-01`, p_salary: mval(f.amt.value), p_reason: f.reason.value, p_note: f.note.value || null }); } });
           if (ok) { changed = true; toast(`Increment saved for ${r.name}`); load(); }
@@ -2725,9 +2725,26 @@
   const LV_ST = { pending: ['Waiting for approval', 'warn'], approved: ['Approved', 'ok'], rejected: ['Not approved', 'bad'], cancelled: ['Cancelled', ''] };
   const lvDates = (r) => `${dShort(r.from)}${r.to !== r.from ? ` – ${dShort(r.to)}` : ''}${r.half_day ? ' (half day)' : ''}`;
   const lvTag = (r) => `<span class="tag ${LV_ST[r.status][1]} xs">${LV_ST[r.status][0]}</span>${r.decided_by && r.status !== 'pending' ? `<small class="sub">${esc(r.decided_by)} · ${dShort(r.decided_at)}</small>` : ''}${r.decision_note ? `<small class="sub">${esc(r.decision_note)}</small>` : ''}`;
+  // maternity (EA s.37) / paternity (s.60FA) entitlement check, shown to staff when applying and to the approver (v2026.11.05)
+  function entCheckHtml(c, d = {}) {
+    if (!c) return '';
+    const ok = (b) => `<span class="tag ${b ? 'ok' : 'warn'} xs">${b ? '✓' : '✗'}</span>`;
+    if (c.type === 'MTL') {
+      const under5 = d.under5 !== false; const elig = c.eligible_allowance && under5;
+      return `<div class="ent-check"><b>${elig ? 'Maternity allowance: eligible' : 'Maternity allowance: not eligible (98 days of leave, unpaid)'}</b>
+        <div>${ok(c.female)} Female employee</div><div>${ok(c.days_employed_9m >= 90)} Employed ${esc(String(c.days_employed_9m))} days in the 9 months before the due date (at least 90)</div>
+        <div>${ok(c.employed_4m)} Employed in the 4 months before the due date</div><div>${ok(under5)} Fewer than five surviving children</div>
+        <div>${ok(!c.early_start)} ${c.early_start ? 'Starts more than 30 days before the due date' : 'Starts no more than 30 days before the due date'}</div>
+        <div class="small muted">98 days: ${dShort(c.leave_from)} – ${dShort(c.leave_to)}. ${c.pay_basis === 'monthly' ? 'Monthly salary continues.' : `Allowance at the ordinary rate of pay ${c.orp ? `(RM${m2(c.orp)} a day)` : '(HR works it out from the last 3 months)'}.`}</div></div>`;
+    }
+    return `<div class="ent-check"><b>${c.eligible ? 'Paternity leave: eligible' : 'Paternity leave: not eligible'}</b>
+      <div>${ok(c.male)} Male employee (married: marriage certificate)</div><div>${ok(c.service_ok)} ${esc(String(c.service_months))} months' service (at least 12)</div>
+      <div>${ok(c.within_limit)} ${esc(String(c.previous_paternity))} earlier paternity leave (up to 5)</div><div class="small muted">7 days: ${dShort(c.leave_from)} – ${dShort(c.leave_to)}.</div></div>`;
+  }
   async function leaveDecide(r, approve) {
     const ok = await modal({ title: `${approve ? 'Approve' : 'Do not approve'} leave · ${r.name}`, ok: approve ? 'Approve' : 'Not approved', danger: !approve,
       body: `<p><b>${esc(r.type_label || r.type)}</b> · ${lvDates(r)} · ${esc(String(r.days))} day${Number(r.days) === 1 ? '' : 's'}${r.reason ? `<br><span class="muted">${esc(r.reason)}</span>` : ''}</p>
+        ${r.check ? `${r.details?.event ? `<p class="small">${r.type === 'MTL' ? 'Expected confinement' : 'Birth'}: <b>${dShort(r.details.event)}</b></p>` : ''}${entCheckHtml(r.check, r.details || {})}` : ''}
         ${r.has_attachment ? `<button type="button" class="btn sm ghost" data-lvatt="${esc(r.id)}">${icon('eye')}View attachment</button>` : ''}
         <label class="fld"><span>${approve ? 'Note (optional)' : 'Reason (the staff member sees it)'}</span><input name="note" maxlength="300"></label>`,
       onOpen: (w) => $('[data-lvatt]', w)?.addEventListener('click', async () => { try { const src = await API.rpc('cms_leave_attachment', { p_id: r.id }); window.open(src, '_blank'); } catch (e) { toast(e.message, 'err'); } }),
@@ -2743,7 +2760,7 @@
         <div class="btn-row"><button type="button" class="btn primary" id="ml-new">${icon('plus')}New leave request…</button></div>
         ${Object.keys(D.taken || {}).length ? `<p class="muted small">Taken this year (from payroll): ${Object.entries(D.taken).map(([k, v]) => `${esc(tl(k))} ${esc(String(v))} d`).join(' · ')}</p>` : ''}</section>
       ${D.to_approve.length ? `<section class="card"><div class="card-head"><h3>For you to approve</h3></div><div class="table-wrap"><table class="data"><thead><tr><th>Person</th><th>Leave</th><th>Days</th><th></th></tr></thead><tbody>
-        ${D.to_approve.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small>${r.reason ? `<small class="sub">${esc(r.reason)}</small>` : ''}</td>
+        ${D.to_approve.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small>${r.reason ? `<small class="sub">${esc(r.reason)}</small>` : ''}${r.check ? `<small class="sub"><span class="tag ${(r.check.type === 'MTL' ? r.check.eligible_allowance && r.details?.under5 !== false : r.check.eligible) ? 'ok' : 'warn'} xs">${r.check.type === 'MTL' ? ((r.check.eligible_allowance && r.details?.under5 !== false) ? 'Allowance: eligible' : 'Allowance: not eligible') : (r.check.eligible ? 'Eligible' : 'Not eligible')}</span></small>` : ''}</td>
           <td>${esc(String(r.days))}</td><td class="nowrap"><button type="button" class="btn sm primary" data-ok="${esc(r.id)}">Approve</button> <button type="button" class="btn sm" data-no="${esc(r.id)}">Not approve…</button></td></tr>`).join('')}</tbody></table></div></section>` : ''}
       <section class="card"><div class="card-head"><h3>My requests</h3></div>
         ${D.requests.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Leave</th><th>Days</th><th>Status</th><th></th></tr></thead><tbody>
@@ -2762,11 +2779,21 @@
           <label class="fld"><span>First day</span><input name="from" type="date" required></label><label class="fld"><span>Last day</span><input name="to" type="date"></label>
           <label class="fld"><span>Working days</span><input name="days" type="number" min="0.5" step="0.5" placeholder="counted from the dates"></label>
           <label class="fld"><span>&nbsp;</span><label class="chk"><input type="checkbox" name="half"> Half day</label></label>
+          <label class="fld" data-ev hidden><span data-evl>Expected confinement date (due date)</span><input name="event" type="date"></label>
+          <label class="fld" data-u5 hidden><span>&nbsp;</span><label class="chk"><input type="checkbox" name="under5" checked> Fewer than five surviving children</label></label>
+          <div class="fld-2" data-chk></div>
           <label class="fld fld-2"><span>Reason (optional)</span><input name="reason" maxlength="300"></label>
           <label class="fld fld-2"><span>Medical certificate / supporting photo (needed for sick and hospitalisation leave)</span><input name="photo" type="file" accept="image/*" capture="environment"></label></div>`,
-        onOpen: (w) => wirePhoto(w, ph),
+        onOpen: (w) => { wirePhoto(w, ph); const f = $('form', w);
+          const vis = () => { const t = f.type.value; $('[data-ev]', w).hidden = !['MTL', 'PTL'].includes(t); $('[data-u5]', w).hidden = t !== 'MTL';
+            $('[data-evl]', w).textContent = t === 'PTL' ? 'Baby’s date of birth (or expected)' : 'Expected confinement date (due date)'; if (!['MTL', 'PTL'].includes(t)) $('[data-chk]', w).innerHTML = ''; else check(); };
+          const check = async () => { const t = f.type.value; if (!['MTL', 'PTL'].includes(t) || !f.event.value) return;
+            try { const c = await API.rpc('cms_leave_entitlement_check', { p_person: null, p_type: t, p_event: f.event.value, p_start: f.from.value || null });
+              $('[data-chk]', w).innerHTML = entCheckHtml(c, { under5: f.under5.checked }); } catch (e) { $('[data-chk]', w).innerHTML = `<p class="small muted">${esc(e.message)}</p>`; } };
+          f.type.addEventListener('change', vis); f.event.addEventListener('change', check); f.from.addEventListener('change', check); f.under5.addEventListener('change', check); },
         onOk: async (f) => { if (!f.type.value || !f.from.value) throw new Error('Choose the type and the first day.');
-          await API.rpc('cms_my_leave_apply', { p: { type: f.type.value, from: f.from.value, to: f.to.value || f.from.value, days: f.days.value || null, half_day: f.half.checked, reason: f.reason.value, attachment: ph.v } }); } });
+          await API.rpc('cms_my_leave_apply', { p: { type: f.type.value, from: f.from.value, to: f.to.value || f.from.value, days: f.days.value || null, half_day: f.half.checked, reason: f.reason.value, attachment: ph.v,
+            details: ['MTL', 'PTL'].includes(f.type.value) ? { event: f.event.value || null, ...(f.type.value === 'MTL' ? { under5: f.under5.checked } : {}) } : null } }); } });
       if (ok) { toast('Sent for approval'); render(); }
     });
   }
@@ -2780,7 +2807,7 @@
       const list = D.requests.filter(V.find((x) => x[0] === f.v)[2]);
       $('#lr-body', el).innerHTML = `<section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${D.requests.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Person</th><th>Leave</th><th>Days</th><th>Status</th><th>Payroll</th></tr></thead><tbody>
-          ${list.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small></td><td>${esc(String(r.days))}</td>
+          ${list.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small></td><td>${esc(r.type_label || r.type)}<small class="sub">${lvDates(r)}</small>${r.check ? `<small class="sub" title="${esc(r.check.type === 'MTL' ? `Employed ${r.check.days_employed_9m} days in the 9 months before; employed in the 4 months before: ${r.check.employed_4m ? 'yes' : 'no'}` : `${r.check.service_months} months' service; earlier paternity: ${r.check.previous_paternity}`)}"><span class="tag ${(r.check.type === 'MTL' ? r.check.eligible_allowance && r.details?.under5 !== false : r.check.eligible) ? 'ok' : 'warn'} xs">${r.check.type === 'MTL' ? ((r.check.eligible_allowance && r.details?.under5 !== false) ? 'Allowance: eligible' : 'Allowance: not eligible') : (r.check.eligible ? 'Eligible' : 'Not eligible')}</span></small>` : ''}</td><td>${esc(String(r.days))}</td>
             <td>${lvTag(r)}${r.can_decide ? `<div class="btn-row"><button type="button" class="btn sm primary" data-ok="${esc(r.id)}">Approve</button><button type="button" class="btn sm" data-no="${esc(r.id)}">Not approve…</button></div>` : ''}</td>
             <td>${r.status === 'approved' ? `<label class="chk"><input type="checkbox" data-pay="${esc(r.id)}" ${r.payroll_done ? 'checked' : ''} ${D.can_edit ? '' : 'disabled'}> Entered in payroll</label>` : '—'}</td></tr>`).join('')}</tbody></table></div>`
           : '<div class="empty small"><p>No requests here</p><span>Leave requests come from My Leave, which is switched on per person (Self-service Access).</span></div>'}</section>
@@ -4741,19 +4768,22 @@
   const HCLS = { FT: 'Full time', PT: 'Part time', CASUAL: 'Casual' };
   const secHeadG = (t, extra = '') => `<div class="pf-sh"><h3>${esc(t)}</h3>${extra}</div>`;
   const clsByHours = (h, P) => { const x = Number(h); if (!(x > 0)) return null; const pct = x / (Number(P.full_time_weekly_hours) || 45) * 100; return pct <= Number(P.casual_max_pct ?? 30) + 1e-9 ? 'CASUAL' : pct <= Number(P.part_time_max_pct ?? 70) + 1e-9 ? 'PT' : 'FT'; };
-  const hoursClass = (row, P) => (row.hours_class ? { cls: row.hours_class, by: 'hr' } : clsByHours(row.weekly_hours, P) ? { cls: clsByHours(row.weekly_hours, P), by: 'hours' } : { cls: row.job_status === 'PT' ? 'PT' : 'FT', by: 'status' });
+  const ftWeek = (row, P) => Number(row?.fte_weekly_hours) || Number(P?.full_time_weekly_hours) || 45;   // per person (40 for 8-hour staff), default 45
+  const hoursClass = (row, P) => { const PP = { ...P, full_time_weekly_hours: ftWeek(row, P) };
+    return row.hours_class ? { cls: row.hours_class, by: 'hr' } : clsByHours(row.weekly_hours, PP) ? { cls: clsByHours(row.weekly_hours, PP), by: 'hours' } : { cls: row.job_status === 'PT' ? 'PT' : 'FT', by: 'status' }; };
   const actualWeekly = (act, P = {}) => { const a = (act || []).filter((x) => Number(x.hours) > 0); if (!a.length) return null; const m = a.reduce((s, x) => s + Number(x.hours), 0) / a.length; const week = Math.round(m * 12 / 52 * 10) / 10;
     return { week, month: m, months: a.map((x) => `${new Date(`${x.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })} ${m2(x.hours).replace(/\.00$/, '')} h`), cls: clsByHours(week, P) || 'CASUAL' }; };
   async function hoursWindow(pid, name, row, P) {
     return modal({ title: `Working hours · ${name}`, ok: 'Save',
       body: `<div class="fld-2"><label class="fld"><span>Contracted hours a week</span><input name="h" inputmode="decimal" value="${esc(row.weekly_hours ?? '')}" placeholder="e.g. 20"></label>
         <label class="fld"><span>Working days a week</span><input name="d" inputmode="decimal" value="${esc(row.work_days ?? '')}" placeholder="e.g. 5"></label>
+        <label class="fld"><span>Full-time week to compare with</span><select name="fte"><option value="">45 h (company standard: 9 h × 5)</option><option value="40" ${Number(row.fte_weekly_hours) === 40 ? 'selected' : ''}>40 h (8 h × 5)</option>${row.fte_weekly_hours && ![40, 45].includes(Number(row.fte_weekly_hours)) ? `<option value="${esc(row.fte_weekly_hours)}" selected>${esc(row.fte_weekly_hours)} h</option>` : ''}</select></label>
         <label class="fld"><span>For the leave rules</span><select name="c"><option value="">Work it out from the hours</option>${Object.entries(HCLS).map(([k, l]) => `<option value="${k}" ${row.hours_class === k ? 'selected' : ''}>Mark as ${l.toLowerCase()}</option>`).join('')}</select></label>
         <label class="fld"><span>Reason <small class="muted">— needed when you mark</small></span><input name="r" maxlength="300" value="${esc(row.reason || '')}"></label></div>
         <p class="small muted" id="hw-hint"></p>`,
-      onOpen: (wrap) => { const f = $('form', wrap); const hint = () => { const c = clsByHours(f.h.value, P); $('#hw-hint', wrap).textContent = c ? `${f.h.value} h a week = ${Math.round(Number(f.h.value) / (P.full_time_weekly_hours || 45) * 100)} % of a full-time week → ${HCLS[c].toLowerCase()} by the hours.` : 'With no hours, the job status decides (part time if PT).'; };
-        f.h.addEventListener('input', hint); hint(); },
-      onOk: async (f) => { await API.rpc('cms_working_hours_save', { p_person: pid, p: { weekly_hours: f.h.value.trim() || null, work_days: f.d.value.trim() || null, hours_class: f.c.value || null, reason: f.r.value.trim() } }); } });
+      onOpen: (wrap) => { const f = $('form', wrap); const hint = () => { const PP = { ...P, full_time_weekly_hours: Number(f.fte.value) || P.full_time_weekly_hours || 45 }; const c = clsByHours(f.h.value, PP); $('#hw-hint', wrap).textContent = c ? `${f.h.value} h a week = ${Math.round(Number(f.h.value) / PP.full_time_weekly_hours * 100)} % of a full-time ${PP.full_time_weekly_hours} h week → ${HCLS[c].toLowerCase()} by the hours.` : 'With no hours, the job status decides (part time if PT).'; };
+        f.h.addEventListener('input', hint); f.fte.addEventListener('change', hint); hint(); },
+      onOk: async (f) => { await API.rpc('cms_working_hours_save', { p_person: pid, p: { weekly_hours: f.h.value.trim() || null, work_days: f.d.value.trim() || null, hours_class: f.c.value || null, reason: f.r.value.trim(), fte_weekly_hours: f.fte.value || null } }); } });
   }
   // Time & Leave › Working Hours: everyone not full time (or with hours recorded), contracted vs actually worked, and the marking
   async function hoursPage(item, el) {
