@@ -47,11 +47,11 @@ Working week: 5 days, 45 hours (Monday–Friday). Saturday is the off day (overt
 - Annual leave, part time (decided 5 Nov 2026, confirmed with a JTK officer): **the same days as full time** (8 / 12 / 16 by service), pro-rated by months
   only in the year of joining or leaving; **1 day not worked = 1 day of annual leave**; part of a day off is **unpaid hours**, not half or partial leave.
   Casual (30 % or less of the person's full-time week) gets none. Each person's full-time week is 45 h unless set to 40 h (8-hour staff) on Working hours.
-  From the 1 January 2026 leave year, switched on by an Admin in Payroll Settings after the preview. The earlier methods (hours pro-rata; the Part-Time
+  From the 1 January 2026 leave year; switched on 6 Nov 2026 (Payroll Settings › Part-time and casual staff). The earlier methods (hours pro-rata; the Part-Time
   Regulations' 6 / 8 / 11 from 2027) are kept, inactive. Half days for part-timers are allowed unless an Admin switches on "whole days only".
 - Annual leave earned to date: the year's entitlement × the months counted so far ÷ 12, one decimal, not rounded; shown on Leave Balances and the payslip as
   "Earned to date (Entitled)".
-- Sick leave: 14 / 18 / 22 days (part time 10 / 13 / 15 from 2027), by completed years at 31 December of the leave year — or at the last day of
+- Sick leave: 14 / 18 / 22 days — part time the same as full time from the 1 January 2026 leave year (CLC 6 Nov 2026; casual keeps its own rule), by completed years at 31 December of the leave year — or at the last day of
   service if earlier (PRI-014, 3 Nov 2026): reaching the 2- or 5-year mark in the year gives the higher days for the whole year from 1 January.
   Full days in the year of joining; never pro-rated, and never deducted when someone leaves (EA s.24 / s.60F). Hospitalisation: a 60-day
   pool that includes sick leave.

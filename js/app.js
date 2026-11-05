@@ -173,6 +173,9 @@
     if (ob && ob.toPayroll && can('onboarding')) t.push({ ic: 'users', tone: 'orange', title: `${num(ob.toPayroll)} staff not yet in payroll`, sub: 'Active or onboarding without a payroll record', href: '#/onboarding' });
     if (ob && ob.idPending && can('people')) t.push({ ic: 'users', tone: 'rose', title: `${num(ob.idPending)} Employee IDs incomplete`, sub: 'Number reserved; gender or start date missing', href: '#/onboarding' });
     if (ob && ob.stampSoon && can('onboarding')) t.push({ ic: 'file-check', tone: 'rose', title: `${num(ob.stampSoon)} offer letters: stamp duty due`, sub: 'Due within 7 days or overdue', href: '#/onboarding' });
+    const lx = state.loecSum;   // offer letters (LOEC) prepared in the CMS (v2026.11.06)
+    if (lx?.to_approve && isDirectorOrAdmin()) t.push({ ic: 'file-check', tone: 'orange', title: `${num(lx.to_approve)} offer letter${lx.to_approve === 1 ? '' : 's'} waiting for approval`, sub: 'Check the letter, then approve or send it back', href: '#/applications' });
+    if (lx?.to_issue) t.push({ ic: 'file-check', tone: 'green', title: `${num(lx.to_issue)} offer letter${lx.to_issue === 1 ? '' : 's'} approved`, sub: 'Ready to issue and print', href: '#/applications' });
     const pa = state.payAppr || []; const mLab = (p) => new Date(`${p}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
     for (const r of pa.filter((x) => !x.approved_at)) if (isDirector()) t.push({ ic: 'wallet', tone: 'orange', title: `Payroll ${mLab(r.period)} waiting for your approval`, sub: 'Check the payroll report, then approve or return it', href: `#/payroll/${r.period.slice(0, 7)}` });
     for (const r of pa.filter((x) => x.approved_at)) if (can('payroll.finalise')) t.push({ ic: 'wallet', tone: 'green', title: `Payroll ${mLab(r.period)} approved`, sub: 'Ready to finalise', href: `#/payroll/${r.period.slice(0, 7)}` });
@@ -1130,6 +1133,7 @@
 
   const DECIDABLE = ['otcf', 'mtcf', 'tec', 'tec-v2'];
   const isDirector = () => (state.access?.roles || []).some((r) => r.code === 'director');
+  const isDirectorOrAdmin = () => (state.access?.roles || []).some((r) => ['director', 'admin', 'super_admin'].includes(r.code));
   const canDecide = (r) => r.stage === 'approval' && DECIDABLE.includes(r.form_code) && can3(r.module, 'A', r.company_code)
     && !r.is_mine && (!r.needs_director || isDirector());
   // claims plus, for those still waiting, whether each is the viewer's own and whether it needs the CEO / a Director
@@ -1655,6 +1659,8 @@
   ];
   const appStageOf = (s) => APP_STAGES.find((x) => x[0] === s) || [s, s || '—', ''];
   const appStageTag = (s) => { const [, l, t] = appStageOf(s); return `<span class="tag ${t} xs">${esc(l)}</span>`; };
+  // "Applied for" is sometimes stored as a list, e.g. ["Childcare (Ages 7–18)"]: show it as text (v2026.11.06)
+  const posTxt = (v) => { if (v == null) return ''; const t = String(v).trim(); if (t.startsWith('[')) { try { const a = JSON.parse(t); if (Array.isArray(a)) return a.filter(Boolean).join(', '); } catch (e) { /* plain text */ } } return t; };
   const LOEC = { draft: 'Draft', issued: 'Issued', signed_uploaded: 'Signed copy uploaded', verified: 'Verified', stamp_pending: 'Stamp pending', stamped: 'Stamped', completed: 'Completed' };
   const STAMP = { pending: 'Pending', submitted: 'Submitted', stamped: 'Stamped', not_required: 'Not required' };
   const today0 = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
@@ -1715,10 +1721,10 @@
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
       const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co)
-        && (!t || `${r.name} ${r.position || ''} ${r.title || ''} ${r.email || ''} ${r.contact || ''}`.toLowerCase().includes(t)));
+        && (!t || `${r.name} ${posTxt(r.position)} ${r.title || ''} ${r.email || ''} ${r.contact || ''}`.toLowerCase().includes(t)));
       $('#atable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="click" tabindex="0">
           <td class="nowrap">${dShort(r.submitted_at)}</td><td><b>${esc(r.name)}</b>${r.email ? `<small class="sub">${esc(r.email)}</small>` : ''}</td>
-          <td>${esc(coShort(r.company))}</td><td>${esc(r.title || r.position || '—')}${r.title && r.position && r.title !== r.position ? `<small class="sub">applied: ${esc(r.position)}</small>` : ''}</td>
+          <td>${esc(coShort(r.company))}</td><td>${esc(r.title || posTxt(r.position) || '—')}${r.title && r.position && r.title !== posTxt(r.position) ? `<small class="sub">applied: ${esc(posTxt(r.position))}</small>` : ''}</td>
           <td>${appStageTag(r.stage)}</td><td>${r.loec ? esc(LOEC[r.loec] || r.loec) : '<span class="muted">—</span>'}</td>
           <td class="nowrap">${r.start ? dShort(r.start) : '<span class="muted">—</span>'}</td>
           <td class="nowrap">${r.employee_id ? `<code>${esc(r.employee_id)}</code>${r.in_payroll ? '' : '<small class="sub warn-txt">not in payroll</small>'}` : '<span class="muted">—</span>'}</td></tr>`).join('')
@@ -1739,11 +1745,15 @@
     let a;
     try { a = await API.rpc('cms_recruit_application', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
     const kv = (k, v) => (v ? `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>` : '');
+    // the offer letter can be prepared in the CMS once the decision is Approved (or the application is shortlisted / in the offer stages), until hired
+    const loecOk = !a.person && (a.decision === 'Approved' || ['shortlisted', 'offer_preparation', 'offer_issued', 'offer_accepted', 'ready_for_onboarding'].includes(a.stage) || !!a.loec)
+      && (can('recruitment') || can('onboarding') || isDirectorOrAdmin());
     await modal({
       title: a.name, wide: true, ok: null, cancel: 'Close',
       body: `<p class="muted small">${esc(coShort(a.company))} · submitted ${dShort(a.submitted_at)} · ${appStageTag(a.stage)}${a.decision ? ` · decision: ${esc(a.decision)}` : ''}</p>
+        ${a.decision === 'Approved' && ['submitted', 'under_review', 'kiv'].includes(a.stage) ? '<p class="warn-box small">The decision is <b>Approved</b> in Office Use, but the stage was not moved on in MEG-EAF V2. Preparing the offer letter here moves it to Shortlisted → Preparing offer, with the steps in the history.</p>' : ''}
         <dl class="kv2">
-          ${kv('Applied for', esc(a.position || ''))}${kv('Approved job title', esc([a.title, a.level].filter(Boolean).join(' · ')))}${kv('JD reference', esc(a.jd_ref || ''))}
+          ${kv('Applied for', esc(posTxt(a.position)))}${kv('Approved job title', esc([a.title, a.level].filter(Boolean).join(' · ')))}${kv('JD reference', esc(a.jd_ref || ''))}
           ${kv('Chinese name', esc(a.chinese_name || ''))}${kv('Email', esc(a.email || ''))}${kv('Phone', esc(a.contact || ''))}
           ${kv('Available from', a.available_from ? dShort(a.available_from) : '')}${kv('Expected salary', a.expected_salary ? esc(a.expected_salary) : '')}
           ${kv('Interviewed by', esc(a.interviewed_by || ''))}${kv('Department', esc(a.department || ''))}${kv('Work location', esc(a.location || ''))}
@@ -1755,9 +1765,465 @@
         </dl>
         <h4 class="sec-h">Stage history</h4>
         ${a.events.length ? `<ol class="timeline">${a.events.map((e) => `<li><b>${esc(appStageOf(e.to)[1])}</b>${e.from ? ` <span class="muted small">from ${esc(appStageOf(e.from)[1])}</span>` : ''}<small class="sub">${dShort(e.at)} · ${esc(e.by || '—')}${e.note ? ` · ${esc(e.note)}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted small">No stage changes recorded yet.</p>'}
-        <div class="btn-row">${eafBtn('hr', 'Open in MEG-EAF V2', 'primary')}${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
+        <div class="btn-row">${loecOk ? `<a class="btn primary" href="#/loec?app=${esc(a.id)}" data-x>${icon('file-check')}${a.loec ? 'Open offer letter (LOEC)' : 'Prepare offer letter (LOEC)'}</a>` : ''}${eafBtn('hr', 'Open in MEG-EAF V2', loecOk ? '' : 'primary')}${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
         <p class="muted small">MEG-EAF V2 opens on its HR page; search for ${esc(a.name)} there. Photos and IC images stay in MEG-EAF V2.</p>`,
     });
+  }
+
+  // ---------------------------------------------------------------- 3.3a offer letter (LOEC) prepared in the CMS (PRI-017, v2026.11.06)
+  // The MEG-EAF V2 "Combined Letter of Offer & Contract of Employment, Version 2.0", wording as it is (Build 16 clauses, company wording for
+  // Happy Dino and Aborne). HR / Admin prepares → Admin / Director approves → HR / Admin issues. Kept in eaf_loec_records, so MEG-EAF V2 and
+  // Offers & Onboarding see the same letter; the terms are written back to the application (the same fields MEG-EAF V2 uses).
+  const LOEC_TYPES = ['Permanent Full-Time', 'Fixed-Term Full-Time', 'Part-Time', 'Temporary', 'Internship'];
+  const LOEC_OT = [['statutory_ot', 'Statutory OT eligible'], ['non_statutory', 'Non-statutory OT / Additional Work T&C'], ['manual_prescribed', 'Manual employee / prescribed statutory category'],
+    ['part_time', 'Part-time statutory arrangement'], ['other', 'Other approved category']];
+  const LOEC_PROFILE = {   // MEG-EAF V2 ENTITY_PROFILES (probation for Happy Dino and Aborne the same as MyEden Group, CLC 5 Nov 2026)
+    meg: { prefix: 'MEG', offDay: 'Saturday', restDay: 'Sunday', workLocationText: 'Company premises and other assigned locations as reasonably required.' },
+    meh: { prefix: 'MEH', offDay: 'Saturday', restDay: 'Sunday', workLocationText: 'Company premises and other assigned locations as reasonably required.' },
+    hds: { prefix: 'HDS', offDay: 'Saturday', restDay: 'Sunday', workLocationText: 'Company office, schools, client premises, event venues and other assigned programme locations as reasonably required.' },
+    abn: { prefix: 'ABP', offDay: 'Saturday', restDay: 'Sunday', workLocationText: 'Company office, client premises, event venues and other assigned project locations as reasonably required.' },
+  };
+  const LOEC_CMS = { meg: 'MEG', meh: 'MEH', hds: 'HD', abn: 'ABP' };
+  const LOEC_ST = { draft: 'Draft', issued: 'Issued', signed_uploaded: 'Signed copy uploaded', verified: 'Verified', stamp_pending: 'Stamp pending', stamped: 'Stamped', completed: 'Completed', superseded: 'Superseded', cancelled: 'Cancelled' };
+  const lxDate = (iso) => { if (!iso) return '________________'; const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`); return isNaN(d) ? esc(iso) : `${d.getDate()} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()]} ${d.getFullYear()}`; };
+  const lxTime = (t) => { if (!t) return '________'; const [h0, m] = String(t).split(':'); const h = parseInt(h0, 10); return `${h % 12 || 12}.${m}${h >= 12 ? 'pm' : 'am'}`; };
+  const lxMoney = (v) => { const n = parseFloat(v || 0); return isFinite(n) ? `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'RM 0.00'; };
+  function lxWords(v) {   // MEG-EAF numberToWords
+    const num = Math.round(parseFloat(v) * 100) / 100; if (isNaN(num)) return '';
+    const rm = Math.floor(num); const sen = Math.round((num - rm) * 100);
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const three = (n) => { let s = ''; if (n >= 100) { s += `${ones[Math.floor(n / 100)]} Hundred `; n %= 100; } if (n >= 20) { s += `${tens[Math.floor(n / 10)]} `; n %= 10; } if (n > 0) s += `${ones[n]} `; return s.trim(); };
+    const conv = (n) => { if (n === 0) return 'Zero'; const u = ['', 'Thousand', 'Million', 'Billion']; const g = []; let t = n; while (t > 0) { g.push(t % 1000); t = Math.floor(t / 1000); } const p = []; for (let i = g.length - 1; i >= 0; i--) if (g[i] > 0) p.push(three(g[i]) + (i > 0 ? ` ${u[i]}` : '')); return p.join(' ').trim(); };
+    return `Ringgit Malaysia ${conv(rm)}${sen > 0 ? ` and ${conv(sen)} Sen` : ''} Only`;
+  }
+  const lxMin = (t) => { if (!t || !String(t).includes(':')) return null; const [h, m] = String(t).split(':').map(Number); return isFinite(h) && isFinite(m) ? h * 60 + m : null; };
+  const lxSpan = (a, b) => { let x = lxMin(a), y = lxMin(b); if (x === null || y === null) return 0; if (y < x) y += 1440; return Math.max(0, (y - x) / 60); };
+  const lxDaysOf = (txt) => { const s = String(txt || '').toLowerCase(); if (/mon\w*\s*(to|-|–)\s*sat/.test(s)) return 6; if (/mon\w*\s*(to|-|–)\s*fri/.test(s)) return 5; const n = parseFloat(s); return n > 0 && n <= 7 ? n : 5; };
+  const lxOn = (v) => v === true || v === 'true' || v === 'on' || v === 1;
+  // the centre decides the company the letter is issued under (CLC 5 Nov 2026)
+  const loecSuggest = (t, fallback) => {
+    const s = `${t.workLocation || ''} ${t.workLocationOtherText || ''} ${t.finalDept || ''}`.toLowerCase();
+    if (/tadika\s+(genius\s+eden|happy\s+dino)/.test(s)) return 'meh';
+    if (/taska\s+genius\s+eden|pusat\s+jagaan|eden\s+childcare/.test(s)) return 'meg';
+    return fallback;
+  };
+  const loecAppendixText = (purpose, resp) => {   // MEG-EAF buildAppendix1Text
+    const items = (resp || []).filter((r) => r && (r.title || r.description));
+    if (!items.length) return purpose ? `JOB PURPOSE\n${purpose}` : '';
+    const L = []; if (purpose) L.push('JOB PURPOSE', purpose, ''); L.push('KEY RESPONSIBILITIES'); items.forEach((r) => L.push(`${r.title || ''}: ${r.description || ''}`)); return L.join('\n');
+  };
+
+  /** The letter's data, as MEG-EAF V2 gatherLoceData builds it (values escaped once here). */
+  function loecData(G, T, co) {
+    const A = G.applicant || {}; const c = (G.companies || []).find((x) => x.eaf === co) || {};
+    const icRaw = [A.ic1, A.ic2, A.ic3].filter((x) => x).join('-'); const ic = icRaw.replace(/-/g, '') ? icRaw : (A.passport || '');
+    const addr = [A.addr1, A.addr2, A.addr3, A.postcode_town, A.state].filter((x) => x && String(x).trim()).map(esc);
+    const hourly = T.v2PayBasis === 'hourly'; const base = parseFloat(T.finalSalary || 0) || 0; const fa = parseFloat(T.v2FixedAllowance || 0) || 0; const oa = parseFloat(T.v2OtherAllowance || 0) || 0;
+    const s2 = lxOn(T.v2Session2Enabled); const parts = [];
+    if (T.finalFrom || T.finalTo) parts.push(`From ${esc(lxTime(T.finalFrom))} to ${esc(lxTime(T.finalTo))}`);
+    if (s2 && (T.v2Session2From || T.v2Session2To)) parts.push(`From ${esc(lxTime(T.v2Session2From))} to ${esc(lxTime(T.v2Session2To))}`);
+    const loc = lxOn(T.workLocationOther) ? (T.workLocationOtherText || '') : (T.workLocation || '');
+    const blank = (v) => (v && String(v).trim() ? esc(v) : '________________');
+    const otLabel = (LOEC_OT.find(([k]) => k === T.v2OtCategory) || [])[1];
+    return {
+      companyCode: co, company: c, p: { ...(LOEC_PROFILE[co] || LOEC_PROFILE.meg), handbook: T.v2Handbook || c.handbook || '' },
+      name: blank(A.name), title: esc(T.cmsTitle || (/^f/i.test(A.gender || '') ? 'Ms' : /^m/i.test(A.gender || '') ? 'Mr' : 'Mr/Ms')), ic: blank(ic),
+      addrLines: addr.length ? addr : ['________________________________'], addrInline: addr.join(', ') || '________________________________',
+      letterDateFmt: lxDate(T.letterDate), jobTitle: blank(T.approvedJobTitle || T.v2ResolvedJobTitle), dept: blank(T.finalDept), startDateFmt: lxDate(T.finalStart),
+      timeFrom: esc(lxTime(T.finalFrom)), timeTo: esc(lxTime(T.finalTo)), workLocation: blank(loc), reportingName: blank(T.reportingName),
+      employmentType: esc(T.v2EmploymentType || 'Permanent Full-Time'), fixedTermEnd: T.v2FixedTermEnd ? lxDate(T.v2FixedTermEnd) : '',
+      probationMonths: esc(T.v2ProbationMonths || ''), probationNotice: esc(T.v2ProbationNotice || ''), probationNoticeUnit: esc(T.v2ProbationNoticeUnit || 'weeks'),
+      otCategory: esc(otLabel || T.v2OtCategory || ''), payBasis: hourly ? 'hourly' : 'monthly', basicSalaryFmt: lxMoney(base), salaryWords: esc(T.finalSalaryWords || lxWords(base)),
+      fixedAllowance: fa, otherAllowance: oa, fixedAllowanceFmt: lxMoney(fa), otherAllowanceFmt: lxMoney(oa), totalFixedFmt: lxMoney(base + fa + oa),
+      jdReference: esc(T.v2JdReference || ''), jdLevel: esc(T.jobTitleLevel && !String(T.jobTitleLevel).includes('|') && !String(T.jobTitleLevel).startsWith('jd:') ? T.jobTitleLevel : ''),
+      workingDays: esc(T.v2WorkingDays || ''), workingScheduleNote: esc(T.v2WorkingScheduleNote || ''), workingHoursText: parts.join(' and '),
+      weeklyHours: T.cmsWeeklyHours ? esc(T.cmsWeeklyHours) : '', appendix1: T.appendix1Text || '', appendices: Array.isArray(T.v2Appendices) ? T.v2Appendices : [],
+    };
+  }
+
+  /** The letter body (HTML), MEG-EAF V2 Build 16 wording. */
+  function loecHtml(d) {
+    const code = d.companyCode; const p = d.p; const c = d.company; const out = [];
+    const H = (s) => out.push(`<p class="lx-h">${s}</p>`);
+    const add = (n, t) => out.push(`<div class="lx-c"><span class="lx-n">${n}</span><div>${t}</div></div>`);
+    const tbl = (title, html) => out.push(`<div class="lx-tbl"><p class="lx-tt">${title}</p><table>${html}</table></div>`);
+    const fixed = d.employmentType === 'Fixed-Term Full-Time' && d.fixedTermEnd ? `<tr><td>Employment Term</td><td>${d.employmentType} until ${d.fixedTermEnd}</td></tr>` : `<tr><td>Employment Type</td><td>${d.employmentType}</td></tr>`;
+    let pay = d.payBasis === 'hourly' ? `<tr><td>Basic Hourly Rate</td><td>${d.basicSalaryFmt} per hour (${d.salaryWords})</td></tr>` : `<tr><td>Basic Salary</td><td>${d.basicSalaryFmt} (${d.salaryWords})</td></tr>`;
+    if (d.fixedAllowance) pay += `<tr><td>Fixed Contractual Allowance</td><td>${d.fixedAllowanceFmt} per month</td></tr>`;
+    if (d.otherAllowance) pay += `<tr><td>Other Contractual Allowance</td><td>${d.otherAllowanceFmt} per month</td></tr>`;
+    if (d.payBasis !== 'hourly') pay += `<tr><td>Total Fixed Monthly Remuneration</td><td>${d.totalFixedFmt}</td></tr>`;
+    else if (d.fixedAllowance || d.otherAllowance) pay += `<tr><td>Total Fixed Monthly Allowances</td><td>${lxMoney(d.fixedAllowance + d.otherAllowance)}</td></tr>`;
+    let wh = d.workingHoursText || `From ${d.timeFrom} to ${d.timeTo}`;
+    if (code === 'hds') wh += ', subject to lawful school programme, camp or event scheduling where applicable';
+    else if (code === 'abn') wh += ', subject to lawful event or project scheduling where applicable';
+    if (d.workingScheduleNote) wh += `<br><small>${d.workingScheduleNote}</small>`;
+    out.push(`<p class="lx-conf">PRIVATE &amp; CONFIDENTIAL</p><p>${d.letterDateFmt}</p><div class="lx-tight"><p>${d.name}</p><p>${d.ic}</p>${d.addrLines.map((l) => `<p>${l}</p>`).join('')}</div>`,
+      `<p class="lx-dear">Dear ${d.title} ${d.name},</p><p class="lx-subj">LETTER OF OFFER &amp; CONTRACT OF EMPLOYMENT — ${String(d.jobTitle).toUpperCase()}</p>`,
+      `<p>This Letter of Offer and Contract of Employment is made on <strong>${d.letterDateFmt}</strong> between:</p><p><strong>${esc(c.name || '')}</strong> (Company No.: <strong>${esc(c.registration_no || '')}</strong>), a company incorporated in Malaysia with its registered address at <strong>${esc(c.registered_address || '')}</strong> ("the Employer"), and</p>`,
+      `<p><strong>${d.name}</strong> (NRIC/Passport No.: <strong>${d.ic}</strong>), of <strong>${d.addrInline}</strong> ("the Employee").</p><p><strong>This is one combined employment agreement.</strong> By signing it after reviewing the complete document and all included Appendices, the Employee accepts the offer of employment and agrees to the Employment Contract at the same time.</p>`,
+      `<p>The Employer employs the Employee, and the Employee agrees to serve the Employer, on the following salient terms and conditions:</p><table class="lx-salient"><tr><th style="width:42%">Salient Term</th><th>Detail</th></tr>`
+      + `<tr><td>a. Job Title</td><td>${d.jobTitle}${d.jdReference ? `<br><small>JD Ref: ${d.jdReference}${d.jdLevel ? ` · ${d.jdLevel}` : ''}</small>` : ''}</td></tr><tr><td>b. Commencement Date</td><td>${d.startDateFmt}</td></tr>${fixed}`
+      + `<tr><td>Probationary Period</td><td>${d.probationMonths || '—'} month(s)</td></tr>${pay}`
+      + `${d.workingDays ? `<tr><td>Normal Working Days</td><td>${d.workingDays}</td></tr>` : ''}<tr><td>Working Hours</td><td>${wh}</td></tr>`
+      + `${d.weeklyHours && d.employmentType === 'Part-Time' ? `<tr><td>Normal Weekly Hours</td><td>${d.weeklyHours} hours</td></tr>` : ''}`
+      + `<tr><td>Normal Off Day / Rest Day</td><td>${esc(p.offDay)} / ${esc(p.restDay)}</td></tr><tr><td>Place of Work</td><td>${d.workLocation}</td></tr><tr><td>Reporting Personnel</td><td>${d.reportingName}</td></tr></table>`);
+
+    H('1. COMMENCEMENT AND TERM');
+    add('1.1', `The Employee’s employment commences on ${d.startDateFmt} ("Commencement Date") and continues subject to this Contract until lawfully terminated.`);
+    add('1.2', d.employmentType === 'Fixed-Term Full-Time' && d.fixedTermEnd ? `This is a fixed-term employment ending on ${d.fixedTermEnd}, unless renewed or earlier lawfully terminated in accordance with this Contract.` : `This employment is ${d.employmentType}.`);
+    H('2. POSITION, REPORTING AND DUTIES');
+    add('2.1', `The Employee is employed as ${d.jobTitle} under ${d.dept} department and reports to ${d.reportingName}, or such other authorised person as the Employer may designate.`);
+    add('2.2', 'The Employee shall perform the duties set out in Appendix 1 (Job Description) and other lawful and reasonable duties consistent with the position, capability and Employer’s business needs.');
+    add('2.3', 'The Employee shall not, without prior written consent, engage in outside work or business that creates a conflict of interest, competes with the Employer, uses Company time/resources, or materially affects attendance or performance.');
+    H('3. PROBATION AND CONFIRMATION');
+    add('3.1', `The Employee will undergo a probationary period of ${d.probationMonths || '—'} month(s) from the Commencement Date.`);
+    add('3.2', `During probation, either party may terminate this Contract by giving ${d.probationNotice || '—'} ${d.probationNoticeUnit} written notice, or lawful indemnity in lieu of notice. The notice period is the same for Employer and Employee.`);
+    add('3.3', 'Confirmation is effective only when communicated in writing. Where further assessment is reasonably required, probation may be extended by written notice, subject to the Employee’s written terms and applicable law.');
+    H(code === 'hds' ? '4. PLACE OF WORK, SCHOOL / PROGRAMME ASSIGNMENT AND TRANSFER' : code === 'abn' ? '4. PLACE OF WORK, EVENT / PROJECT ASSIGNMENT AND TRANSFER' : '4. PLACE OF WORK AND TRANSFER');
+    add('4.1', `The Employee’s normal place of work is ${d.workLocation}.`);
+    if (code === 'hds') {
+      add('4.2', 'Happy Dino operates programmes at its office, schools, client premises, event venues and other approved programme locations. The Employee may be reasonably assigned to such locations according to programme requirements. A lawful temporary assignment or venue deployment does not by itself change the legal employer.');
+      add('4.3', 'School programmes, science camps, demonstrations, promotional activities and other approved programmes may require programme preparation, equipment loading or unloading, setup, pack-down and authorised work-related travel where relevant to the Employee’s role.');
+    } else if (code === 'abn') {
+      add('4.2', 'Aborne Project operates at its office, client premises, hotels, halls, restaurants, outdoor sites, event venues and other approved project locations. The Employee may be reasonably assigned to such locations according to project requirements. A lawful temporary assignment or venue deployment does not by itself change the legal employer.');
+      add('4.3', 'Event and project assignments may include site visits, client meetings, rehearsals, setup, live-event execution, dismantling, pack-down and authorised work-related travel where relevant to the Employee’s role.');
+    } else add('4.2', `${esc(p.workLocationText)} A lawful temporary assignment or transfer does not by itself change the legal employer.`);
+    H('5. HOURS OF WORK, REST DAY AND ADDITIONAL WORK');
+    add('5.1', `The Employee’s normal working schedule is ${d.workingHoursText || 'the agreed working schedule'}${d.workingDays ? ` on ${d.workingDays}` : ''}, subject to the statutory working-time framework and genuine meal/rest periods during which the Employee is free from duties.${d.workingScheduleNote ? ` ${d.workingScheduleNote}` : ''}`);
+    add('5.2', `Under the normal schedule, ${esc(p.offDay)} is the general Off Day and ${esc(p.restDay)} is ordinarily the Rest Day. Roster changes and work on a Rest Day or public holiday will be administered according to Malaysian law and applicable written terms.`);
+    if (code === 'hds') add('5.3', 'Where required by an authorised school programme, camp or Company event, operational scheduling may involve earlier reporting times, later finishing times, weekends, public holidays, programme preparation, setup, pack-down or authorised travel. Any mandatory time that qualifies as working time under Malaysian law shall be treated accordingly.');
+    else if (code === 'abn') add('5.3', 'Where required by an authorised event or project, operational scheduling may involve early call times, evenings, nights, weekends, public holidays, venue inspections, rehearsals, setup, live-event execution, dismantling, pack-down or authorised travel. Any mandatory time that qualifies as working time under Malaysian law shall be treated accordingly.');
+    else add('5.3', 'Any authorised change to the normal schedule will be communicated through the applicable roster, instruction or written arrangement and administered according to Malaysian law and the Employee’s written terms.');
+    add('5.4', `The Employee’s statutory overtime / additional-work treatment is based on the applicable legal category and written terms. HR classification: ${d.otCategory || 'to be determined in the HR record'}. Employees outside statutory payment coverage receive only such allowance, time-off or other arrangement as is expressly provided by their written terms or Company policy.`);
+    H('6. WAGES, ALLOWANCES AND STATUTORY CONTRIBUTIONS');
+    add('6.1', d.payBasis === 'hourly' ? `The Employee is paid a basic hourly rate of ${d.basicSalaryFmt} per hour (${d.salaryWords}). Wages are calculated from authorised recorded working time and paid within the statutory deadline through an approved financial institution, less lawful deductions. Fixed contractual allowances, if any, are monthly amounts stated in the salient terms.`
+      : `The Employee is paid a basic salary of ${d.basicSalaryFmt} (${d.salaryWords}) per month. Fixed contractual allowance(s), if any, are stated in the salient terms. Wages are paid within the statutory deadline through an approved financial institution, less lawful deductions.`);
+    if (code === 'hds') add('6.2', 'Programme, camp, mileage, meal, travel, accommodation, authorised material purchases and reimbursement claims are governed by separate current Company policy unless expressly stated as fixed contractual remuneration. Bonus, increment and other variable benefits are discretionary unless guaranteed in writing.');
+    else if (code === 'abn') add('6.2', 'Event, project, crew, mileage, meal, travel, accommodation, authorised purchasing and reimbursement claims are governed by separate current Company policy unless expressly stated as fixed contractual remuneration. Bonus, increment and other variable benefits are discretionary unless guaranteed in writing.');
+    else add('6.2', 'Travel, mileage, meal, authorised purchasing and reimbursement claims are governed by separate current Company policy unless expressly stated as fixed contractual remuneration. Bonus, increment and other variable benefits are discretionary unless guaranteed in writing.');
+    add('6.3', 'The Employer shall make applicable statutory deductions and contributions including EPF/KWSP, SOCSO/PERKESO, EIS/SIP and tax deductions at prevailing rates.');
+    H('7. LEAVE AND PUBLIC HOLIDAYS');
+    add('7.1', 'Statutory annual leave is 8 days for less than 2 years of continuous service, 12 days for 2 years to less than 5 years, and 16 days for 5 years or more, subject to the Employment Act 1955 and any lawful more-favourable Company benefit.');
+    tbl('Table A — Statutory Annual Leave', '<tr><th>Continuous Service</th><th>Paid Annual Leave</th></tr><tr><td>&lt; 2 years</td><td>8 days</td></tr><tr><td>2 years to &lt; 5 years</td><td>12 days</td></tr><tr><td>5 years and above</td><td>16 days</td></tr>');
+    add('7.2', 'Paid sick leave is 14 days for less than 2 years of service, 18 days for 2 years to less than 5 years, and 22 days for 5 years or more, plus 60 days paid hospitalisation leave where hospitalisation is necessary, subject to the Employment Act 1955 and valid certification requirements.');
+    tbl('Table B — Statutory Sick / Hospitalisation Leave', '<tr><th>Continuous Service</th><th>Paid Sick Leave</th><th>Paid Hospitalisation Leave</th></tr><tr><td>&lt; 2 years</td><td>14 days</td><td>60 days</td></tr><tr><td>2 years to &lt; 5 years</td><td>18 days</td><td>60 days</td></tr><tr><td>5 years and above</td><td>22 days</td><td>60 days</td></tr>');
+    add('7.3', 'The Employee is entitled to paid public holidays, maternity leave, paternity leave and other statutory leave in accordance with applicable Malaysian law. Any additional Company benefit is governed by the applicable Employee Handbook or written benefit policy.');
+    H('8. FLEXIBLE WORKING ARRANGEMENT');
+    if (code === 'hds') add('8.1', 'An employee may apply in writing for a flexible working arrangement in accordance with the Employment Act 1955. School-facing, child-facing and programme-delivery roles may have limited practical flexibility where physical presence, supervision, programme timing or safe delivery is an essential duty.');
+    else if (code === 'abn') add('8.1', 'An employee may apply in writing for a flexible working arrangement in accordance with the Employment Act 1955. Client-facing, venue-facing and live-event roles may have limited practical flexibility where physical presence, call time, rehearsal, setup or project execution is an essential duty.');
+    else add('8.1', 'An employee may apply in writing for a flexible working arrangement in accordance with the Employment Act 1955. Any approved arrangement remains subject to the operational requirements of the Employee’s role.');
+    H('9. HANDBOOK, BENEFITS AND COMPANY POLICIES');
+    add('9.1', `The Employee shall comply with the applicable ${esc(p.handbook)} and lawful Company policies, SOPs, safety rules and authorised instructions as amended from time to time.`);
+    add('9.2', 'Benefits, if any, are governed by the Employee’s written terms and applicable Company benefit policies. A past discretionary benefit does not become a guaranteed contractual entitlement merely through past practice unless law or written contract provides otherwise.');
+    if (code === 'hds') {
+      H('10. HAPPY DINO CHILD SAFETY, SCHOOL PROGRAMME AND PROFESSIONAL DUTIES');
+      add('10.1', 'The Employee must safeguard the welfare, dignity and safety of children and participants, maintain appropriate professional boundaries and comply with Happy Dino’s approved child-safety, school and programme procedures. Any safeguarding concern, injury, unsafe condition or serious behavioural incident must be reported promptly through the authorised Company route.');
+      add('10.2', 'Where supervision forms part of the Employee’s assigned duties, the Employee must follow approved attendance, headcount, movement, supervision and handover procedures and must not release a child contrary to the authorised school, parent/guardian or Company arrangement.');
+      add('10.3', 'Corporal punishment, humiliating or degrading treatment, threatening behaviour, abusive language, inappropriate physical contact and other conduct inconsistent with professional child-safe practice are prohibited.');
+      add('10.4', 'Photographs, videos, recordings, student information and parent/guardian information may be captured, used, stored or shared only for authorised work purposes and in accordance with applicable consent, school requirements, Company policy and law. Employees must not publish or privately circulate such material through personal accounts without authority.');
+      add('10.5', 'Science, activity and programme materials, tools and equipment must be used according to approved instructions and safety controls. Damaged, missing or potentially unsafe equipment or materials must be isolated where reasonably practicable and reported promptly.');
+      add('10.6', 'Employees assigned to Happy Dino camps, school programmes, promotional activities and Company events must wear the designated Happy Dino uniform and required safe footwear unless Management authorises alternative attire for a particular assignment.');
+    } else if (code === 'abn') {
+      H('10. ABORNE EVENT, CLIENT AND PROFESSIONAL DUTIES');
+      add('10.1', 'The Employee must protect client trust, follow authorised event/project instructions, comply with venue and site rules, safeguard Company and client property, and promptly escalate material safety, operational or client-service issues to the Event Lead, Project PIC or Management.');
+      add('10.2', 'Unless specifically authorised in writing, the Employee must not commit Aborne Project to prices, discounts, refunds, purchases, supplier appointments, contractual promises, scope changes or other financial or commercial obligations.');
+      add('10.3', 'Client lists, quotations, pricing, proposals, concepts, production plans, run sheets, schedules, floor plans, guest information, supplier arrangements and other non-public project materials must be used only for authorised Company work and protected from unauthorised disclosure.');
+      add('10.4', 'Employees must comply with event-specific mandatory attire, accreditation, access-control and identification requirements instructed by the Event Lead / Project PIC or Management.');
+      add('10.5', 'Employees must not consume alcohol while on duty or while representing Aborne Project at an event. There is no hospitality exception. Reporting for duty while impaired by alcohol, illegal drugs or another substance that makes performance unsafe is prohibited.');
+      add('10.6', 'The Employee must comply with applicable event, venue, equipment and site-safety procedures and must promptly report accidents, damage, loss, unsafe conditions, access breaches or other material incidents.');
+    } else {
+      H('10. CONDUCT, CONFIDENTIALITY AND INTELLECTUAL PROPERTY');
+      add('10.1', 'The Employee shall comply with the Employee Handbook, professional conduct standards, confidentiality obligations, IT rules, safety requirements and other lawful policies of the Employer.');
+    }
+    H('11. CONFIDENTIALITY, RECORDS AND INTELLECTUAL PROPERTY');
+    if (code === 'hds') {
+      add('11.1', 'The Employee shall protect non-public Employer, school, child/student, participant, parent/guardian, client, vendor, financial, HR, operational and investigation information obtained through employment and shall not disclose or use it without authority.');
+      add('11.2', 'The Employee must not falsify, destroy, conceal, delete, export or unauthorisedly remove Company, school or programme records, attendance information, incident records, child/participant information or business information.');
+      add('11.3', 'Programme plans, activity materials, training content, science/activity concepts, worksheets, operational documents and other work product created in the course of authorised employment shall be handled in accordance with the Contract and applicable Malaysian law.');
+    } else if (code === 'abn') {
+      add('11.1', 'The Employee shall protect non-public Employer, client, guest, vendor, pricing, quotation, proposal, financial, HR, production, operational and investigation information obtained through employment and shall not disclose or use it without authority.');
+      add('11.2', 'The Employee must not falsify, destroy, conceal, delete, export or unauthorisedly remove Company or client records, quotations, run sheets, project files, correspondence, credentials or business information.');
+      add('11.3', 'Event concepts, proposals, designs, production plans, run sheets, operational documents and other work product created in the course of authorised employment shall be handled in accordance with the Contract and applicable Malaysian law.');
+    } else {
+      add('11.1', 'The Employee shall protect non-public Employer, client, participant, vendor, financial, HR, operational and investigation information obtained through employment and shall not disclose or use it without authority.');
+      add('11.2', 'The Employee must not falsify, destroy, conceal, delete, export or unauthorisedly remove Company records or business information.');
+      add('11.3', 'Work product created in the course of authorised employment shall be handled in accordance with the Contract and applicable Malaysian law.');
+    }
+    H('12. EQUAL OPPORTUNITY, HARASSMENT, BULLYING AND SAFETY');
+    add('12.1', 'Unlawful discrimination, sexual harassment, bullying, threats and workplace violence are prohibited. The Employer will administer complaints and safety concerns according to Malaysian law and Company procedure.');
+    if (code === 'hds') add('12.2', 'The Employee must take reasonable care for personal safety and for the safety of children, participants, colleagues and others affected by the Employee’s acts or omissions and must comply with applicable school, programme, activity, equipment and venue safety requirements.');
+    else if (code === 'abn') add('12.2', 'The Employee must take reasonable care for personal safety and for others affected by the Employee’s acts or omissions and must comply with applicable workplace, event, venue, equipment and project-site safety requirements.');
+    else add('12.2', 'The Employee must take reasonable care for personal safety and for others affected by the Employee’s acts or omissions and comply with applicable workplace safety requirements.');
+    H('13. PERSONAL DATA AND EMPLOYMENT RECORDS');
+    add('13.1', 'The Employer may collect, process, retain and disclose employment-related personal information for legitimate employment, payroll, statutory, safety, administrative and verification purposes in accordance with applicable Malaysian law and Company notices.');
+    H('14. ABSENCE AND ATTENDANCE');
+    if (code === 'hds') add('14.1', 'The Employee must report absence, lateness or inability to attend a scheduled shift, school programme, camp or Company assignment as soon as reasonably practicable through the approved Company route so that participant supervision and programme coverage can be arranged. Unauthorised absence may lead to lawful unpaid treatment for time not worked and/or disciplinary action.');
+    else if (code === 'abn') add('14.1', 'The Employee must report absence, lateness or inability to attend an event, project, rehearsal, setup or other scheduled assignment as soon as reasonably practicable through the approved Company route so that operational coverage can be arranged. Unauthorised absence may lead to lawful unpaid treatment for time not worked and/or disciplinary action.');
+    else add('14.1', 'The Employee must report absence, lateness or inability to attend scheduled work as soon as reasonably practicable through the approved Company route. Unauthorised absence may lead to lawful unpaid treatment for time not worked and/or disciplinary action.');
+    H('15. NOTICE, RESIGNATION AND TERMINATION');
+    add('15.1', 'After confirmation, either party may terminate this Contract by written notice of 4 weeks for less than 2 years of service, 6 weeks for 2 years to less than 5 years, and 12 weeks for 5 years or more, unless a lawful written term provides otherwise. Lawful indemnity in lieu may apply.');
+    tbl('Table C — Notice of Termination After Confirmation', '<tr><th>Continuous Service</th><th>Notice</th></tr><tr><td>&lt; 2 years</td><td>4 weeks</td></tr><tr><td>2 years to &lt; 5 years</td><td>6 weeks</td></tr><tr><td>5 years and above</td><td>12 weeks</td></tr>');
+    add('15.2', 'Annual leave does not automatically shorten the notice period. Statutory annual leave and any untaken balance on termination shall be administered according to applicable law and Company procedure.');
+    if (code === 'hds') add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return programme files, attendance or incident records, school/parent communications held for work, Company equipment, materials, documents, keys, devices and access credentials.');
+    else if (code === 'abn') add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return project files, run sheets, client correspondence, venue passes, credentials, Company equipment, documents, devices, keys and system access.');
+    else add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return Company property, records and access.');
+    H('16. DISCIPLINE, GRIEVANCE AND GOOD-FAITH REPORTING');
+    add('16.1', 'Disciplinary action is evidence-based and proportionate. The Employee will be informed of material allegations and given a reasonable opportunity to respond. The Company may use precautionary measures that are protective and do not themselves establish guilt.');
+    add('16.2', 'The Employee may raise grievances and good-faith reports through the applicable Company process without prohibited retaliation.');
+    H('17. GOVERNING LAW, LANGUAGE AND LEGAL HIERARCHY');
+    add('17.1', 'This Contract is governed by the laws of Malaysia and is intended for employment in Peninsular Malaysia.');
+    add('17.2', 'Mandatory Malaysian statutory minimums prevail over any less-favourable contractual or policy wording, while lawful more-favourable written benefits continue according to their terms.');
+    add('17.3', 'The English version of this Contract governs the Company’s interpretation, subject to any mandatory Malaysian language or form requirement.');
+    H('18. ENTIRE AGREEMENT, JD AND VARIATION');
+    add('18.1', 'This combined Letter of Offer &amp; Contract of Employment, Appendix 1 Job Description, every additional Appendix expressly included in this agreement, the applicable Employee Handbook and incorporated written policies form the employment documentation.');
+    add('18.2', 'A later JD version may be assigned and acknowledged through the Company’s employment system without reissuing the entire Contract where the change is within the lawful employment relationship and does not unlawfully alter a fundamental contractual term. Any variation to a core contractual term shall use the legally appropriate written process.');
+    H('19. MANUAL SIGNING, RECORD COPY AND STAMP DUTY');
+    add('19.1', 'This Contract is intended to be reviewed and signed manually by the Employee and an authorised Employer representative. The signed paper agreement may be scanned and uploaded into the Company’s employment system as the official digital record copy.');
+    add('19.2', 'This Contract shall be stamped in accordance with applicable Malaysian stamp duty requirements within the required timeframe.');
+    // acceptance and manual signing (Build 16)
+    out.push(`<div class="lx-sign"><p class="lx-h" style="margin-top:4mm">ACCEPTANCE AND MANUAL SIGNING</p><p>By signing below, the Employee confirms that the complete Letter of Offer &amp; Contract of Employment and all included Appendices have been reviewed, the offer is accepted, and the employment contract is agreed at the same time.</p>
+      <table class="lx-sigtable"><tr><td>For and on behalf of the Employer<div class="lx-sigspace"></div>.....................................................<br>Name:<br>Designation:<br>Date:</td>
+      <td>Accepted and Signed by the Employee<div class="lx-sigspace"></div>.....................................................<br>Name:<br>NRIC/Passport No.:<br>Date:</td></tr></table></div>`);
+    // Appendix 1 — Job Description (MEG-EAF buildLoceAppendixBlocks + the JD reference line)
+    const ap = [`<h3 class="lx-ap">APPENDIX 1 — JOB DESCRIPTION</h3>`, `<p style="font-size:8.5pt;color:#555">${d.jdReference ? `JD Reference: <strong>${d.jdReference}</strong>${d.jdLevel ? ` · Level ${d.jdLevel}` : ''}` : ''}</p>`, `<p style="font-weight:700">Position: ${d.jobTitle}</p>`];
+    let items = [];
+    const flush = () => { if (items.length) { ap.push(`<ul class="lx-resp">${items.join('')}</ul>`); items = []; } };
+    String(d.appendix1 || '').split('\n').forEach((ln) => {
+      const t = ln.trim(); if (!t) { flush(); return; }
+      if (t === 'JOB PURPOSE' || t === 'KEY RESPONSIBILITIES') { flush(); ap.push(`<p style="font-weight:700;text-decoration:underline">${esc(t)}</p>`); return; }
+      const m = t.match(/^([^:]{2,60}):\s*(.+)$/);
+      if (m) items.push(`<li><strong>${esc(m[1])}:</strong><br>${esc(m[2])}</li>`); else { flush(); ap.push(`<p>${esc(t)}</p>`); }
+    });
+    flush();
+    out.push(`<div class="lx-appx">${ap.join('')}</div>`);
+    // additional appendices from MEG-EAF V2 (Build 16), when included there
+    (d.appendices || []).filter((a) => a && a.enabled).sort((a, b) => Number(a.number) - Number(b.number)).forEach((a) => {
+      const prose = (txt) => String(txt || '').split(/\n\s*\n/).map((part) => part.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)).filter((l) => l.length)
+        .map((l) => (l.length > 1 && /^(APPENDIX\s+\d+\b|ACKNOWLEDGEMENT|ACKNOWLEDGMENT|CLOSING NOTE)/i.test(l[0]) ? `<p style="font-weight:700">${esc(l.shift())}</p><p>${esc(l.join(' '))}</p>` : `<p>${esc(l.join(' '))}</p>`)).join('');
+      let h = `<h3 class="lx-ap">APPENDIX ${Number(a.number) || ''} — ${esc(String(a.title || 'ADDITIONAL TERMS & CONDITIONS').toUpperCase())}</h3>${prose(a.intro)}`;
+      if (a.tableEnabled && Array.isArray(a.columns) && a.columns.length) {
+        h += `<table class="lx-grid"><tr>${a.columns.map((c2) => `<th>${esc(c2 || '')}</th>`).join('')}</tr>${(Array.isArray(a.rows) ? a.rows : []).map((r) => `<tr>${a.columns.map((_, i) => `<td>${esc((r && r[i]) || '').replace(/\n/g, '<br>')}</td>`).join('')}</tr>`).join('')}</table>`;
+      }
+      out.push(`<div class="lx-appx">${h}${prose(a.closing)}</div>`);
+    });
+    return out.join('');
+  }
+  /** One printable sheet: letterhead repeated on every page, reference line at the foot of every page. */
+  function loecSheet(d, ref) {
+    const head = LETTERHEADS[LOEC_CMS[d.companyCode]];
+    const top = head ? `<img class="lt-head" src="${esc(asset(head))}" alt="${esc(d.company.name || '')} letterhead">` : `<div class="doc-head"><div class="doc-co"><div class="doc-co-name">${esc(d.company.name || '')}</div></div></div>`;
+    return `<section class="sheet letter loec"><table class="lt-frame"><thead><tr><td>${top}</td></tr></thead>
+      <tfoot><tr><td><div class="lx-foot">Ref: ${esc(ref || `${d.p.prefix}-LOEC`)} · Version 2.0 · Combined Letter of Offer &amp; Employment Contract</div></td></tr></tfoot>
+      <tbody><tr><td><div class="lt-body lx-body">${loecHtml(d)}</div></td></tr></tbody></table></section>`;
+  }
+
+  async function loecPage(item, el) {
+    const appId = new URLSearchParams(location.hash.split('?')[1] || '').get('app');
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `${pageHead(item)}<div id="lx-body">${loading()}</div>`;
+    if (!appId) { $('#lx-body', el).innerHTML = errorCard('Open the offer letter from an application.'); return; }
+    let G, J = null;
+    try { [G] = await Promise.all([API.rpc('cms_loec_get', { p_application: appId })]); try { J = await API.rpc('cms_jd'); } catch (e) { /* the JD list is optional */ } }
+    catch (e) { $('#lx-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const recs = G.records || []; const open = recs.find((r) => r.status === 'draft');
+    const live = recs.find((r) => !['draft', 'cancelled', 'superseded'].includes(r.status));
+    const rec = open || live || null;
+    const editable = G.can_prepare && (!rec || rec.status === 'draft') && !(live && !open);
+    const T = { ...(rec && rec.status !== 'draft' ? rec.terms : G.terms) };
+    const fb = G.eaf_company || 'meg';
+    let co = (rec && rec.company) || T.cmsSigningCompany || loecSuggest(T, fb);
+    const coOf = (e) => (G.companies || []).find((c) => c.eaf === e) || {};
+    // defaults (MEG-EAF V2 profile defaults; Happy Dino / Aborne the same as MyEden Group)
+    if (editable) {
+      if (!T.letterDate) T.letterDate = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+      if (!T.v2EmploymentType) T.v2EmploymentType = 'Permanent Full-Time';
+      if (!T.v2ProbationMonths) T.v2ProbationMonths = '3';
+      if (!T.v2ProbationNotice) T.v2ProbationNotice = '4';
+      if (!T.v2ProbationNoticeUnit) T.v2ProbationNoticeUnit = 'weeks';
+      if (!T.v2PayBasis) T.v2PayBasis = 'monthly';
+      if (!T.v2Handbook) T.v2Handbook = coOf(co).handbook || '';
+      if (!T.cmsTitle) T.cmsTitle = /^f/i.test(G.applicant.gender || '') ? 'Ms' : /^m/i.test(G.applicant.gender || '') ? 'Mr' : '';
+      if (!T.approvedJobTitle && T.v2ResolvedJobTitle) T.approvedJobTitle = T.v2ResolvedJobTitle;
+    }
+    let dirty = false; let wordsEdited = !!(T.finalSalaryWords && T.finalSalaryWords !== lxWords(T.finalSalary));
+    const weeklyDefault = () => { let h = lxSpan(T.finalFrom, T.finalTo); if (lxOn(T.v2Session2Enabled)) h += lxSpan(T.v2Session2From, T.v2Session2To); else if (h > 5) h -= 1; return h ? Math.round(h * lxDaysOf(T.v2WorkingDays) * 10) / 10 : ''; };
+    const missing = () => {
+      const m = [];
+      if (!String(T.approvedJobTitle || '').trim()) m.push('Job title');
+      if (!T.finalStart) m.push('Commencement date');
+      if (!T.v2EmploymentType) m.push('Employment type');
+      if (T.v2EmploymentType === 'Fixed-Term Full-Time' && !T.v2FixedTermEnd) m.push('Fixed-term end date');
+      if (!T.v2ProbationMonths) m.push('Probation period');
+      if (!T.v2ProbationNotice) m.push('Probation notice');
+      if (!T.v2OtCategory) m.push('OT / additional work category');
+      if (!(parseFloat(T.finalSalary) > 0)) m.push(T.v2PayBasis === 'hourly' ? 'Basic hourly rate' : 'Basic salary');
+      if (!T.finalFrom || !T.finalTo) m.push('Working hours');
+      if (!String(T.appendix1Text || '').trim()) m.push('Appendix 1 (Job Description)');
+      if (!T.reportingName) m.push('Reporting personnel');
+      if (!(lxOn(T.workLocationOther) ? T.workLocationOtherText : T.workLocation)) m.push('Place of work');
+      return m;
+    };
+    const wageWarn = () => {   // minimum wage (RM1,700 a month / RM8.72 an hour, from 1 Feb 2025) — a warning only
+      const s = parseFloat(T.finalSalary) || 0; if (!s) return '';
+      if (T.v2PayBasis === 'hourly' && s < 8.72) return 'The hourly rate is below the minimum wage of RM8.72 an hour.';
+      if (T.v2PayBasis !== 'hourly' && T.v2EmploymentType !== 'Part-Time' && s < 1700) return 'The basic salary is below the minimum wage of RM1,700 a month.';
+      return '';
+    };
+    const stamp = () => (rec && rec.status !== 'draft' ? '' : rec?.approved_at ? 'APPROVED — NOT YET ISSUED' : 'DRAFT — NOT ISSUED');
+    const sheetNow = () => loecSheet(loecData(G, T, co), rec?.document_id);
+    const ents = J ? Object.fromEntries(J.entities.map((x) => [x.id, x])) : {};
+    const jdList = () => (J ? J.positions.filter((p2) => (ents[p2.entity_id]?.code || '').toUpperCase() === LOEC_CMS[co]) : []);
+    const fieldsHtml = () => {
+      const v = (k) => esc(T[k] ?? '');
+      const o = (list, cur) => list.map(([a, b]) => `<option value="${esc(a)}" ${String(cur ?? '') === String(a) ? 'selected' : ''}>${esc(b)}</option>`).join('');
+      const loc = lxOn(T.workLocationOther) ? (T.workLocationOtherText || '') : (T.workLocation || '');
+      const sug = loecSuggest(T, fb);
+      return `<div class="fld-2">
+        <label class="fld fld-2"><span>Company the letter is issued under${sug !== co ? ` <small class="warn-txt">— the place of work suggests ${esc(coOf(sug).name || sug)}</small>` : ''}</span>
+          <select data-co>${o((G.companies || []).map((c) => [c.eaf, c.name]), co)}</select></label>
+        <label class="fld"><span>Letter date</span><input type="date" data-k="letterDate" value="${v('letterDate')}"></label>
+        <label class="fld"><span>Title</span><select data-k="cmsTitle">${o([['', 'Choose…'], ['Mr', 'Mr'], ['Ms', 'Ms'], ['Mdm', 'Mdm'], ['Dr', 'Dr']], T.cmsTitle)}</select></label>
+        ${J ? `<label class="fld fld-2"><span>JD position <small class="muted">— fills the job title, JD reference, department and Appendix 1</small></span>
+          <select data-jd><option value="">Keep as it is${T.v2JdReference ? ` (${esc(T.v2JdReference)})` : ''}</option>${jdList().map((p2) => `<option value="${esc(p2.id)}" ${String(p2.id) === String(T.v2JdId) ? 'selected' : ''}>${esc(p2.reference || '')} · ${esc(p2.title)}${p2.level ? ` · ${esc(p2.level)}` : ''}</option>`).join('')}</select></label>` : ''}
+        <label class="fld"><span>Job title</span><input data-k="approvedJobTitle" value="${v('approvedJobTitle')}"></label>
+        <label class="fld"><span>Department</span><input data-k="finalDept" value="${v('finalDept')}"></label>
+        <label class="fld"><span>Commencement date</span><input type="date" data-k="finalStart" value="${v('finalStart')}"></label>
+        <label class="fld"><span>Employment type</span><select data-k="v2EmploymentType">${o(LOEC_TYPES.map((x) => [x, x]), T.v2EmploymentType)}</select></label>
+        <label class="fld" ${T.v2EmploymentType === 'Fixed-Term Full-Time' ? '' : 'hidden'}><span>Fixed-term end date</span><input type="date" data-k="v2FixedTermEnd" value="${v('v2FixedTermEnd')}"></label>
+        <label class="fld"><span>Probation (months)</span><input type="number" min="0" max="12" data-k="v2ProbationMonths" value="${v('v2ProbationMonths')}"></label>
+        <label class="fld"><span>Notice during probation</span><span class="hours"><input type="number" min="0" data-k="v2ProbationNotice" value="${v('v2ProbationNotice')}" style="width:5rem">
+          <select data-k="v2ProbationNoticeUnit">${o([['weeks', 'weeks'], ['days', 'days'], ['months', 'months']], T.v2ProbationNoticeUnit)}</select></span></label>
+        <label class="fld"><span>Pay basis</span><select data-k="v2PayBasis">${o([['monthly', 'Monthly salary'], ['hourly', 'Hourly rate']], T.v2PayBasis)}</select></label>
+        <label class="fld"><span>${T.v2PayBasis === 'hourly' ? 'Basic hourly rate (RM / hour)' : 'Basic salary (RM / month)'}</span><input type="number" step="0.01" min="0" data-k="finalSalary" value="${v('finalSalary')}"></label>
+        <label class="fld fld-2"><span>In words <small class="muted">— written automatically; you can change it</small></span><input data-k="finalSalaryWords" value="${v('finalSalaryWords')}"></label>
+        <label class="fld"><span>Fixed allowance (RM / month)</span><input type="number" step="0.01" min="0" data-k="v2FixedAllowance" value="${v('v2FixedAllowance')}"></label>
+        <label class="fld"><span>Other allowance (RM / month)</span><input type="number" step="0.01" min="0" data-k="v2OtherAllowance" value="${v('v2OtherAllowance')}"></label>
+        <label class="fld"><span>Normal working days</span><input data-k="v2WorkingDays" value="${v('v2WorkingDays')}" placeholder="e.g. Monday to Friday"></label>
+        <label class="fld"><span>Working hours</span><span class="hours"><input type="time" data-k="finalFrom" value="${v('finalFrom')}"> – <input type="time" data-k="finalTo" value="${v('finalTo')}"></span></label>
+        <label class="fld"><span><label class="chk"><input type="checkbox" data-k="v2Session2Enabled" ${lxOn(T.v2Session2Enabled) ? 'checked' : ''}> Second session</label></span>
+          <span class="hours" ${lxOn(T.v2Session2Enabled) ? '' : 'hidden'}><input type="time" data-k="v2Session2From" value="${v('v2Session2From')}"> – <input type="time" data-k="v2Session2To" value="${v('v2Session2To')}"></span></label>
+        <label class="fld"><span>Weekly hours <small class="muted">— without meal breaks; shown for part time</small></span><input type="number" step="0.5" min="0" max="60" data-k="cmsWeeklyHours" value="${v('cmsWeeklyHours')}" placeholder="${esc(String(weeklyDefault()))}"></label>
+        <label class="fld fld-2"><span>Schedule note (optional)</span><input data-k="v2WorkingScheduleNote" value="${v('v2WorkingScheduleNote')}"></label>
+        <label class="fld fld-2"><span>Place of work</span><input data-loc value="${esc(loc)}"></label>
+        <label class="fld"><span>Reporting to (name)</span><input data-k="reportingName" value="${v('reportingName')}"></label>
+        <label class="fld"><span>Reporting to (title)</span><input data-k="reportingTitle" value="${v('reportingTitle')}"></label>
+        <label class="fld"><span>OT / additional work category</span><select data-k="v2OtCategory">${o([['', 'HR determination required…'], ...LOEC_OT], T.v2OtCategory)}</select></label>
+        <label class="fld"><span>Handbook</span><input data-k="v2Handbook" value="${v('v2Handbook')}"></label>
+        <label class="fld fld-2"><span>Appendix 1 — Job Description <small class="muted">— filled from the JD; “Title: description” lines become the responsibilities list</small></span><textarea data-k="appendix1Text" rows="6">${v('appendix1Text')}</textarea></label>
+      </div>`;
+    };
+    const statusHtml = () => {
+      if (!rec) return '<p class="muted small">No offer letter yet. Fill in the terms, then <b>Save draft</b> or <b>Send for approval</b>. The reference number is given when the draft is first saved.</p>';
+      const bits = [`<code>${esc(rec.document_id)}</code>`, `revision ${esc(rec.revision)}`, `<span class="tag xs ${rec.status === 'draft' ? (rec.approved_at ? 'ok' : rec.submitted_at ? 'joint' : '') : 'ok'}">${esc(rec.status === 'draft' ? (rec.approved_at ? 'Approved — ready to issue' : rec.submitted_at ? 'Waiting for approval' : 'Draft') : LOEC_ST[rec.status] || rec.status)}</span>`];
+      if (rec.prepared_by) bits.push(`prepared by ${esc(rec.prepared_by)}`);
+      if (rec.submitted_at) bits.push(`sent ${dShort(rec.submitted_at)}`);
+      if (rec.approved_at) bits.push(`approved by ${esc(rec.approved_by || '—')} ${dShort(rec.approved_at)}`);
+      if (rec.issued_at) bits.push(`issued ${dShort(rec.issued_at)}${rec.issued_by ? ` by ${esc(rec.issued_by)}` : ''}`);
+      if (rec.source === 'eaf') bits.push('made in MEG-EAF V2');
+      return `<p class="small">${bits.join(' · ')}</p>${rec.return_note && rec.status === 'draft' ? `<p class="warn-box small"><b>Sent back:</b> ${esc(rec.return_note)}</p>` : ''}`
+        + (recs.length > 1 ? `<details class="small"><summary>Earlier revisions (${recs.length - 1})</summary><ul>${recs.filter((r) => r !== rec).map((r) => `<li><code>${esc(r.document_id)}</code> · ${esc(LOEC_ST[r.status] || r.status)}${r.issued_at ? ` · issued ${dShort(r.issued_at)}` : ''}${r.return_note ? ` · ${esc(r.return_note)}` : ''}</li>`).join('')}</ul></details>` : '');
+    };
+    const btns = () => {
+      const b = [];
+      if (editable) b.push('<button type="button" class="btn" data-act="save">Save draft</button>', '<button type="button" class="btn primary" data-act="submit">Send for approval</button>');
+      if (rec?.status === 'draft' && rec.submitted_at && !rec.approved_at && G.can_approve) b.push('<button type="button" class="btn primary" data-act="approve">Approve</button>', '<button type="button" class="btn ghost" data-act="return">Send back…</button>');
+      if (rec?.status === 'draft' && rec.approved_at && (G.can_prepare || G.can_approve)) b.push('<button type="button" class="btn primary" data-act="issue">Issue</button>');
+      if (live && !open && G.can_prepare && !hiredNote) b.push('<button type="button" class="btn ghost" data-act="revise">New revision…</button>');
+      b.push(`<button type="button" class="btn" data-act="print">${icon('download')}Print / Save as PDF</button>`);
+      return b.join('');
+    };
+    const hiredNote = G.stage === 'completed';
+    const A = G.applicant || {};
+    $('#lx-body', el).innerHTML = `
+      <section class="card"><div class="card-head"><h3>${esc(A.name || '')}</h3><span class="muted small">${esc(coShort(G.company))} · ${appStageTag(G.stage)}${G.decision ? ` · decision: ${esc(G.decision)}` : ''}</span></div>
+        <div id="lx-status">${statusHtml()}</div>
+        <p class="muted small">Combined Letter of Offer &amp; Contract of Employment, Version 2.0 (the MEG-EAF V2 letter). HR / Admin prepares, an Admin or Director approves, then it is issued. Changing a draft after it was sent or approved needs approval again. Signed copy, verification and stamp duty stay in MEG-EAF V2 and show on Offers &amp; Onboarding.</p>
+        <div class="btn-row" id="lx-btns">${btns()}</div><p class="form-err" id="lx-err" hidden></p></section>
+      <div class="lt-split lx-split">${editable ? `<section class="card"><div class="card-head"><h3>Offer terms</h3><span class="muted small">Saved to the application too, so MEG-EAF V2 shows the same.</span></div><div id="lx-fields">${fieldsHtml()}</div><div id="lx-check"></div></section>` : ''}
+        <section class="card"><div class="card-head"><h3>Letter</h3>${stamp() ? `<span class="tag warn xs">${esc(stamp())}</span>` : ''}</div><div class="lt-prev lx-prev" id="lx-prev"></div></section></div>`;
+    const err = (m) => { const e = $('#lx-err', el); e.textContent = m || ''; e.hidden = !m; };
+    const drawPrev = () => {
+      $('#lx-prev', el).innerHTML = sheetNow();
+      const ch = $('#lx-check', el); if (!ch) return;
+      const m = missing(); const w = wageWarn();
+      ch.innerHTML = `${m.length ? `<p class="warn-box small"><b>Needed before sending for approval:</b> ${esc(m.join(', '))}.</p>` : '<p class="small ok-txt">All the terms the letter needs are filled in.</p>'}${w ? `<p class="warn-box small">${esc(w)}</p>` : ''}`;
+    };
+    drawPrev();
+    if (editable) {
+      const box = $('#lx-fields', el);
+      const onInput = (e) => {
+        const t = e.target; dirty = true;
+        if (t.dataset.k) {
+          const k = t.dataset.k; T[k] = t.type === 'checkbox' ? t.checked : t.value;
+          if (k === 'finalSalaryWords') wordsEdited = !!t.value && t.value !== lxWords(T.finalSalary);
+          if (k === 'finalSalary' && !wordsEdited) { T.finalSalaryWords = t.value ? lxWords(t.value) : ''; const w = $('[data-k="finalSalaryWords"]', box); if (w) w.value = T.finalSalaryWords; }
+          if (['v2EmploymentType', 'v2PayBasis', 'v2Session2Enabled'].includes(k) && e.type === 'change') { box.innerHTML = fieldsHtml(); }
+        } else if (t.hasAttribute('data-loc')) {
+          const orig = G.terms.workLocation || '';
+          if (t.value === orig && !lxOn(G.terms.workLocationOther)) { T.workLocation = orig; T.workLocationOther = false; T.workLocationOtherText = ''; }
+          else { T.workLocationOther = true; T.workLocationOtherText = t.value; }
+        } else if (t.hasAttribute('data-co') && e.type === 'change') {
+          const old = coOf(co).handbook; co = t.value; if (!T.v2Handbook || T.v2Handbook === old) T.v2Handbook = coOf(co).handbook || ''; box.innerHTML = fieldsHtml();
+        } else if (t.hasAttribute('data-jd') && e.type === 'change' && t.value) {
+          API.rpc('cms_jd_position', { p_id: t.value }).then((p2) => {
+            Object.assign(T, { v2JdId: p2.id || t.value, v2JdReference: p2.reference || '', approvedJobTitle: p2.job_title || T.approvedJobTitle,
+              jobTitleLevel: p2.level || T.jobTitleLevel, finalDept: p2.department || T.finalDept, appendix1Text: loecAppendixText(p2.purpose, p2.responsibilities) || T.appendix1Text });
+            if (!T.reportingTitle && p2.reports_to) T.reportingTitle = p2.reports_to;
+            box.innerHTML = fieldsHtml(); drawPrev();
+          }).catch((x) => toast(x.message, 'err'));
+          return;
+        }
+        drawPrev();
+      };
+      box.addEventListener('input', onInput); box.addEventListener('change', onInput);
+    }
+    const save = async (submit) => {
+      err('');
+      if (submit) { const m = missing(); if (m.length) { err(`Fill in before sending for approval: ${m.join(', ')}.`); return false; } }
+      const terms = { ...T, cmsSigningCompany: co };
+      if (!terms.cmsWeeklyHours) { const w = weeklyDefault(); if (w) terms.cmsWeeklyHours = String(w); }
+      if (lxOn(terms.v2Session2Enabled)) { let h = lxSpan(terms.finalFrom, terms.finalTo) + lxSpan(terms.v2Session2From, terms.v2Session2To); terms.v2DailyHours = h.toFixed(2); }
+      else terms.v2DailyHours = lxSpan(terms.finalFrom, terms.finalTo).toFixed(2);
+      const r = await API.rpc('cms_loec_save', { p_application: appId, p: { company: co, submit: !!submit, terms } });
+      dirty = false; toast(`${r.document_id}: ${submit ? 'sent for approval' : 'draft saved'}`); state.loecSum = null; loadLoecPending();
+      return true;
+    };
+    $('#lx-btns', el).addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]'); if (!b) return; const act = b.dataset.act;
+      const reload = () => loecPage(item, el);
+      try {
+        if (act === 'print') {
+          const nm = `${LOEC_PROFILE[co]?.prefix || 'MEG'}_LOEC_${String(A.name || 'Employee').replace(/[^a-zA-Z0-9_-]+/g, '_')}_${T.letterDate || ''}`;
+          docView(el, nm, [`${stamp() ? `<div class="lw-stamp">${esc(stamp())}</div>` : ''}${sheetNow()}`], () => reload());
+          return;
+        }
+        b.disabled = true;
+        if (act === 'save' || act === 'submit') { if (await save(act === 'submit')) reload(); else b.disabled = false; return; }
+        if (act === 'approve') { await API.rpc('cms_loec_decide', { p_loec: rec.id, p_approve: true, p_note: null }); toast(`${rec.document_id} approved`); loadLoecPending(); reload(); return; }
+        if (act === 'return') {
+          const ok = await modal({ title: `Send back · ${rec.document_id}`, ok: 'Send back', body: '<label class="fld"><span>What needs changing</span><textarea name="note" rows="3" required maxlength="500"></textarea></label>',
+            onOk: async (f) => { await API.rpc('cms_loec_decide', { p_loec: rec.id, p_approve: false, p_note: f.note.value.trim() }); } });
+          b.disabled = false; if (ok) { toast(`${rec.document_id} sent back`); loadLoecPending(); reload(); } return;
+        }
+        if (act === 'issue') {
+          if (dirty) { b.disabled = false; err('Save the changes first (they need approval again).'); return; }
+          const ok = await confirmBox(`Issue ${rec.document_id}`, 'The terms are frozen and the application moves to <b>Offer issued</b>. Print the letter for signing; the signed copy, verification and stamp duty are recorded in MEG-EAF V2.', 'Issue', false,
+            async () => { await API.rpc('cms_loec_issue', { p_loec: rec.id }); });
+          b.disabled = false; if (ok) { toast(`${rec.document_id} issued`); loadLoecPending(); reload(); } return;
+        }
+        if (act === 'revise') {
+          const ok = await modal({ title: `New revision · ${live.document_id}`, ok: 'Start new revision', danger: true,
+            body: '<p>The issued letter is marked <b>Superseded</b> and a new draft starts from its terms, with the same number and the next revision (…-R2). The new revision is approved and issued again.</p><label class="fld"><span>Reason</span><input name="reason" required maxlength="300"></label>',
+            onOk: async (f) => { if (!f.reason.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_loec_revise', { p_loec: live.id, p_reason: f.reason.value.trim() }); } });
+          b.disabled = false; if (ok) reload(); return;
+        }
+      } catch (x) { b.disabled = false; err(x.message || String(x)); }
+    });
+  }
+  async function loadLoecPending() {
+    if (!(can('recruitment') || can('onboarding'))) return;
+    try { state.loecSum = await API.rpc('cms_loec_pending'); drawBell(); } catch (e) { /* reminders are a convenience */ }
   }
 
   // ---------------------------------------------------------------- 3.2 JD Manual and Positions & Vacancies
@@ -1863,7 +2329,7 @@
             <td class="nowrap">${dShort(x.start)}</td><td><span class="st st-${esc(x.status)}">${esc(x.status)}</span></td><td class="nowrap">${hireBtn(`data-hire-p="${esc(x.person_id)}"`).replace('Hire…', 'Add to payroll…')}${o.can_hire && x.status === 'onboarding' ? ` <button type="button" class="btn sm ghost" data-nojoin="${esc(x.person_id)}" data-name="${esc(x.name)}">Did not join…</button>` : ''}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>Everyone is in payroll</p><span>Nothing to add.</span></div>'}
       </section>
-      <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Issued, signed and stamped in MEG-EAF V2.</span></div>
+      <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Prepared and issued in the CMS (from the application) or in MEG-EAF V2; signed copy and stamp duty in MEG-EAF V2.</span></div>
         ${o.offers.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Document</th><th>Status</th><th>Issued</th><th>Signed</th><th>Stamp duty</th><th>Original</th></tr></thead><tbody>
           ${o.offers.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td class="nowrap"><code>${esc(x.document_id || '—')}</code><small class="sub">rev ${esc(x.revision)}${x.jd_reference ? ` · ${esc(x.jd_reference)}` : ''}</small></td>
             <td>${esc(LOEC[x.status] || x.status)}</td><td class="nowrap">${dShort(x.issued_at)}</td>
@@ -1897,6 +2363,22 @@
     catch (e) { toast(e.message, 'err'); return false; }
     const opt = (list, cur, blank) => `${blank ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
     const t5 = (s) => (s ? String(s).slice(0, 5) : '');
+    // terms of the issued offer letter (LOEC) that the hire form does not carry: HR ticks what to apply (v2026.11.06)
+    let LT = null; let ALW = [];
+    if (P.application_id) {
+      try { const G = await API.rpc('cms_loec_get', { p_application: P.application_id }); const r = (G.records || []).find((x) => !['draft', 'cancelled', 'superseded'].includes(x.status)); if (r) LT = { ...r.terms, _doc: r.document_id }; } catch (e) { /* optional */ }
+      if (LT) { try { const { data } = await API.sb().from('eppd_payment_types').select('id,code,name').eq('kind', 'earning').eq('category', 'allowance').eq('is_active', true).order('sort_order'); ALW = data || []; } catch (e) { /* optional */ } }
+    }
+    const ltDays = LT ? lxDaysOf(LT.v2WorkingDays) : null;
+    const ltPT = LT && LT.v2EmploymentType === 'Part-Time';
+    const ltBox = !LT ? '' : `<h4 class="sec-h">From the issued offer letter <code>${esc(LT._doc)}</code></h4><div class="fld-2">
+        <label class="chk"><input type="checkbox" name="lt_days" checked> Working days ${esc(String(ltDays))} a week${LT.cmsWeeklyHours ? `, ${esc(LT.cmsWeeklyHours)} hours a week` : ''}</label>
+        ${ltPT ? '<label class="chk"><input type="checkbox" name="lt_pt" checked> Mark as part time (Working hours)</label>' : ''}
+        ${LT.v2ProbationMonths ? `<label class="chk"><input type="checkbox" name="lt_prob" checked> Probation ${esc(LT.v2ProbationMonths)} months (end date from the start date)</label>` : ''}
+        ${LT.reportingName ? `<label class="chk"><input type="checkbox" name="lt_rep" checked> Reporting to ${esc([LT.reportingName, LT.reportingTitle].filter(Boolean).join(', '))}</label>` : ''}
+        ${[['v2FixedAllowance', 'Fixed allowance'], ['v2OtherAllowance', 'Other allowance']].filter(([k]) => parseFloat(LT[k]) > 0).map(([k, l]) => `<label class="fld"><span>${l} RM ${esc(m2(LT[k]))} a month — add as</span>
+          <select name="lt_${k}">${opt(ALW.map((x) => [x.id, x.name]), '', 'Do not add (add in MyPayroll later)')}</select></label>`).join('')}
+      </div>`;
     const comp0 = P.companies.find((c) => c.code === P.employer) || P.companies[0] || {};
     const dept0 = P.departments.find((d) => d.code === P.department || d.name === P.department);
     const title0 = P.titles.find((t) => (t.name || '').toLowerCase() === (P.title || '').toLowerCase());
@@ -1923,6 +2405,7 @@
           <label class="fld"><span>NRIC <small class="muted">— payroll only</small></span><input name="nric" value="${esc(P.nric || '')}" autocomplete="off"></label>
         </div>
         <label class="fld"><span>Note (optional)</span><input name="note" maxlength="300"></label>
+        ${ltBox}
         <p class="muted small">After this: bank, EPF / SOCSO / tax numbers and allowances are added in MyPayroll (Employee › Identity &amp; bank, Pay). The handbook is assigned automatically.</p>`,
       onOk: async (form) => {
         if (!form.gender.value) throw new Error('Confirm the gender: the Employee ID is built from it.');
@@ -1935,6 +2418,15 @@
           confirmation_status: form.conf.value, job_status: form.job.value || null, work_from: form.from.value || null, work_to: form.to.value || null,
           salary: mval(form.salary.value), pay_basis: form.basis.value, email: form.email.value || null, phone: form.phone.value || null,
           dob: form.dob.value || null, nric: form.nric.value || null, note: form.note.value || null } });
+        if (LT && r.person_id) {
+          const ap = { employment_type: LT.v2EmploymentType || null, allowances: [] };
+          if (form.lt_days?.checked) { ap.work_days = ltDays; ap.weekly_hours = LT.cmsWeeklyHours || null; }
+          if (form.lt_pt?.checked) ap.part_time = true;
+          if (form.lt_prob?.checked) ap.probation_months = LT.v2ProbationMonths;
+          if (form.lt_rep?.checked) { ap.reporting_name = LT.reportingName; ap.reporting_title = LT.reportingTitle || null; }
+          for (const k of ['v2FixedAllowance', 'v2OtherAllowance']) { const sel = form[`lt_${k}`]; if (sel?.value) ap.allowances.push({ payment_type_id: Number(sel.value), amount: parseFloat(LT[k]), note: `From offer letter ${LT._doc}` }); }
+          try { await API.rpc('cms_hire_loec_apply', { p_person: r.person_id, p: ap }); } catch (x) { toast(`Hired, but the offer letter terms were not applied: ${x.message}`, 'err'); }
+        }
         toast(`${form.name.value.toUpperCase()} hired · Employee ID ${r.employee_id}`);
         state.people = null;
       },
@@ -5441,7 +5933,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -5647,7 +6139,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); loadLoecPending(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

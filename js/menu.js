@@ -44,7 +44,8 @@ window.CMS_MENU = [
       { route: 'jd', label: 'Job Description Manual', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'The JD master from MEG-EAF V2: every position by company and department, with purpose, responsibilities, KPIs, competencies and (HR / Admin) salary bands.' },
       { route: 'positions', label: 'Positions & Vacancies', phase: 3, live: true, desc: 'Every JD position with its current staff, open applications and whether it is open for applications.' },
       { route: 'applications', label: 'Applications', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'All applications from MEG-EAF V2 by stage, company and position, with each applicant’s summary and stage history.' },
-      { route: 'interviews', label: 'Shortlist & Interviews', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Shortlisted applicants and offers in progress. Interviews and the offer letter are done in MEG-EAF V2.' },
+      { route: 'interviews', label: 'Shortlist & Interviews', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Shortlisted applicants and offers in progress. Interviews are done in MEG-EAF V2; the offer letter (LOEC) can be prepared here or in MEG-EAF V2.' },
+      { route: 'loec', label: 'Offer letter (LOEC)', phase: 3, live: true, hidden: true, desc: 'Prepare, approve and issue the Combined Letter of Offer & Contract of Employment for an approved applicant.' },
       { route: 'onboarding', label: 'Offers & Onboarding', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Accepted applicants become employees in one step (person record + payroll record + Employee ID); offer letters and stamp duty tracked.' },
       { route: 'handbook', label: 'Employee Handbook', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Who has been assigned, opened, read and acknowledged the Employee Handbook, per person and centre.' },
     ] },
@@ -127,7 +128,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',

@@ -1072,3 +1072,39 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
   body.doc-mode .sheet.letter .lt-body .lt-keep { break-inside: avoid; }
   body.doc-mode .sheet.letter .lt-body .lt-line, body.doc-mode .sheet.letter .lt-body p.lt-h { break-after: avoid; }
 }
+
+/* ---------- offer letter (LOEC) prepared in the CMS · MEG-EAF V2 Version 2.0 layout (v2026.11.06) ---------- */
+.sheet.loec { font-size: 9.5pt; line-height: 1.38; }
+.sheet.loec .lx-body p { margin: 0 0 1.8mm; text-align: justify; }
+.sheet.loec .lx-tight p { margin: 0; text-align: left; }
+.sheet.loec .lx-tight { margin: 2mm 0 3mm; }
+.sheet.loec .lx-conf { font-weight: 700; letter-spacing: .03em; }
+.sheet.loec .lx-dear { margin-top: 3mm; }
+.sheet.loec .lx-subj { font-weight: 700; text-decoration: underline; text-align: left; }
+.sheet.loec .lx-h { font-weight: 700; margin: 3.5mm 0 1.5mm; text-align: left; break-after: avoid; }
+.sheet.loec .lx-c { display: grid; grid-template-columns: 9mm 1fr; gap: 0 1mm; margin: 0 0 1.6mm; break-inside: avoid; }
+.sheet.loec .lx-c > div { text-align: justify; }
+.sheet.loec .lx-n { color: #222; }
+.sheet.loec table.lx-salient, .sheet.loec .lx-tbl table, .sheet.loec table.lx-grid { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm; }
+.sheet.loec table.lx-salient td, .sheet.loec table.lx-salient th, .sheet.loec .lx-tbl td, .sheet.loec .lx-tbl th, .sheet.loec table.lx-grid td, .sheet.loec table.lx-grid th
+  { border: 1px solid #888; padding: 1.2mm 2mm; text-align: left; vertical-align: top; }
+.sheet.loec table.lx-salient th, .sheet.loec .lx-tbl th, .sheet.loec table.lx-grid th { background: #eef4f2; }
+.sheet.loec table.lx-salient tr, .sheet.loec .lx-tbl tr, .sheet.loec table.lx-grid tr { break-inside: avoid; }
+.sheet.loec .lx-tbl { margin-left: 10mm; break-inside: avoid; }
+.sheet.loec .lx-tt { font-weight: 700; margin: 1mm 0 0; }
+.sheet.loec .lx-sign { break-inside: avoid; }
+.sheet.loec table.lx-sigtable { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+.sheet.loec table.lx-sigtable td { width: 50%; vertical-align: top; text-align: left; padding: 0 4mm 0 0; border: 0; }
+.sheet.loec .lx-sigspace { height: 20mm; }
+.sheet.loec .lx-appx { break-before: page; padding-top: 2mm; }
+.sheet.loec h3.lx-ap { font-size: 11pt; margin: 0 0 2mm; }
+.sheet.loec ul.lx-resp { margin: 0 0 2mm; padding-left: 6mm; }
+.sheet.loec ul.lx-resp li { margin-bottom: 1.4mm; break-inside: avoid; }
+.sheet.loec .lx-foot { font-size: 7.5pt; color: #666; border-top: 1px solid #ddd; padding-top: 1.5mm; margin-top: 3mm; }
+.lx-prev .sheet.loec .lx-appx { border-top: 2px dashed #ccc; margin-top: 6mm; padding-top: 6mm; }
+.lx-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+#lx-fields { max-height: 70vh; overflow: auto; padding-right: 6px; }
+.lx-prev { max-height: 70vh; }
+@media print {
+  body.doc-mode .sheet.loec .lx-appx { border-top: 0; margin-top: 0; }
+}

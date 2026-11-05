@@ -216,7 +216,7 @@ export async function render(el, ctx) {
         h('label', { class: 'check-row' }, 'From leave year', fromY),
         h('label', { class: 'check-row' }, half, 'Part-timers take whole days only (no half days)'),
         h('button', { class: 'btn sm', type: 'button', onclick: () => preview().catch((e) => { clear(out).append(h('p', { class: 'form-err' }, e.message || String(e))); }) }, 'Preview who changes')),
-      h('p', { class: 'small muted' }, 'Same as full time: part-timers get 8 / 12 / 16 days by service, pro-rated by months only in the year they join or leave; 1 day not worked = 1 day of leave; hours off are unpaid hours. Casual staff get none. Sick leave is not affected. Each person’s full-time week (45 h unless set on Working hours) decides part time or casual.'),
+      h('p', { class: 'small muted' }, 'Same as full time: part-timers get 8 / 12 / 16 days by service, pro-rated by months only in the year they join or leave; 1 day not worked = 1 day of leave; hours off are unpaid hours. Casual staff get none. Sick leave has its own setting below. Each person’s full-time week (45 h unless set on Working hours) decides part time or casual.'),
       out);
   }
   el.append(panel('Part-time and casual staff', `Employment (Part-Time Employees) Regulations 2010. From the leave year ${pt.from_year || 2027}: weekly hours above ${pt.casual_max_pct ?? 30} % and up to ${pt.part_time_max_pct ?? 70} % of a full-time week are part time (annual leave by service below, pro-rated by months; sick leave by service); ${pt.casual_max_pct ?? 30} % or less is casual (no paid annual or sick leave); above ${pt.part_time_max_pct ?? 70} % counts as full time. HR marks each person under Working hours on the profile. Earlier years keep the earlier rule (full-time days × weekly hours ÷ full-time hours).`,
@@ -232,6 +232,11 @@ export async function render(el, ctx) {
         h('tbody', {}, bandRow('Less than 2 years', pt.sl_bands[0]), bandRow('2 to less than 5 years', pt.sl_bands[1]), bandRow('5 years or more', pt.sl_bands[2])))),
     h('p', { class: 'small muted' }, 'The Regulations set these as minimums (annual leave reg. 7: 6 / 8 / 11; sick leave reg. 8: 10 / 13 / 15).'),
     alMethodBlock(),
+    // part-time sick leave the same as full time (CLC 6 Nov 2026): 14 / 18 / 22 days and the 60-day hospitalisation pool, not pro-rated
+    h('div', { class: 'block', style: 'margin-top:1rem' }, h('h3', {}, 'Part-time sick leave'),
+      h('label', { class: 'check-row' }, 'Same as full time (14 / 18 / 22 days, 60 days hospitalisation) from leave year',
+        n(pt.sl_same_as_ft_from ?? '', (v) => { pt.sl_same_as_ft_from = v || null; }, '6rem')),
+      h('p', { class: 'small muted' }, 'Leave blank to use the part-time days above. Casual staff are not affected. Applies to Leave Balances, payslips and the AL calculator.')),
     saveBtn('Save part-time rule', () => {
       if (pt.al_bands.some((b) => Number(b.days) < [6, 8, 11][pt.al_bands.indexOf(b)]) || pt.sl_bands.some((b) => Number(b.days) < [10, 13, 15][pt.sl_bands.indexOf(b)])) { toast('Part-time leave cannot be below the Regulations’ minimum days.', 'error'); return; }
       save('part_time', pt, 'Part-time rule');

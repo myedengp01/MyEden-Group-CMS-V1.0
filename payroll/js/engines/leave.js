@@ -138,7 +138,7 @@ export function workClass(em, ptPolicy) {
  *   'current'    – earlier years: full-time days × weekly hours ÷ full-time hours; from part_time.from_year: the Regulations' days (6 / 8 / 11)
  *   'same_as_ft' – JTK, 5 Nov 2026: part time gets the full-time days (8 / 12 / 16), pro-rated by months only; 1 day not worked = 1 day of leave;
  *                  casual (weekly hours up to the casual share) gets none. From part_time.al_method_from (leave year).
- * Sick leave always follows the 'current' rule.
+ * Sick leave: from part_time.sl_same_as_ft_from (2026) part time gets the full-time days (14 / 18 / 22, 60-day hospitalisation pool).
  */
 export const AL_METHODS = [['current', 'Pro-rata by hours, then the Part-Time Regulations’ days from the new-rules year'], ['same_as_ft', 'Same as full time (JTK, 5 Nov 2026): 8 / 12 / 16 days, casual none']];
 /**
@@ -157,6 +157,10 @@ export function leaveRules(em, year, policies = {}) {
     Object.assign(R, { alMethod: 'same_as_ft', alProrate: false, alCls: cls, alMode: cls === 'CASUAL' ? 'casual' : cls === 'PT' ? 'pt_ft' : 'ft',
       alBands: cls === 'CASUAL' ? ftBands.map((b) => ({ ...b, days: 0 })) : ftBands });
   }
+  // part-time sick leave the same as full time (CLC 6 Nov 2026, from part_time.sl_same_as_ft_from = 2026): 14 / 18 / 22 days by service
+  // and the 60-day hospitalisation pool, not pro-rated by hours; casual staff keep their own rule
+  const sFrom = Number(pt.sl_same_as_ft_from || 0);
+  if (sFrom && Number(year) >= sFrom && R.cls !== 'FT' && workClass(em, pt) !== 'CASUAL') Object.assign(R, { slBands: null, slProrate: false, slMode: 'pt_ft' });
   return R;
 }
 function baseRules(em, year, pt, ftBands) {

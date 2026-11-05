@@ -347,7 +347,19 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **When built:** the new method gets its own form and score sheet, a ranking view per company / centre, and an Admin switch for the year it
   applies from; the year-end close reads the grade from the new method.
 
-## PRI-017 · Prepare the offer letter (LOEC) in the CMS from the application — recorded 2026-11-05
+## PRI-017 · Prepare the offer letter (LOEC) in the CMS from the application — recorded 2026-11-05 · built in v2026.11.06
+- **Built (v2026.11.06):** Applications › application window › **Prepare offer letter (LOEC)** (once the decision is Approved, until hired) opens the
+  LOEC page: the offer terms (filled from the application's Office Use / HR section, saved back to it so MEG-EAF V2 shows the same), a live preview
+  of the MEG-EAF V2 Version 2.0 letter as it is (company wording for Happy Dino and Aborne, Appendix 1 from the JD, extra appendices), and
+  Save draft → Send for approval → Approve / Send back (Admin or Director) → Issue → New revision. Kept in `eaf_loec_records` (same row as MEG-EAF V2;
+  signed copy, verification and stamp duty stay there). Reference: the CMS letter number, e.g. MEG/HR/LOEC/2026/0007, -R2 on a new revision.
+  Company the letter is issued under: chosen per letter, suggested from the place of work (Tadika Genius Eden / Tadika Happy Dino → MyEden Edu Hub;
+  Taska Genius Eden / Pusat Jagaan Kanak-Kanak Eden (Eden Childcare Center) → MyEden Group). Probation 3 months / 4 weeks for every company.
+  Company details (reg. no., addresses, handbook) moved to the CMS company records. Title (Mr / Ms / Mdm / Dr) and weekly hours (part time) added.
+  On hire, the issued letter's working days, weekly hours, part-time marking, probation end, reporting line and allowances are applied (HR ticks each).
+  Minimum wage warning and a check of the terms the letter needs before it can be sent for approval. Part-time sick leave the same as full time
+  from 2026; part-time annual leave "same as full time" switched on from 2026. Old payroll companies ECC, TGED, WFE switched off.
+  Still open: clauses for AL pro-rating in the joining year, leave beyond what was earned on leaving, the OT rule (letter kept as it is for now).
 - **Idea (CLC):** prepare the combined Letter of Offer & Contract of Employment (LOEC) for a new applicant directly from the CMS application window.
 - **Today:** the LOEC is built in MEG-EAF V2 (`v2-hr-extension.js`, "Combined Letter of Offer & Employment Contract, Version 2.0"); the CMS only tracks
   it (Offers & Onboarding: Draft → Issued → Signed copy → Verified → Stamp → Completed). `eaf_loec_records` holds **no records**: the system LOEC
