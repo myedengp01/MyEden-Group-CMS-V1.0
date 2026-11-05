@@ -307,7 +307,21 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   1 January is at or above the Act's minimum.
 
 
-## PRI-015 · Send payslips to staff automatically (email / WhatsApp) — recorded 2026-11-05
+## PRI-015 · Send payslips to staff automatically — recorded 2026-11-05 (updated: deliver in the CMS app first)
+- **Preferred (CLC, 2026-11-05):** send the payslip straight to the staff member's own CMS app rather than by email or WhatsApp.
+- **Already built:** self-service **My Payslips & EA** (part "payslips" switched on per person), HR "releases" payslips (`cms_doc_releases`), and the
+  staff bell shows "Your payslip for <month> is ready". So the payslip already lives safely behind the staff member's sign-in.
+- **To add:**
+  1. **Release automatically on finalise** (after the Director's approval): every line of the month is released to its person in one step, with
+     a list of who could not receive it (no CMS login yet, self-service part switched off, former staff). Option to hold it until a set date/time
+     (e.g. the 1st, after salaries are credited).
+  2. **Phone notification:** the CMS is installable as an app (PWA); add web push so staff get "Your October 2026 payslip is ready" on the phone
+     even when the app is closed (Android and iPhone home-screen app, iOS 16.4+). Staff allow notifications once; falls back to the bell.
+  3. **Read receipt:** when each person opened it (already partly logged), and a reminder for unopened payslips after N days.
+  4. **Staff without a login:** HR sees them on the release list and can invite them to self-service, or print / email as a fallback.
+- **Email / WhatsApp** (notes below) stay as optional fallbacks for staff not on the app.
+
+### Earlier notes: email / WhatsApp
 - **Idea (CLC):** when a payroll month is finalised, send each person their payslip by email and/or WhatsApp.
 - **Doable:** yes, in two steps of effort.
   - **Email:** a Supabase Edge Function makes each payslip PDF (or a short-lived secure link) and sends it through an email service
