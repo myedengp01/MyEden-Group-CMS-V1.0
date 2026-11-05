@@ -1062,3 +1062,13 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
   body.doc-mode .sheet.letter .lt-foot-space { height: 12mm; }
   body.doc-mode .sheet.letter .lt-body tr, body.doc-mode .sheet.letter .lt-body p { break-inside: avoid; }
 }
+
+/* text letters: one block per run of lines (v2026.11.05-20:30) */
+.sheet.letter .lt-body .lt-blk { margin: 0 0 2.2mm; }
+.sheet.letter .lt-body .lt-blk > p { margin: 0 0 .9mm; }
+.sheet.letter .lt-body .lt-blk > p:last-child { margin-bottom: 0; }
+.sheet.letter .lt-body .lt-blk > p.lt-subj { margin: 1mm 0 1mm; }
+@media print {
+  body.doc-mode .sheet.letter .lt-body .lt-keep { break-inside: avoid; }
+  body.doc-mode .sheet.letter .lt-body .lt-line, body.doc-mode .sheet.letter .lt-body p.lt-h { break-after: avoid; }
+}

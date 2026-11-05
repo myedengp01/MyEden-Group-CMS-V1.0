@@ -3412,9 +3412,16 @@
       if(/^Appendix [AB] —/.test(t)){html.push('<h2 style="break-before:page;font-size:14pt">'+richLine(t,labelOf)+'</h2>');continue;}
       if(/^PRIVATE & CONFIDENTIAL$/i.test(t))html.push('<p class="lt-conf">'+esc(t)+'</p>');
       else if(/^Subject:/i.test(t))html.push('<p class="lt-subj">'+richLine(t.replace(/^Subject:\s*/i,''),labelOf)+'</p>');
+      else if(/^\[b\][^\[]*\[\/b\]$/.test(t))html.push('<p class="lt-h">'+richLine(t,labelOf)+'</p>');
       else html.push('<p>'+richLine(t,labelOf)+'</p>');
     }
-    const lines=html.join('');
+    // lines with no blank line between them form one block: tight line spacing inside (address, name / designation),
+    // the paragraph gap only between blocks; a short block (≤ 6 lines) is never split across pages (v2026.11.05)
+    const out=[]; let blk=[];
+    const flush=()=>{ if(!blk.length) return; out.push(`<div class="lt-blk${blk.length<=6?' lt-keep':''}">${blk.join('')}</div>`); blk=[]; };
+    for(const h of html){ if(h.startsWith('<p')) blk.push(h); else { flush(); out.push(h); } }
+    flush();
+    const lines=out.join('');
     const top = head ? `<img class="lt-head" src="${esc(asset(head))}" alt="${esc(c.name || coCode || '')} letterhead">`
       : `<div class="doc-head">${c.logo ? `<img class="doc-logo" src="${esc(asset(c.logo))}" alt="">` : ''}<div class="doc-co"><div class="doc-co-name">${esc(c.name || '')}</div>
         <div>${esc([c.registration_no ? `(${c.registration_no})` : null, c.address].filter(Boolean).join(' · '))}</div></div></div>`;
