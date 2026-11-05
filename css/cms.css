@@ -1049,3 +1049,4 @@ a.plink { color: inherit; text-decoration: none; } a.plink:hover { color: var(--
 .modal-box.wide:has(.rs-grid) { width: min(1120px, 100%); }
 .pay-sched { margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ent-check { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 6px 0; display: grid; gap: 4px; font-size: 13px; }
+.sheet.letter .lt-line { height: 1.5em; }

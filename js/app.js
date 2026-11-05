@@ -3406,7 +3406,8 @@
     const formatted=String(text).replace(/\bRM\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.,])/g,(_,v)=>'RM '+Number(v.replaceAll(',','')).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}));
     const raw=formatted.split('\n'), html=[];
     for(let i=0;i<raw.length;i++) { const t=raw[i].trim();
-      if(!t){html.push('<div class="lt-gap"></div>');continue;}
+      // one blank line = a small gap between paragraphs; two or more stacked blank lines = full lines (signing space, v2026.11.05)
+      if(!t){let n=1;while(i+1<raw.length&&!raw[i+1].trim()){n++;i++;}html.push(n===1?'<div class="lt-gap"></div>':'<div class="lt-line"></div>'.repeat(n));continue;}
       if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
       if(/^Appendix [AB] —/.test(t)){html.push('<h2 style="break-before:page;font-size:14pt">'+richLine(t,labelOf)+'</h2>');continue;}
       if(/^PRIVATE & CONFIDENTIAL$/i.test(t))html.push('<p class="lt-conf">'+esc(t)+'</p>');
