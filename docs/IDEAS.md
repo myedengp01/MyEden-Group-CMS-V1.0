@@ -388,3 +388,19 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Decisions needed:** port as is (yes / no); Happy Dino / Aborne probation and notice; correct addresses (HD, ABP, MEH) and which entity centre
   staff sign with (with reg. no. / address if their own); add clauses 4 and 5 and the part-time sick-leave / weekly-hours version; who prepares /
   issues (Recruitment / Onboarding edit) and whether a Director approves before issue.
+
+## PRI-018 · New hires and leavers report for each payroll month, printable PDF — recorded 2026-11-05
+- **Idea (CLC):** for every payroll month, a report of staff newly hired and staff offboarded / resigned, printable as a PDF.
+- **What exists today (not enough):** Reports & Analytics › Turnover has a leavers list (name, company, position, last day, service, reason)
+  with CSV, for a year or the last 12 months; joiners are only a count. Nothing per payroll month, no joiners list, no print / PDF.
+  Final Settlement lists leavers for settlement only.
+- **Proposed:** a "New hires & leavers" report in Payroll › Reports (beside the Monthly payroll report), picked by payroll month and company
+  (or all, grouped by company), in the same printable letterhead / A4 format and Print / PDF as the payroll report.
+  - New hires: name, employee ID, company / centre, position, employment type (FT / PT / casual), start date, basic salary and pay basis,
+    probation end, statutory set up (EPF / SOCSO / EIS / PCB), first payroll month, pro-rated first pay.
+  - Leavers: name, employee ID, company / centre, position, start and last working day, service, reason, notice served / in lieu,
+    resignation letter status, unused or excess annual leave, final settlement status, last payroll month, handover / property return.
+  - Also: staff with a scheduled last day next month, transfers between companies, and totals (opening headcount + joined − left = closing).
+  - Optional: a draft / final copy tied to the payroll month's approval (DRAFT watermark until finalised), and signed-off names as in the payroll report.
+- **Decisions needed when built:** which columns (above is a starting list), whether salary figures appear (who may see it), one report per
+  company or one for all, and whether it is attached to the monthly payroll report pack.
