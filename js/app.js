@@ -4613,7 +4613,7 @@
     try { ctx.session = await API.session(); const { data } = await API.sb().from('eppd_policies').select('value').eq('key', 'modules').maybeSingle(); ctx.modules = data?.value || {}; } catch (e) { /* optional modules stay off */ }
     root.innerHTML = '';
     // links inside MyPayroll pages that point at its own employee pages go to the CMS people pages
-    root.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#/employees"]'); if (!a) return; e.preventDefault(); location.hash = '#/people'; });
+    // (links to MyPayroll employee pages are handled for the whole document below, including pop-up windows)
     const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
     const pm = location.hash.match(/^#\/payroll\/(\d{4}-\d{2})(?:-\d{2})?(?:[?]|$)/);
     // print views (payslips, EA forms, lists): hide the CMS frame while printing
@@ -5502,6 +5502,9 @@
     if (!state.access || !$('#page')) return;
     const id = ++state.renderId;
     let r = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
+    // a MyPayroll pop-up window (e.g. a payroll line) belongs to the page it was opened on: close it when another page opens
+    if (state.lastPath !== undefined && state.lastPath !== r) document.querySelectorAll('.myp-modal').forEach((x) => x.remove());
+    state.lastPath = r;
     if (/^payroll\/\d{4}-\d{2}(-\d{2})?$/.test(r)) r = 'payroll';   // a payroll month opens inside Monthly Payroll
     const item = PAGES.get(r === 'dashboard' && !canRoute('dashboard') ? homeRoute() : r) || PAGES.get(homeRoute());
     state.route = item.route;
@@ -5650,6 +5653,19 @@
   };
   // the app files are loaded after the page itself (latest-version loader), so the page may already be ready
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  // Links to MyPayroll employee pages (#/employees/<payroll id>?tab=…), also from pop-up windows: open the CMS profile of that person (v2026.11.05)
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest?.('a[href^="#/employees"]'); if (!a) return;
+    e.preventDefault();
+    const m = a.getAttribute('href').match(/^#\/employees\/(\d+)(?:\?tab=(\w+))?/);
+    let pid = null;
+    if (m) { try { const { data } = await API.sb().from('eppd_employees').select('employee_master_id').eq('id', Number(m[1])).maybeSingle(); pid = data?.employee_master_id || null; } catch (err) { pid = null; } }
+    const tab = m?.[2] && ['pay', 'leave', 'employment', 'personal'].includes(m[2]) ? m[2] : 'pay';
+    const target = pid ? `#/person?id=${pid}&tab=${tab}` : '#/people';
+    if (!pid) toast('This payroll record is not linked to a CMS person yet: opening People.', 'err');
+    if (a.target === '_blank') { window.open(location.href.split('#')[0] + target, '_blank', 'noopener'); return; }
+    location.hash = target;
+  });
   // a page with unsaved work (e.g. a payroll month) registers window.CMS_LEAVE_GUARD; leaving it asks first (v2026.11.04)
   const hashPath = (h) => String(h || '').replace(/^#\/?/, '').split('?')[0];
   let lastHash = location.hash; let guardBack = false;
