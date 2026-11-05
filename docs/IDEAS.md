@@ -306,3 +306,29 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Note:** the CMS could not confirm the JTKSM guidance quoted; the change is safe either way because giving the higher quantum from
   1 January is at or above the Act's minimum.
 
+
+## PRI-015 · Send payslips to staff automatically (email / WhatsApp) — recorded 2026-11-05
+- **Idea (CLC):** when a payroll month is finalised, send each person their payslip by email and/or WhatsApp.
+- **Doable:** yes, in two steps of effort.
+  - **Email:** a Supabase Edge Function makes each payslip PDF (or a short-lived secure link) and sends it through an email service
+    (e.g. Resend / SendGrid / Google Workspace SMTP), from a company address. Needs: staff email on the profile, a verified sending domain,
+    and a sending log (sent / bounced / opened).
+  - **WhatsApp:** only through the WhatsApp Business Platform (Meta Cloud API or a provider such as Twilio / 360dialog): a business number,
+    an approved message template ("Your payslip for October 2026 is ready"), per-message fees, and the staff member's opt-in. Sending the PDF
+    itself is possible, but a secure link that asks for sign-in is safer than a file in a chat.
+- **Safer default:** send a notice with a link to My Payslips (self-service, signed in) rather than the PDF; optional PDF attachment protected
+  with a password (e.g. IC last 6 digits) for email.
+- **Controls to build:** send only after finalise (and the Director approval); "Send payslips" button with a preview of who gets what and who
+  has no email / number; resend for one person; never to a former employee's old address without checking; log in the audit trail.
+- **Decisions needed:** email only first, or both; PDF attached or link only; password on the PDF; which sending address / WhatsApp number;
+  who may press Send.
+
+## PRI-016 · New KPI method (replacing the JD-based KPI assessment) — recorded 2026-11-05
+- **Idea (CLC):** staff KPI will no longer use the current CMS setting (assessment through the job description). CLC will give a new guideline and
+  method for KPI calculation and ranking per staff assessment.
+- **Waiting for:** CLC's guideline — the criteria and weights, the scale, who assesses (self / manager / director), how often, how the score
+  becomes a ranking and a grade, and what the grade drives (e.g. annual leave carry-forward E 6 / S 3 / A 1 / I 0 / U 0, increments, bonus).
+- **What it touches today:** Performance › appraisals (JD-based), the KPI grade used at the leave year-end close (carry forward), and the
+  increment review notes. The current JD-based assessment stays as it is until the new method is ready; nothing changes now.
+- **When built:** the new method gets its own form and score sheet, a ranking view per company / centre, and an Admin switch for the year it
+  applies from; the year-end close reads the grade from the new method.
