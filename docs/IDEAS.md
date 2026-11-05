@@ -346,3 +346,45 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   increment review notes. The current JD-based assessment stays as it is until the new method is ready; nothing changes now.
 - **When built:** the new method gets its own form and score sheet, a ranking view per company / centre, and an Admin switch for the year it
   applies from; the year-end close reads the grade from the new method.
+
+## PRI-017 · Prepare the offer letter (LOEC) in the CMS from the application — recorded 2026-11-05
+- **Idea (CLC):** prepare the combined Letter of Offer & Contract of Employment (LOEC) for a new applicant directly from the CMS application window.
+- **Today:** the LOEC is built in MEG-EAF V2 (`v2-hr-extension.js`, "Combined Letter of Offer & Employment Contract, Version 2.0"); the CMS only tracks
+  it (Offers & Onboarding: Draft → Issued → Signed copy → Verified → Stamp → Completed). `eaf_loec_records` holds **no records**: the system LOEC
+  has never been issued live.
+- **What MEG-EAF V2 has (reviewed 2026-11-05):**
+  - Built in code (not a stored template). Company profiles for 4 companies with reg. no., address, registered address, phone, email, logo and
+    letterhead banner: MEG MyEden Group 201901034872 (1344202-X); MEH MyEden Edu Hub 202501000075 (1601490-W); HDS Happy Dino 202401021055
+    (1566904-W); ABP Aborne Project 202501023777 (1625190-X).
+  - Page 1: private & confidential, addressee (name, IC, address), salient-terms table (job title + JD ref / level, commencement, employment type /
+    fixed-term end, probation, basic salary in figures and words, fixed and other allowances, total fixed pay, working hours, off day / rest day
+    Sat / Sun, place of work, reporting personnel).
+  - 19 clauses: term; duties; probation; place of work; hours / rest day / OT category; wages and statutory contributions; leave (tables: AL 8/12/16,
+    SL 14/18/22 + 60 hospitalisation); flexible working; handbook; conduct; confidentiality; harassment and safety; personal data; absence;
+    notice (table 4/6/12 weeks after confirmation); discipline; governing law; variation; manual signing and stamp duty.
+  - Company wording: Happy Dino child-safety / school-programme / uniform clauses; Aborne event / client / no-alcohol / site-safety clauses;
+    MEG / MEH general; each company's own handbook named. Signature block; Appendix 1 Job Description from the JD Manual (same database).
+  - Print checks: employment type, probation, probation notice, OT category, fixed-term end.
+- **Fits:** application terms map straight on; FT annual leave, sick leave and notice match the CMS; 5-day week (Sat off / Sun rest) matches 5 Nov;
+  clause 14 "unpaid treatment for time not worked" covers unpaid hours; signing and stamp duty match CMS LOEC tracking.
+- **Gaps:**
+  1. No company data for Tadika Genius Eden, Taska Genius Eden, Pusat Jagaan Kanak-Kanak Eden, Eden Childcare Center, Tadika Happy Dino,
+     Myeden Holding, White Feather (CMS company records also lack reg. no. / address except Taska Genius Eden's reg. no.).
+  2. Happy Dino and Aborne: probation length and probation notice blank ("Management input required"); MEG / MEH 3 months / 4 weeks.
+  3. Part-time: sick leave wording is FT 14/18/22 for everyone (CMS part-time SL differs: 2026 pro-rata by hours, 10/13/15 from 2027); no weekly-hours line.
+  4. Annual leave pro-rating in the joining year not stated (CMS: a month counts if service starts by the 15th).
+  5. Leave taken beyond what was earned on leaving = unpaid leave (5 Nov rule) not in the contract.
+  6. Clause 15.2 "annual leave does not automatically shorten notice" — fits (offset only by agreement, RL_TP2).
+  7. No minimum wage check before issue.
+  8. OT category is free choice; company rule (hourly rate ÷ 8 h cap, EA rest-day / PH pay) not stated.
+  9. Company data to confirm: Happy Dino and Aborne share 14A Jalan Indah 15/1 with different postcode / town (81200 Johor Bahru vs
+     79100 Iskandar Puteri); MEH uses MEG's address.
+  10. Applicant fields the CMS lacks: title (Mr / Ms / Mdm), OT category, probation notice, allowances.
+- **Also seen (application window):** "Applied for" shows raw data `["Childcare (Ages 7–18)"]`; stage history still "New" although the decision is Approved.
+- **Recommended build:** port the MEG-EAF V2 LOEC as is (same wording, company clauses, four profiles, JD appendix), prepared from the application
+  window ("Prepare offer letter (LOEC)" once Approved; applicant-mode letter workspace; every field editable; numbered, dated, letterhead);
+  Issue writes the same `eaf_loec_records` row (revisions kept) so MEG-EAF V2 and Offers & Onboarding stay in step; on hire the LOEC moves to
+  Employee Documents. Add fixes 3, 4, 5, 7; keep company details in CMS company records (not in the letter code) so new entities can be added.
+- **Decisions needed:** port as is (yes / no); Happy Dino / Aborne probation and notice; correct addresses (HD, ABP, MEH) and which entity centre
+  staff sign with (with reg. no. / address if their own); add clauses 4 and 5 and the part-time sick-leave / weekly-hours version; who prepares /
+  issues (Recruitment / Onboarding edit) and whether a Director approves before issue.
