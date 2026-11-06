@@ -1802,6 +1802,9 @@
   const lxSpan = (a, b) => { let x = lxMin(a), y = lxMin(b); if (x === null || y === null) return 0; if (y < x) y += 1440; return Math.max(0, (y - x) / 60); };
   const lxDaysOf = (txt) => { const s = String(txt || '').toLowerCase(); if (/mon\w*\s*(to|-|–)\s*sat/.test(s)) return 6; if (/mon\w*\s*(to|-|–)\s*fri/.test(s)) return 5; const n = parseFloat(s); return n > 0 && n <= 7 ? n : 5; };
   const lxOn = (v) => v === true || v === 'true' || v === 'on' || v === 1;
+  // the job title on the letter is the approved JD position (MEG-EAF V2 "Resolved Position (for letter)"), not the general position family (v2026.11.06)
+  const loecTitle = (T) => String(T.v2ResolvedJobTitle || '').trim() || String(T.approvedJobTitle || '').trim();
+  const loecLevel = (v) => { const t = String(v || '').trim(); if (!t || t.startsWith('jd:')) return ''; return t.split('|')[0].trim(); };
   // the centre decides the company the letter is issued under (CLC 5 Nov 2026)
   const loecSuggest = (t, fallback) => {
     const s = `${t.workLocation || ''} ${t.workLocationOtherText || ''} ${t.finalDept || ''}`.toLowerCase();
@@ -1831,13 +1834,13 @@
       companyCode: co, company: c, p: { ...(LOEC_PROFILE[co] || LOEC_PROFILE.meg), handbook: T.v2Handbook || c.handbook || '' },
       name: blank(A.name), title: esc(T.cmsTitle || (/^f/i.test(A.gender || '') ? 'Ms' : /^m/i.test(A.gender || '') ? 'Mr' : 'Mr/Ms')), ic: blank(ic),
       addrLines: addr.length ? addr : ['________________________________'], addrInline: addr.join(', ') || '________________________________',
-      letterDateFmt: lxDate(T.letterDate), jobTitle: blank(T.approvedJobTitle || T.v2ResolvedJobTitle), dept: blank(T.finalDept), startDateFmt: lxDate(T.finalStart),
+      letterDateFmt: lxDate(T.letterDate), jobTitle: blank(loecTitle(T)), family: T.approvedJobTitle && T.approvedJobTitle !== loecTitle(T) ? esc(T.approvedJobTitle) : '', dept: blank(T.finalDept), startDateFmt: lxDate(T.finalStart),
       timeFrom: esc(lxTime(T.finalFrom)), timeTo: esc(lxTime(T.finalTo)), workLocation: blank(loc), reportingName: blank(T.reportingName),
       employmentType: esc(T.v2EmploymentType || 'Permanent Full-Time'), fixedTermEnd: T.v2FixedTermEnd ? lxDate(T.v2FixedTermEnd) : '',
       probationMonths: esc(T.v2ProbationMonths || ''), probationNotice: esc(T.v2ProbationNotice || ''), probationNoticeUnit: esc(T.v2ProbationNoticeUnit || 'weeks'),
       otCategory: esc(otLabel || T.v2OtCategory || ''), payBasis: hourly ? 'hourly' : 'monthly', basicSalaryFmt: lxMoney(base), salaryWords: esc(T.finalSalaryWords || lxWords(base)),
       fixedAllowance: fa, otherAllowance: oa, fixedAllowanceFmt: lxMoney(fa), otherAllowanceFmt: lxMoney(oa), totalFixedFmt: lxMoney(base + fa + oa),
-      jdReference: esc(T.v2JdReference || ''), jdLevel: esc(T.jobTitleLevel && !String(T.jobTitleLevel).includes('|') && !String(T.jobTitleLevel).startsWith('jd:') ? T.jobTitleLevel : ''),
+      jdReference: esc(T.v2JdReference || ''), jdLevel: esc(loecLevel(T.jobTitleLevel)),
       workingDays: esc(T.v2WorkingDays || ''), workingScheduleNote: esc(T.v2WorkingScheduleNote || ''), workingHoursText: parts.join(' and '),
       weeklyHours: T.cmsWeeklyHours ? esc(T.cmsWeeklyHours) : '', appendix1: T.appendix1Text || '', appendices: Array.isArray(T.v2Appendices) ? T.v2Appendices : [],
     };
@@ -1864,7 +1867,7 @@
       `<p>This Letter of Offer and Contract of Employment is made on <strong>${d.letterDateFmt}</strong> between:</p><p><strong>${esc(c.name || '')}</strong> (Company No.: <strong>${esc(c.registration_no || '')}</strong>), a company incorporated in Malaysia with its registered address at <strong>${esc(c.registered_address || '')}</strong> ("the Employer"), and</p>`,
       `<p><strong>${d.name}</strong> (NRIC/Passport No.: <strong>${d.ic}</strong>), of <strong>${d.addrInline}</strong> ("the Employee").</p><p><strong>This is one combined employment agreement.</strong> By signing it after reviewing the complete document and all included Appendices, the Employee accepts the offer of employment and agrees to the Employment Contract at the same time.</p>`,
       `<p>The Employer employs the Employee, and the Employee agrees to serve the Employer, on the following salient terms and conditions:</p><table class="lx-salient"><tr><th style="width:42%">Salient Term</th><th>Detail</th></tr>`
-      + `<tr><td>a. Job Title</td><td>${d.jobTitle}${d.jdReference ? `<br><small>JD Ref: ${d.jdReference}${d.jdLevel ? ` · ${d.jdLevel}` : ''}</small>` : ''}</td></tr><tr><td>b. Commencement Date</td><td>${d.startDateFmt}</td></tr>${fixed}`
+      + `<tr><td>a. Job Title</td><td>${d.jobTitle}${d.family || d.jdLevel || d.jdReference ? `<br><small>${[d.family, d.jdLevel, d.jdReference ? `JD Ref: ${d.jdReference}` : ''].filter(Boolean).join(' · ')}</small>` : ''}</td></tr><tr><td>b. Commencement Date</td><td>${d.startDateFmt}</td></tr>${fixed}`
       + `<tr><td>Probationary Period</td><td>${d.probationMonths || '—'} month(s)</td></tr>${pay}`
       + `${d.workingDays ? `<tr><td>Normal Working Days</td><td>${d.workingDays}</td></tr>` : ''}<tr><td>Working Hours</td><td>${wh}</td></tr>`
       + `${d.weeklyHours && d.employmentType === 'Part-Time' ? `<tr><td>Normal Weekly Hours</td><td>${d.weeklyHours} hours</td></tr>` : ''}`
@@ -2047,13 +2050,14 @@
       if (!T.v2PayBasis) T.v2PayBasis = 'monthly';
       if (!T.v2Handbook) T.v2Handbook = coOf(co).handbook || '';
       if (!T.cmsTitle) T.cmsTitle = /^f/i.test(G.applicant.gender || '') ? 'Ms' : /^m/i.test(G.applicant.gender || '') ? 'Mr' : '';
-      if (!T.approvedJobTitle && T.v2ResolvedJobTitle) T.approvedJobTitle = T.v2ResolvedJobTitle;
     }
+    // no resolved position on the application: take the job title of its linked JD in the JD Manual
+    if (editable && !String(T.v2ResolvedJobTitle || '').trim() && T.v2JdId) { try { const p2 = await API.rpc('cms_jd_position', { p_id: T.v2JdId }); if (p2?.job_title) T.v2ResolvedJobTitle = p2.job_title; } catch (e) { /* keep the general title */ } }
     let dirty = false; let wordsEdited = !!(T.finalSalaryWords && T.finalSalaryWords !== lxWords(T.finalSalary));
     const weeklyDefault = () => { let h = lxSpan(T.finalFrom, T.finalTo); if (lxOn(T.v2Session2Enabled)) h += lxSpan(T.v2Session2From, T.v2Session2To); else if (h > 5) h -= 1; return h ? Math.round(h * lxDaysOf(T.v2WorkingDays) * 10) / 10 : ''; };
     const missing = () => {
       const m = [];
-      if (!String(T.approvedJobTitle || '').trim()) m.push('Job title');
+      if (!loecTitle(T)) m.push('Job title (JD position)');
       if (!T.finalStart) m.push('Commencement date');
       if (!T.v2EmploymentType) m.push('Employment type');
       if (T.v2EmploymentType === 'Fixed-Term Full-Time' && !T.v2FixedTermEnd) m.push('Fixed-term end date');
@@ -2089,7 +2093,8 @@
         <label class="fld"><span>Title</span><select data-k="cmsTitle">${o([['', 'Choose…'], ['Mr', 'Mr'], ['Ms', 'Ms'], ['Mdm', 'Mdm'], ['Dr', 'Dr']], T.cmsTitle)}</select></label>
         ${J ? `<label class="fld fld-2"><span>JD position <small class="muted">— fills the job title, JD reference, department and Appendix 1</small></span>
           <select data-jd><option value="">Keep as it is${T.v2JdReference ? ` (${esc(T.v2JdReference)})` : ''}</option>${jdList().map((p2) => `<option value="${esc(p2.id)}" ${String(p2.id) === String(T.v2JdId) ? 'selected' : ''}>${esc(p2.reference || '')} · ${esc(p2.title)}${p2.level ? ` · ${esc(p2.level)}` : ''}</option>`).join('')}</select></label>` : ''}
-        <label class="fld"><span>Job title</span><input data-k="approvedJobTitle" value="${v('approvedJobTitle')}"></label>
+        <label class="fld"><span>Job title on the letter <small class="muted">— the approved JD position</small></span><input data-k="v2ResolvedJobTitle" value="${v('v2ResolvedJobTitle')}" placeholder="${v('approvedJobTitle')}"></label>
+        <label class="fld ro"><span>Position family (general) <small class="muted">— from MEG-EAF V2</small></span><input value="${v('approvedJobTitle')}" readonly></label>
         <label class="fld"><span>Department</span><input data-k="finalDept" value="${v('finalDept')}"></label>
         <label class="fld"><span>Commencement date</span><input type="date" data-k="finalStart" value="${v('finalStart')}"></label>
         <label class="fld"><span>Employment type</span><select data-k="v2EmploymentType">${o(LOEC_TYPES.map((x) => [x, x]), T.v2EmploymentType)}</select></label>
@@ -2170,8 +2175,8 @@
           const old = coOf(co).handbook; co = t.value; if (!T.v2Handbook || T.v2Handbook === old) T.v2Handbook = coOf(co).handbook || ''; box.innerHTML = fieldsHtml();
         } else if (t.hasAttribute('data-jd') && e.type === 'change' && t.value) {
           API.rpc('cms_jd_position', { p_id: t.value }).then((p2) => {
-            Object.assign(T, { v2JdId: p2.id || t.value, v2JdReference: p2.reference || '', approvedJobTitle: p2.job_title || T.approvedJobTitle,
-              jobTitleLevel: p2.level || T.jobTitleLevel, finalDept: p2.department || T.finalDept, appendix1Text: loecAppendixText(p2.purpose, p2.responsibilities) || T.appendix1Text });
+            Object.assign(T, { v2JdId: p2.id || t.value, v2JdReference: p2.reference || '', v2ResolvedJobTitle: p2.job_title || T.v2ResolvedJobTitle,
+              jobTitleLevel: p2.level ? `${p2.level}|${p2.job_title || ''}` : T.jobTitleLevel, finalDept: p2.department || T.finalDept, appendix1Text: loecAppendixText(p2.purpose, p2.responsibilities) || T.appendix1Text });
             if (!T.reportingTitle && p2.reports_to) T.reportingTitle = p2.reports_to;
             box.innerHTML = fieldsHtml(); drawPrev();
           }).catch((x) => toast(x.message, 'err'));
