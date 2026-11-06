@@ -4350,7 +4350,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-resign"></div><div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-fields"></div><div id="lw-hist"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -4375,6 +4375,51 @@
         vals.post_probation_salary_arrangement=`Upon successful completion confirmed in writing, the following agreed increment takes effect from ${vals.post_probation_effective_date}.\nDescription | Current | Increment | Increment (%) | Revised\nMonthly basic salary | RM ${m2(c)} | RM ${m2(i)} | ${(100*i/c).toFixed(2)} % | RM ${m2(c+i)}`;
       } else vals.post_probation_salary_arrangement='{{post_probation_arrangement}}';
       const field=$('[data-k="post_probation_salary_arrangement"]',el);if(field)field.value=vals.post_probation_salary_arrangement;
+    }
+    // Salary choice for letters with {{salary_arrangement}} (Letter of Confirmation — Senior Position, v2026.11.06):
+    // No change → one sentence; Increment → the Current | Increment | % | Revised table, from {{increment_effective_date}}
+    // (the confirmation date, the 1st of the following month, or another date). Next performance review: confirmation + 6 months unless typed.
+    const parseLong = (x) => { const m = String(x || '').trim().match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/); if (!m) return null; const mi = MONTHS.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()); return mi < 0 ? null : new Date(Date.UTC(+m[3], mi, +m[1])); };
+    const isoUTC = (d) => d.toISOString().slice(0, 10);
+    const hasSal = () => keys().includes('salary_arrangement') && !isJD();
+    function salArr() {
+      if (!hasSal() || !editable) return;
+      const conf = parseLong(vals.confirmation_date); const cur = mval(vals.current_basic);
+      if ((vals._sal_mode || 'none') === 'increment') {
+        const em = vals._inc_date_mode || 'confirmation';
+        if (em === 'confirmation') vals.increment_effective_date = vals.confirmation_date || '';
+        else if (em === 'next_month') vals.increment_effective_date = conf ? longDate(isoUTC(conf.getUTCDate() === 1 ? conf : new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 1, 1)))) : '';
+        const inc = mval(vals.basic_increment); const ok = cur > 0 && String(vals.basic_increment ?? '').trim() !== '' && inc > 0;
+        vals.basic_increment_pct = ok ? (inc / cur * 100).toFixed(2) : ''; vals.revised_basic = ok ? m2(cur + inc) : '';
+        vals.salary_arrangement = `In recognition of your performance, your monthly basic salary will be revised as follows, effective ${vals.increment_effective_date || '{{increment_effective_date}}'}:\n`
+          + 'Description | Current | Increment | Increment (%) | Revised\n'
+          + `Basic Salary | RM ${cur > 0 ? m2(cur) : '{{current_basic}}'} | RM ${ok ? m2(inc) : '{{basic_increment}}'} | ${ok ? vals.basic_increment_pct : '{{basic_increment_pct}}'} % | RM ${ok ? vals.revised_basic : '{{revised_basic}}'}`;
+      } else {
+        ['basic_increment_pct', 'revised_basic', 'increment_effective_date'].forEach((k) => { vals[k] = ''; });
+        vals.salary_arrangement = `Your monthly basic salary remains at RM ${cur > 0 ? m2(cur) : '{{current_basic}}'}.`;
+      }
+      if (keys().includes('next_review_date') && conf && (!String(vals.next_review_date || '').trim() || vals.next_review_date === vals._nr_auto)) {
+        const d = new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 6, conf.getUTCDate())); vals.next_review_date = longDate(isoUTC(d)); vals._nr_auto = vals.next_review_date;
+      }
+    }
+    function drawSal() {
+      const box = $('#lw-sal', el); if (!box) return;
+      if (!hasSal() || !personId) { box.innerHTML = ''; return; }
+      if (!editable) { box.innerHTML = ''; return; }
+      const inc = (vals._sal_mode || 'none') === 'increment'; const em = vals._inc_date_mode || 'confirmation';
+      box.innerHTML = `<h4 class="sec-h">Salary</h4><div class="grid-2 tight">
+        <label class="fld"><span>Salary</span><select data-sal-mode><option value="none" ${inc ? '' : 'selected'}>No change</option><option value="increment" ${inc ? 'selected' : ''}>Increment</option></select></label>
+        ${inc ? `<label class="fld"><span>Increment (RM a month)</span><input data-sal-amt inputmode="decimal" value="${esc(vals.basic_increment || '')}"></label>
+        <label class="fld"><span>Increment takes effect</span><select data-sal-eff><option value="confirmation" ${em === 'confirmation' ? 'selected' : ''}>On the confirmation date</option>
+          <option value="next_month" ${em === 'next_month' ? 'selected' : ''}>1st of the following month</option><option value="other" ${em === 'other' ? 'selected' : ''}>Another date</option></select></label>
+        <label class="fld"><span>Increment effective date</span><span class="lw-dt"><input data-sal-date value="${esc(vals.increment_effective_date || '')}" placeholder="e.g. 1 October 2026" ${em === 'other' ? '' : 'readonly'}>${em === 'other' ? '<input type="date" data-sal-pick aria-label="Pick the increment date">' : ''}</span></label>` : ''}
+        </div><p class="small muted">${inc ? (vals.revised_basic ? `RM ${esc(m2(mval(vals.current_basic)))} → <b>RM ${esc(vals.revised_basic)}</b> (+${esc(vals.basic_increment_pct)} %). After the letter is issued, “Update records from this letter” puts the new basic in payroll from the increment month.` : 'Type the increment amount.') : 'The letter says the basic salary stays the same.'}</p>`;
+      const upd = () => { salArr(); drawSal(); drawFields(); later(); };
+      $('[data-sal-mode]', box).onchange = (e) => { vals._sal_mode = e.target.value; if (e.target.value !== 'increment') vals.basic_increment = ''; upd(); };
+      const amt = $('[data-sal-amt]', box); if (amt) amt.onchange = (e) => { vals.basic_increment = e.target.value; upd(); };
+      const eff = $('[data-sal-eff]', box); if (eff) eff.onchange = (e) => { vals._inc_date_mode = e.target.value; upd(); };
+      const dt = $('[data-sal-date]', box); if (dt && em === 'other') dt.onchange = (e) => { vals.increment_effective_date = e.target.value; upd(); };
+      const pk = $('[data-sal-pick]', box); if (pk) pk.onchange = () => { if (pk.value) { vals.increment_effective_date = longDate(pk.value); upd(); } };
     }
     async function drawJD() {
       const box=$('#lw-jd',el); if(!box) return;
@@ -4433,7 +4478,7 @@
       const cur = String(vals.promotion_probation_end || '').trim();
       if (cur === '' || cur === vals._pp_auto) { vals.promotion_probation_end = v; vals._pp_auto = v; const i = $('[data-k="promotion_probation_end"]', el); if (i) i.value = v; }
     };
-    const calc = () => { calcAssess(); if (!('basic_increment' in vals) && !keys().includes('basic_increment')) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
+    const calc = () => { calcAssess(); salArr(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
     // duties, JD reference and version from the JD Manual, by job title: the position in the letter (transfer / promotion), else the current one
@@ -4459,9 +4504,10 @@
       try { const r = await API.rpc('cms_letter_jd_titles', { p_person: who }); if (who !== personId) return; jdTitles = r; drawFields(); } catch (e) { jdTitlesFor = ''; }
     };
     const drawFields = () => {
-      const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; return; }
+      const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; drawSal(); return; }
+      salArr(); if (!$('#lw-sal [data-sal-mode]', el) || !editable) drawSal();
       if (jdTitlesFor !== personId) { jdTitles = null; loadJdTitles(); }
-      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k));
+      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k)) || (hasSal() && k === 'salary_arrangement');
         const kind = p.kind || (LONG_KEYS.test(k) ? 'paragraph' : 'text'); const v = esc(vals[k] ?? '');
         const inp = kind === 'paragraph' || LONG_KEYS.test(k) ? `<textarea data-k="${k}" rows="3" ${ro ? 'readonly' : ''}>${v}</textarea>`
           : kind === 'date' ? `<span class="lw-dt"><input data-k="${k}" value="${v}" placeholder="e.g. 14 November 2026" ${ro ? 'readonly' : ''}>${ro ? '' : `<input type="date" data-pick="${k}" aria-label="Pick a date for ${esc(p.label || k)}">`}</span>`
