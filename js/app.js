@@ -1784,6 +1784,7 @@
     abn: { prefix: 'ABP', offDay: 'Saturday', restDay: 'Sunday', workLocationText: 'Company office, client premises, event venues and other assigned project locations as reasonably required.' },
   };
   const LOEC_CMS = { meg: 'MEG', meh: 'MEH', hds: 'HD', abn: 'ABP' };
+  const LX_PAGE = '<!--lx-page-->';   // where a new sheet (page) starts: before each appendix
   const LOEC_ST = { draft: 'Draft', issued: 'Issued', signed_uploaded: 'Signed copy uploaded', verified: 'Verified', stamp_pending: 'Stamp pending', stamped: 'Stamped', completed: 'Completed', superseded: 'Superseded', cancelled: 'Cancelled' };
   const lxDate = (iso) => { if (!iso) return '________________'; const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`); return isNaN(d) ? esc(iso) : `${d.getDate()} ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getMonth()]} ${d.getFullYear()}`; };
   const lxTime = (t) => { if (!t) return '________'; const [h0, m] = String(t).split(':'); const h = parseInt(h0, 10); return `${h % 12 || 12}.${m}${h >= 12 ? 'pm' : 'am'}`; };
@@ -1996,7 +1997,7 @@
       if (m) items.push(`<li><strong>${esc(m[1])}:</strong><br>${esc(m[2])}</li>`); else { flush(); ap.push(`<p>${esc(t)}</p>`); }
     });
     flush();
-    out.push(`<div class="lx-appx">${ap.join('')}</div>`);
+    out.push(`${LX_PAGE}<div class="lx-appx">${ap.join('')}</div>`);
     // additional appendices from MEG-EAF V2 (Build 16), when included there
     (d.appendices || []).filter((a) => a && a.enabled).sort((a, b) => Number(a.number) - Number(b.number)).forEach((a) => {
       const prose = (txt) => String(txt || '').split(/\n\s*\n/).map((part) => part.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)).filter((l) => l.length)
@@ -2005,17 +2006,19 @@
       if (a.tableEnabled && Array.isArray(a.columns) && a.columns.length) {
         h += `<table class="lx-grid"><tr>${a.columns.map((c2) => `<th>${esc(c2 || '')}</th>`).join('')}</tr>${(Array.isArray(a.rows) ? a.rows : []).map((r) => `<tr>${a.columns.map((_, i) => `<td>${esc((r && r[i]) || '').replace(/\n/g, '<br>')}</td>`).join('')}</tr>`).join('')}</table>`;
       }
-      out.push(`<div class="lx-appx">${h}${prose(a.closing)}</div>`);
+      out.push(`${LX_PAGE}<div class="lx-appx">${h}${prose(a.closing)}</div>`);
     });
     return out.join('');
   }
-  /** One printable sheet: letterhead repeated on every page, reference line at the foot of every page. */
+  /** The letter as printable sheets: the letter, then each appendix as its own sheet, so an appendix always starts on a new page
+   *  (on screen too). Letterhead repeated at the top and the reference line at the foot of every printed page (v2026.11.06). */
   function loecSheet(d, ref) {
     const head = LETTERHEADS[LOEC_CMS[d.companyCode]];
     const top = head ? `<img class="lt-head" src="${esc(asset(head))}" alt="${esc(d.company.name || '')} letterhead">` : `<div class="doc-head"><div class="doc-co"><div class="doc-co-name">${esc(d.company.name || '')}</div></div></div>`;
-    return `<section class="sheet letter loec"><table class="lt-frame"><thead><tr><td>${top}</td></tr></thead>
-      <tfoot><tr><td><div class="lx-foot">Ref: ${esc(ref || `${d.p.prefix}-LOEC`)} · Version 2.0 · Combined Letter of Offer &amp; Employment Contract</div></td></tr></tfoot>
-      <tbody><tr><td><div class="lt-body lx-body">${loecHtml(d)}</div></td></tr></tbody></table></section>`;
+    const foot = `Ref: ${esc(ref || `${d.p.prefix}-LOEC`)} · Version 2.0 · Combined Letter of Offer &amp; Employment Contract`;
+    return loecHtml(d).split(LX_PAGE).map((part, i) => `<section class="sheet letter loec${i ? ' lx-appx-sheet' : ''}"><table class="lt-frame"><thead><tr><td>${top}</td></tr></thead>
+      <tfoot><tr><td><div class="lx-foot">${foot}</div></td></tr></tfoot>
+      <tbody><tr><td><div class="lt-body lx-body">${part}</div></td></tr></tbody></table></section>`).join('');
   }
 
   async function loecPage(item, el) {
