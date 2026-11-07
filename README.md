@@ -89,6 +89,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 61. `20261106_cms_letter_loc_senior.sql` — Letter of Confirmation — Senior Position (`LOC_SNR`) saved as a draft template; placeholders `promotion_letter_date`, `increment_effective_date`, `salary_arrangement`; the salary month of an applied letter follows `increment_effective_date`
 62. `20261106_cms_loec_jd_title.sql` — `cms_loec_save` saves the approved JD position title (`v2ResolvedJobTitle`) with the offer letter terms
 63. `20261107_cms_loec_clauses_cms_only.sql` — `cms_settings` (`loec_builder`), `cms_setting_get / set`, guard: new offer letter records only from the CMS; optional clause choices saved with the LOEC terms
+64. `20261107_cms_movement_report.sql` — `cms_movement_report(month, company)` and the permission `reports.movement_salary` (HR, Admin, Director)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -138,6 +139,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.07-13:10** — New report **Payroll › New Hires & Leavers** (PRI-018): per payroll month, one company or all — headcount (opening + joined − left = closing), new hires, leavers, leaving soon and transfers between companies; print / PDF in A4 landscape. Salary figures only for roles with the new permission “See salaries in the New hires & leavers report” (HR, Admin, Director by default).
 - **v2026.11.07-12:30** — Offer letter (LOEC): optional clauses 5.5 overtime rule, 7.4 annual leave pro-rated in the joining / leaving year, 15.4 excess leave on leaving is unpaid — tick boxes, ticked by default on a new letter. Offer letters are now made only in the CMS: MEG-EAF V2 shows a notice with a link to the applicant's offer letter here and can no longer create or issue one (Super Admin can switch this on Offers & Onboarding). PRI-019 (Invite to the CMS) recorded.
 - **v2026.11.06-22:10** — Offer letter (LOEC): the job title is the approved JD position (MEG-EAF V2 “Resolved Position (for letter)”, e.g. Kindergarten Associate), not the general position family; the family, level and JD reference are shown under it. Offer terms: “Job title on the letter” and a read-only “Position family (general)”; the JD picker no longer overwrites the family. The JD position title is saved with the letter terms.
 - **v2026.11.06-21:30** — Offer letter (LOEC): Appendix 1 (and any further appendix) is now its own page — on screen and when printed it always starts on a new page, with the letterhead and reference line. Tables A, B and C: equal column widths and the wording centred.

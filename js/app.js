@@ -1296,6 +1296,71 @@
     } catch (e) { /* claims above still work */ }
   }
 
+  // ================================================================ NEW HIRES & LEAVERS (PRI-018, v2026.11.07)
+  // Per payroll month, one company or all: new hires, leavers, upcoming leavers (resignation received, last day later), transfers between
+  // companies and headcount (opening + joined − left = closing). Salary figures only with "See salaries in the New hires & leavers report".
+  async function movementPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const now = new Date(Date.now() + 8 * 36e5);
+    const f = { month: q.get('month') || now.toISOString().slice(0, 7), co: q.get('co') || 'ALL' };
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `${pageHead(item)}<section class="card"><div class="toolbar">
+        <label class="fld inline"><span>Payroll month</span><input type="month" id="mv-m" value="${esc(f.month)}"></label>
+        <label class="fld inline"><span>Company</span><select id="mv-c"><option value="ALL">All companies</option></select></label>
+        <button type="button" class="btn primary" id="mv-go">Show</button>
+        <button type="button" class="btn" id="mv-print">${icon('download')}Print / Save as PDF</button></div></section>
+      <div id="mv-body">${loading()}</div>`;
+    let D = null;
+    const MON = (ym) => { const [y, m] = ym.split('-').map(Number); return `${MONTHS[m - 1]} ${y}`; };
+    const svc = (n) => (n == null ? '—' : `${Math.floor(n / 12) ? `${Math.floor(n / 12)} y ` : ''}${n % 12} m`);
+    const money = (v) => (v == null || v === '' ? '—' : `RM ${m2(v)}`);
+    const basis = (b) => (b === 'hourly' ? ' / hour' : b === 'daily' ? ' / day' : '');
+    const cls = (c) => ({ FT: 'Full time', PT: 'Part time', CASUAL: 'Casual', INTERN: 'Intern' }[String(c || '').toUpperCase()] || c || '—');
+    const tick = (b) => (b ? '✓' : '<span class="bad-txt">missing</span>');
+    const nameCell = (r) => `<b>${esc(r.name)}</b><small class="sub">${esc(r.employee_id || '')}</small>`;
+    const where = (r) => `${esc(coShort(r.company) || r.company || '—')}${r.dept ? `<small class="sub">${esc(r.dept)}</small>` : ''}`;
+    const table = (head, rows, empty) => (rows.length ? `<table class="data mv-t"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : `<p class="muted small">${empty}</p>`);
+    function sheet() {
+      const pay = D.can_salary; const R = D.reason_labels || {};
+      const coName = f.co === 'ALL' ? 'All companies' : ((D.companies || []).find((c) => c.code === f.co)?.name || f.co);
+      const hires = D.new_hires.map((r, i) => `<tr><td>${i + 1}</td><td>${nameCell(r)}</td><td>${where(r)}</td><td>${esc(r.position || '—')}${r.level ? `<small class="sub">${esc(r.level)}${r.family && r.family !== r.position ? ` · ${esc(r.family)}` : ''}</small>` : ''}</td>
+        <td>${esc(cls(r.class))}${r.employment_type ? `<small class="sub">${esc(r.employment_type)}</small>` : ''}</td><td class="nowrap">${dShort(r.start)}</td><td class="nowrap">${dShort(r.probation_end)}</td>
+        ${pay ? `<td class="num nowrap">${money(r.basic)}${basis(r.basis)}</td><td class="num nowrap">${r.allowances ? money(r.allowances) : '—'}</td>` : ''}
+        <td class="small nowrap">EPF ${tick(r.statutory?.epf)}<br>SOCSO ${tick(r.statutory?.socso)}<br>Tax no. ${tick(r.statutory?.tax)}</td><td class="small">${esc(r.offer_ref || '—')}</td><td class="nowrap">${r.first_payroll ? esc(MON(r.first_payroll)) : '—'}</td></tr>`);
+      const st = (s, k) => { if (!s) return '—'; const mode = s[`${k}_mode`]; const days = s[`${k}_days`]; const amt = s[`${k}_amount`];
+        return `${esc(mode || '—')}${days ? ` · ${num(days)} d` : ''}${pay && amt ? `<small class="sub">${money(amt)}</small>` : ''}`; };
+      const leavers = D.leavers.map((r, i) => `<tr><td>${i + 1}</td><td>${nameCell(r)}</td><td>${where(r)}</td><td>${esc(r.position || '—')}</td><td class="nowrap">${dShort(r.start)}</td><td class="nowrap"><b>${dShort(r.last_day)}</b></td>
+        <td class="nowrap">${svc(r.service_months)}</td><td>${esc(R[r.reason] || r.reason || '—')}</td><td class="nowrap">${dShort(r.resignation_date)}</td><td class="small">${st(r.settlement, 'notice')}</td><td class="small">${st(r.settlement, 'al')}</td>
+        ${pay ? `<td class="num nowrap">${money(r.basic)}${basis(r.basis)}</td>` : ''}<td class="small">${r.settlement ? 'Saved' : '<span class="warn-txt">Not done</span>'}</td><td class="small">${esc(r.letter_ref || '—')}</td></tr>`);
+      const up = D.upcoming.map((r, i) => `<tr><td>${i + 1}</td><td>${nameCell(r)}</td><td>${where(r)}</td><td>${esc(r.position || '—')}</td><td class="nowrap">${dShort(r.resignation_date)}</td><td class="nowrap"><b>${dShort(r.last_day)}</b></td><td>${esc(R[r.reason] || r.reason || '—')}</td></tr>`);
+      const tr = D.transfers.map((r, i) => `<tr><td>${i + 1}</td><td>${nameCell(r)}</td><td class="nowrap">${dShort(r.date)}</td><td>${esc(coShort(r.from) || r.from)} → <b>${esc(coShort(r.to) || r.to)}</b></td><td>${esc(r.dept || '—')}</td><td>${esc(r.position || '—')}</td></tr>`);
+      const T = D.totals; const sum = (k) => T.reduce((a, x) => a + Number(x[k] || 0), 0);
+      const tot = T.map((x) => `<tr><td>${esc(coShort(x.company) || x.company)}</td><td class="num">${num(x.opening)}</td><td class="num">+${num(x.joined)}</td><td class="num">−${num(x.left)}</td><td class="num"><b>${num(x.closing)}</b></td></tr>`);
+      if (T.length > 1) tot.push(`<tr class="mv-sum"><td><b>Total</b></td><td class="num">${num(sum('opening'))}</td><td class="num">+${num(sum('joined'))}</td><td class="num">−${num(sum('left'))}</td><td class="num"><b>${num(sum('closing'))}</b></td></tr>`);
+      return `<section class="sheet mv-sheet"><header class="mv-h"><div><h2>New hires &amp; leavers</h2><p>${esc(MON(D.month))} · ${esc(coName)}</p></div>
+          <div class="mv-k"><span><b>${num(D.new_hires.length)}</b> joined</span><span><b>${num(D.leavers.length)}</b> left</span><span><b>${num(D.upcoming.length)}</b> leaving soon</span><span><b>${num(D.transfers.length)}</b> transferred</span></div></header>
+        <h3>Headcount</h3>${table(['Company', 'Opening', 'Joined', 'Left', 'Closing'], tot, 'No staff in this month.')}
+        <h3>New hires <small>start date in ${esc(MON(D.month))}</small></h3>${table(['#', 'Name', 'Company', 'Position', 'Type', 'Start', 'Probation end', ...(pay ? ['Basic', 'Allowances'] : []), 'Statutory', 'Offer letter', 'First payroll'], hires, 'No new hires this month.')}
+        <h3>Leavers <small>last working day in ${esc(MON(D.month))}</small></h3>${table(['#', 'Name', 'Company', 'Position', 'Start', 'Last day', 'Service', 'Reason', 'Resignation letter', 'Notice', 'Annual leave', ...(pay ? ['Basic'] : []), 'Final settlement', 'Acceptance letter'], leavers, 'No leavers this month.')}
+        <h3>Leaving soon <small>resignation received by the end of ${esc(MON(D.month))}, last day later</small></h3>${table(['#', 'Name', 'Company', 'Position', 'Resignation letter', 'Last day', 'Reason'], up, 'None.')}
+        <h3>Transfers between companies</h3>${table(['#', 'Name', 'Date', 'From → To', 'Department', 'Position'], tr, 'No transfers this month.')}
+        <footer class="mv-f">Printed ${esc(new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))} by ${esc(state.access?.name || state.user?.email || '')}${pay ? '' : ' · salary figures not shown for your role'} · MyEden Group CMS</footer></section>`;
+    }
+    const load = async () => {
+      $('#mv-body', el).innerHTML = loading();
+      try { D = await API.rpc('cms_movement_report', { p_month: `${f.month}-01`, p_company: f.co }); }
+      catch (e) { $('#mv-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+      const sel = $('#mv-c', el);
+      if (sel.options.length === 1) (D.companies || []).forEach((c) => sel.insertAdjacentHTML('beforeend', `<option value="${esc(c.code)}">${esc(c.short || c.name)}</option>`));
+      sel.value = f.co;
+      $('#mv-body', el).innerHTML = `<div class="mv-prev">${sheet()}</div>`;
+      history.replaceState(null, '', `#/reports/movement?month=${f.month}&co=${f.co}`);
+    };
+    $('#mv-go', el).onclick = () => { f.month = $('#mv-m', el).value || f.month; f.co = $('#mv-c', el).value; load(); };
+    $('#mv-print', el).onclick = () => { if (D) docView(el, `New_hires_and_leavers_${f.month}_${f.co}`, [sheet()], () => movementPage(item, el)); };
+    await load();
+  }
+
   // ================================================================ USERS, ROLES & ACCESS
   async function rolesPage(item, el) {
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -6014,7 +6079,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

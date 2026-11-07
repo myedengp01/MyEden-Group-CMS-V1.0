@@ -405,7 +405,15 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   staff sign with (with reg. no. / address if their own); add clauses 4 and 5 and the part-time sick-leave / weekly-hours version; who prepares /
   issues (Recruitment / Onboarding edit) and whether a Director approves before issue.
 
-## PRI-018 · New hires and leavers report for each payroll month, printable PDF — recorded 2026-11-05
+## PRI-018 · New hires and leavers report for each payroll month, printable PDF — recorded 2026-11-05 · built in v2026.11.07
+- **Built (v2026.11.07):** Payroll › **New Hires & Leavers** (route `#/reports/movement`), its own report, separate from the monthly payroll report.
+  Pick the payroll month and one company or all; Print / Save as PDF in A4 landscape with a "Printed … by …" footer. Sections: Headcount per company
+  (opening + joined − left = closing, with a total), New hires (start date in the month: position and level, type, start, probation end, basic and
+  allowances, EPF / SOCSO / tax number set up, offer letter reference, first payroll month), Leavers (last working day in the month: start, last day,
+  service, reason, resignation letter date, notice, annual leave, basic, final settlement saved or not, acceptance letter reference), Leaving soon
+  (resignation received by the month end, last day later) and Transfers between companies (a new primary assignment under another company in the month).
+  Salary figures (basic, allowances, settlement amounts) only with the new permission "See salaries in the New hires & leavers report" — HR, Admin and
+  Director by default, Super Admin always, assignable to other roles in Roles & Permissions. Database: `cms_movement_report(month, company)`.
 - **Idea (CLC):** for every payroll month, a report of staff newly hired and staff offboarded / resigned, printable as a PDF.
 - **What exists today (not enough):** Reports & Analytics › Turnover has a leavers list (name, company, position, last day, service, reason)
   with CSV, for a year or the last 12 months; joiners are only a count. Nothing per payroll month, no joiners list, no print / PDF.

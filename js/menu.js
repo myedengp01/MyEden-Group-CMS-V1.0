@@ -72,6 +72,7 @@ window.CMS_MENU = [
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
       { route: 'payroll', label: 'Monthly Payroll', phase: 6, live: true, desc: 'Each month\'s payroll: hours, overtime, allowances and deductions, EPF / SOCSO / EIS and PCB, then save, finalise and (with permission) reopen.' },
       { route: 'payroll/reports', label: 'Payslips & Reports', phase: 6, live: true, desc: 'From finalised months: payslips, monthly summary, payment list, EPF, SOCSO & EIS and PCB lists, year to date and EA forms. Print, save as PDF or download Excel.' },
+      { route: 'reports/movement', label: 'New Hires & Leavers', phase: 6, live: true, desc: 'For a payroll month, one company or all: new hires, leavers, staff leaving soon, transfers between companies and headcount (opening + joined − left = closing). Print or save as PDF. Salary figures only for roles allowed to see them.' },
       { route: 'payroll/companies', label: 'Paying Companies', phase: 2, live: true, desc: 'Which company pays each person: transfers from a payroll month, joint payment by two companies, ending one, the main company and corrections.' },
       { route: 'payroll/increments', label: 'Increments & Reviews', phase: 2, live: true, desc: 'Each person\'s last increment and when their next salary review is due, by review interval (6, 9, 12 months or your own); record increments from a payroll month.' },
       { route: 'payroll/loans', label: 'Company Loans', phase: 6, live: true, desc: 'Company loans to staff: amount, monthly instalment and first month; repayments come off net pay in each finalised month. Adding or changing a loan needs "Prepare payroll".' },
@@ -128,7 +129,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
