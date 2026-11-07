@@ -87,7 +87,7 @@ window.CMS_MENU = [
     { route: 'assets', label: 'Items & Hand-over', icon: 'box', phase: 4, live: true, desc: 'Every company item issued to staff — email and system accounts, keys, cards, thumb drives, devices, uniforms, handbook — confirmed by the person, changed or returned during employment, and handed over at offboarding with a deadline and approval.' },
     { route: 'letters', label: 'HR Letters', icon: 'mail', phase: 5, live: true, desc: 'All HR letters in one place: HR drafts, Admin / Super Admin / a Director approves, then the letter is issued and kept in the person\'s records. Templates in text or Word (import a Word letter and turn its details into placeholders), placeholders, approvals and on/off.' },
     { route: 'hrlaw', label: 'Employment Act & Calculators', icon: 'scale', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Statutory reference and OT, leave, notice, maternity and final-pay calculators (in MEG-EAF V2).' },
-    { route: 'approvals', label: 'Approvals & Workflows', icon: 'check-circle', phase: 0, desc: 'Every claim waiting for approval, processing or payment, across all MEG-FORMS forms.' },
+    { route: 'approvals', label: 'Action Center', icon: 'check-circle', phase: 0, live: true, desc: 'Every claim to approve, process or pay across the forms, with filters, row actions, claim settings and permissions. Replaces the MEG-FORMS portal dashboard.' },
     { route: 'reports', label: 'Reports & Analytics', icon: 'chart', phase: 5, live: true, desc: 'Headcount at each month end, joiners and leavers, turnover by year, length of service, why people left, employer payroll cost by company, and claims by form and stage — by company and period, with tables and CSV.' },
   ] },
   { section: 'Administration', items: [

@@ -214,6 +214,7 @@
     $('.bell-btn')?.classList.toggle('has', t.length > 0);
     el.innerHTML = t.length ? t.map((x) => `<a class="pop-item task" href="${esc(x.href)}" ${x.ext ? 'target="_blank" rel="noopener"' : ''}>${icon(x.ic)}<span><b>${esc(x.title)}</b><small>${esc(x.sub)}</small></span></a>`).join('')
       : `<div class="empty small">${icon('bell')}<p>Nothing waiting</p><span>Approvals and reminders appear here.</span></div>`;
+    if (canRoute('approvals')) el.insertAdjacentHTML('beforeend', `<a class="pop-item pop-foot" href="#/approvals">${icon('check-circle')}<span><b>Open the Action Center</b><small>Everything to approve, process and pay</small></span></a>`);
   }
 
   function buildShell() {
@@ -400,7 +401,7 @@
       <div class="sec-head"><h2>${icon('sparkle')}Quick actions</h2><span class="muted">Shortcuts to the work you do most</span></div>
       <section class="qas">
         ${qa('users', 'View people', 'Search the Employee Master', 'people', 'blue')}
-        ${qa('check-circle', 'Approvals', 'Waiting across the apps', 'approvals', 'rose')}
+        ${qa('check-circle', 'Action Center', 'Approve, process and pay', 'approvals', 'rose')}
         ${qa('shield', 'Users & roles', 'Who can do what', 'admin/roles', 'violet')}
         ${qa('building', 'Organisation', 'Companies and centres', 'org', 'green')}
         ${qa('list', 'Audit log', 'Every change, by whom', 'admin/audit', 'teal')}
@@ -1277,23 +1278,181 @@
     await reload();
   }
 
+  // ================================================================ ACTION CENTER (PRI-010, v2026.11.07)
+  // Every claim to approve, process or pay across the forms, in one place (replaces the MEG-FORMS portal's dashboard):
+  // tiles per form, tabs (Action required · All claims · P/AC processing · My claims · Other tasks), filters, row actions,
+  // Super Admin delete with a reason, and the portal's settings (claimant history, claim permissions).
+  const FORM_ORDER = ['scf', 'otcf', 'mtcf', 'tec-v2', 'tec', 'prfaf'];
+  const FORM_SHORT = { scf: 'SCF', otcf: 'OTCF', mtcf: 'MTCF', 'tec-v2': 'TEC', tec: 'TEC V1', prfaf: 'PRFAF' };
+  const canProcess = (r) => r.stage === 'processing' && can3(r.module, 'E', r.company_code);
+  const canPay = (r) => r.stage === 'payment' && can3(`${r.module}.pay`, 'V', r.company_code);
+  const needsMe = (r) => canDecide(r) || canProcess(r) || canPay(r);
+  const isMyClaim = (r) => { const p = state.access?.person; return !!r.is_mine || (!!p && ((p.id && r.person_id === p.id) || (p.employee_id && r.employee_id === p.employee_id))); };
   async function approvalsPage(item, el) {
-    el.innerHTML = `${pageHead(item)}<div id="ap-claims">${loading()}</div><div id="ap-other"></div>`;
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const f = { tab: q.get('tab') || 'action', form: q.get('form') || 'all', co: 'all', stage: 'all', pay: 'all', from: '', to: '', sort: 'new', q: '' };
+    el.innerHTML = `${pageHead(item)}<div id="ac-tiles"></div>
+      <div class="tabs" role="tablist" id="ac-tabs"></div><div id="ac-body">${loading()}</div><div id="ac-set"></div>`;
+    let rows = [];
+    const sup = isSuper();
+    const tabs = [['action', 'Action required'], ['all', 'All claims'], ['proc', 'P/AC processing'], ['mine', 'My claims'], ['other', 'Other tasks']];
+    const inTab = (r, t) => t === 'action' ? needsMe(r) : t === 'proc' ? ['processing', 'payment'].includes(r.stage) : t === 'mine' ? isMyClaim(r) : true;
+    const otherTasks = () => tasksFromDash(state.dash).filter((x) => x.href !== '#/approvals');
+    function tiles() {
+      const forms = FORM_ORDER.filter((k) => rows.some((r) => r.form_code === k));
+      $('#ac-tiles', el).innerHTML = `<div class="ac-tiles">${forms.map((k) => {
+        const rs = rows.filter((r) => r.form_code === k); const c = (s) => rs.filter((r) => r.stage === s).length; const mine = rs.filter(needsMe).length;
+        return `<button type="button" class="card ac-tile ${f.form === k ? 'on' : ''}" data-tile="${esc(k)}"><b>${esc(FORM_SHORT[k] || k)}</b>
+          <span class="ac-n ${mine ? 'hot' : ''}">${num(mine)}<small>for you</small></span>
+          <small class="muted">${num(c('approval'))} to approve · ${num(c('processing'))} to process · ${num(c('payment'))} to pay</small></button>`;
+      }).join('')}</div>`;
+    }
+    function drawTabs() {
+      $('#ac-tabs', el).innerHTML = tabs.map(([k, l]) => {
+        const n = k === 'other' ? otherTasks().length : rows.filter((r) => inTab(r, k)).length;
+        const show = k === 'all' ? '' : ` <span class="tab-n">${num(n)}</span>`;
+        return `<button type="button" role="tab" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${esc(l)}${show}</button>`;
+      }).join('');
+    }
+    function filtered() {
+      const t = f.q.trim().toLowerCase(); const from = f.from ? new Date(`${f.from}T00:00:00+08:00`) : null; const to = f.to ? new Date(`${f.to}T23:59:59+08:00`) : null;
+      const list = rows.filter((r) => inTab(r, f.tab) && (f.form === 'all' || r.form_code === f.form) && (f.co === 'all' || r.company_code === f.co)
+        && (f.stage === 'all' || (f.stage === 'waiting' ? WAITING.includes(r.stage) : r.stage === f.stage))
+        && (f.pay === 'all' || (f.pay === 'done' ? r.payment_status === 'done' : r.supports_payment && r.payment_status !== 'done'))
+        && (!from || new Date(r.submitted_at) >= from) && (!to || new Date(r.submitted_at) <= to)
+        && (!t || `${r.serial_no} ${r.claimant_name} ${r.employee_id || ''} ${r.form_name}`.toLowerCase().includes(t)));
+      const at = (r) => new Date(r.event_at || r.submitted_at).getTime() || 0;
+      const sorts = { new: (a, b) => at(b) - at(a), old: (a, b) => at(a) - at(b), amt: (a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0), name: (a, b) => String(a.claimant_name).localeCompare(String(b.claimant_name)) };
+      return list.sort(sorts[f.sort] || sorts.new);
+    }
+    const nextStep = (r) => canDecide(r) ? (r.form_code.startsWith('tec') ? 'Mark as done' : 'Approve / disapprove') : canProcess(r) ? 'Process (P/AC checklist)' : canPay(r) ? 'Mark as paid' : '';
+    function drawBody() {
+      const body = $('#ac-body', el);
+      if (f.tab === 'other') {
+        const t = otherTasks();
+        body.innerHTML = `<section class="card">${t.length ? `<ul class="tasks">${t.map((x) => `<li><a href="${esc(x.href)}" ${x.ext ? 'target="_blank" rel="noopener"' : ''}><span class="t-ic ${esc(x.tone || 'blue')}">${icon(x.ic)}</span><span><b>${esc(x.title)}</b><small>${esc(x.sub || '')}</small></span>${icon('arrow')}</a></li>`).join('')}</ul>`
+          : `<div class="empty small">${icon('check-circle')}<p>Nothing else waiting</p><span>Letters, onboarding, payroll and profile changes appear here.</span></div>`}</section>`;
+        return;
+      }
+      const cos = [...new Set(rows.map((r) => r.company_code).filter(Boolean))].sort();
+      const forms = FORM_ORDER.filter((k) => rows.some((r) => r.form_code === k));
+      const opt = (v, l, cur) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`;
+      const list = filtered();
+      body.innerHTML = `<section class="card"><div class="toolbar ac-filt">
+          <label class="search-in">${icon('search')}<input type="search" data-af="q" value="${esc(f.q)}" placeholder="Serial no., claimant or Employee ID" aria-label="Search claims"></label>
+          <select data-af="form" aria-label="Form">${opt('all', 'All forms', f.form)}${forms.map((k) => opt(k, FORM_SHORT[k] || k, f.form)).join('')}</select>
+          ${cos.length > 1 ? `<select data-af="co" aria-label="Company">${opt('all', 'All companies', f.co)}${cos.map((c) => opt(c, coShort(c), f.co)).join('')}</select>` : ''}
+          <select data-af="stage" aria-label="Status">${opt('all', 'Any status', f.stage)}${opt('waiting', 'Waiting (any step)', f.stage)}${STAGES.map(([k, l]) => opt(k, l, f.stage)).join('')}</select>
+          <select data-af="pay" aria-label="Payment">${opt('all', 'Any payment', f.pay)}${opt('open', 'Not yet paid', f.pay)}${opt('done', 'Paid', f.pay)}</select>
+          <label class="ac-d">From <input type="date" data-af="from" value="${esc(f.from)}"></label>
+          <label class="ac-d">to <input type="date" data-af="to" value="${esc(f.to)}"></label>
+          <select data-af="sort" aria-label="Sort">${opt('new', 'Newest first', f.sort)}${opt('old', 'Oldest first', f.sort)}${opt('amt', 'Largest amount', f.sort)}${opt('name', 'Claimant A–Z', f.sort)}</select>
+        </div>
+        <div class="table-wrap fill"><table class="data claims"><thead><tr><th>Serial no.</th><th>Form</th><th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th><th>Processing</th><th>Next step</th><th class="ac-act"><span class="sr">Actions</span></th></tr></thead>
+        <tbody>${list.length ? list.map((r) => `<tr class="click" tabindex="0" data-f="${esc(r.form_code)}" data-id="${esc(r.id)}">
+            <td><code>${esc(r.serial_no)}</code></td><td>${esc(FORM_SHORT[r.form_code] || r.form_name)}</td>
+            <td><b>${esc(r.claimant_name)}</b>${r.employee_id ? `<br><small class="muted">${esc(r.employee_id)}</small>` : ''}</td>
+            <td>${esc(r.company_code ? coShort(r.company_code) : '—')}</td><td class="num nowrap">${fmtAmt(r)}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
+            <td>${stageTag(r)}${r.stage === 'approval' && r.is_mine ? ' <span class="tag mine">Yours</span>' : ''}</td>
+            <td class="small">${r.processing_eligible ? `${[r.documents_checked, r.supporting_docs_checked, r.payment_process_checked].filter(Boolean).length}/3${r.fully_processed ? ' · <b>done</b>' : ''}${r.processed_by_name ? `<br><span class="muted">${esc(r.processed_by_name)}</span>` : ''}` : '—'}</td>
+            <td class="small">${esc(nextStep(r) || '—')}</td>
+            <td class="ac-act nowrap">${canPay(r) && r.fully_processed ? `<button type="button" class="btn sm" data-acpay title="Mark as paid">Paid</button>` : ''}${sup && r.payment_status !== 'done' ? `<button type="button" class="icon-btn sm danger" data-acdel title="Delete this claim" aria-label="Delete ${esc(r.serial_no)}">${icon('x')}</button>` : ''}</td></tr>`).join('')
+          : `<tr><td colspan="10"><div class="empty small">${icon('check-circle')}<p>Nothing here</p><span>${f.tab === 'action' ? 'Nothing is waiting for you.' : 'Try another filter or clear the search.'}</span></div></td></tr>`}</tbody></table></div>
+        <p class="muted small">${list.length} of ${rows.length} claims · drafts and deleted claims are not shown · click a claim to open it (approve, process, notes, payment).</p></section>`;
+    }
+    function drawAll() { tiles(); drawTabs(); drawBody(); }
+    async function settings() {
+      const box = $('#ac-set', el);
+      let s = null; try { s = await API.rpc('cms_claim_settings'); } catch (e) { /* no access */ }
+      if (!s && !can('admin.roles')) { box.innerHTML = ''; return; }
+      box.innerHTML = `<details class="card ac-settings"><summary><b>${icon('list')}Claim settings</b> <span class="muted small">history shown to staff, who can submit, approve, process and pay</span></summary>
+        ${s ? `<div class="toolbar"><label class="fld inline"><span>Staff see their own claims for the last</span><select id="ac-hist" ${s.can_edit ? '' : 'disabled'}>${[1, 2, 3, 6, 12].map((m) => `<option value="${m}" ${s.history_months === m ? 'selected' : ''}>${m} month${m === 1 ? '' : 's'}</option>`).join('')}</select></label>
+          <span class="muted small">Applies in every form app.</span></div>` : ''}
+        ${can('admin.roles') ? `<p><a class="btn sm" href="#/admin/roles?tab=claims">${icon('lock')}Claim permissions</a> <span class="muted small">Same permissions the form apps use (submit, approve with company scope, process, mark paid, view, Form Admin).</span></p>` : ''}</details>`;
+      $('#ac-hist', box)?.addEventListener('change', async (e) => {
+        try { await API.rpc('cms_claim_history_months_set', { p_months: Number(e.target.value) }); toast('Claimant history saved'); } catch (x) { toast(x.message, 'err'); }
+      });
+    }
     const reload = async () => {
       try {
-        const rows = await loadClaims();
-        claimsView($('#ap-claims', el), rows, { showForm: true, onOpen: (f, i) => openClaim(f, i, reload), onChanged: reload });
-      } catch (e) { $('#ap-claims', el).innerHTML = errorCard(e.message); wireRetry(el); }
+        const [r, d] = await Promise.all([loadClaims(), API.rpc('cms_dashboard').catch(() => state.dash)]);
+        rows = r; state.dash = d; drawBell(); drawAll();
+      } catch (e) { $('#ac-body', el).innerHTML = errorCard(e.message); wireRetry(el); }
     };
+    el.addEventListener('click', async (e) => {
+      const tile = e.target.closest('[data-tile]');
+      if (tile) { f.form = f.form === tile.dataset.tile ? 'all' : tile.dataset.tile; drawAll(); return; }
+      const tb = e.target.closest('#ac-tabs [data-tab]');
+      if (tb) { f.tab = tb.dataset.tab; drawTabs(); drawBody(); return; }
+      const tr = e.target.closest('#ac-body tr[data-id]'); if (!tr) return;
+      const r = rows.find((x) => x.form_code === tr.dataset.f && x.id === tr.dataset.id); if (!r) return;
+      if (e.target.closest('[data-acdel]')) {
+        let reason = null;
+        const ok = await modal({ title: `Delete ${r.serial_no}`, ok: 'Delete claim', danger: true,
+          body: `<p class="small"><b>${esc(r.serial_no)}</b> · ${esc(r.claimant_name)} · ${fmtAmt(r)}</p>
+            <p class="small muted">The claim is removed from every list (kept in the database with your name and reason). Paid, completed or ledger-linked claims cannot be deleted.</p>
+            <label class="fld"><span>Reason</span><textarea name="reason" rows="3" maxlength="500" required class="ta"></textarea></label>`,
+          onOk: async (fm) => { reason = fm.reason.value.trim(); if (reason.length < 3) throw new Error('Give a reason (at least 3 characters).');
+            const res = await API.rpc('cms_claim_delete', { p_form: r.form_code, p_id: r.id, p_reason: reason });
+            if (res && res.deleted === false) throw new Error(res.reason === 'not_found' ? 'Claim not found.' : `Not deleted (${res.reason || 'unknown'}).`); } });
+        if (ok) { toast(`${r.serial_no} deleted`); await reload(); }
+        return;
+      }
+      if (e.target.closest('[data-acpay]')) {
+        const ok = await confirmBox('Mark this claim as paid?', `<b>${esc(r.serial_no)}</b> · ${esc(r.claimant_name)} · ${fmtAmt(r)}`, 'Mark as paid', false);
+        if (ok) { try { await API.rpc('cms_claim_paid', { p_form: r.form_code, p_id: r.id, p_done: true }); toast('Marked as paid'); await reload(); } catch (x) { toast(x.message, 'err'); } }
+        return;
+      }
+      openClaim(r.form_code, r.id, reload);
+    });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const tr = e.target.closest('#ac-body tr[data-id]'); if (tr && e.target === tr) openClaim(tr.dataset.f, tr.dataset.id, reload); } });
+    const onF = (e) => { const i = e.target.closest('[data-af]'); if (!i) return; f[i.dataset.af] = i.value;
+      if (i.dataset.af === 'q') { const pos = i.selectionStart; drawBody(); const n = $('[data-af="q"]', el); n.focus(); n.setSelectionRange(pos, pos); } else { if (i.dataset.af === 'form') tiles(); drawBody(); } };
+    el.addEventListener('input', (e) => { if (e.target.closest('[data-af="q"]')) onF(e); });
+    el.addEventListener('change', (e) => { if (!e.target.closest('[data-af="q"]')) onF(e); });
     await reload();
-    try {
-      const d = state.dash = await API.rpc('cms_dashboard'); drawBell();
-      $('#ap-other', el).innerHTML = `<section class="card"><div class="card-head"><h3>${icon('search-user')}Recruitment and onboarding</h3></div>
-        <ul class="tasks">
-          <li><a href="${esc(window.CMS_SOURCES['MEG-EAF V2'])}" target="_blank" rel="noopener"><span class="t-ic blue">${icon('search-user')}</span><span><b>${num(d.applications_pending)} applications pending</b><small>Office Use and decision</small></span><span class="tag src">Open MEG-EAF V2</span></a></li>
-          <li><a href="${esc(window.CMS_SOURCES['MEG-EAF V2'])}" target="_blank" rel="noopener"><span class="t-ic violet">${icon('shield')}</span><span><b>${num(d.handbook_outstanding)} handbook acknowledgements outstanding</b><small>Assigned or viewed, not yet acknowledged</small></span><span class="tag src">Open MEG-EAF V2</span></a></li>
-        </ul></section>`;
-    } catch (e) { /* claims above still work */ }
+    if (f.tab === 'action' && rows.length && !rows.some(needsMe) && !otherTasks().length) { f.tab = 'all'; f.stage = 'waiting'; drawAll(); }
+    settings();
+  }
+
+  // claim permissions (form_permissions, shared with the form apps) — Admin › Users, roles & access › Claim permissions
+  async function claimPermsBox(box) {
+    box.innerHTML = loading();
+    let D; try { D = await API.rpc('cms_form_permissions'); } catch (e) { box.innerHTML = errorCard(e.message); return; }
+    const sup = isSuper(); const ed = !!D.can_edit;
+    const st = { form: 'scf', q: '', all: false };
+    const COLS = [['submit', 'Submit'], ['approve', 'Approve'], ['scope', 'Approve for'], ['finance', 'Process (P/AC)'], ['paid', 'Mark paid'], ['view', 'View all'], ['summary', 'Summary'], ['ledger', 'Ledger'], ['admin', 'Form Admin']];
+    const FN = { scf: 'SCF', otcf: 'OTCF', mtcf: 'MTCF', 'tec-v2': 'TEC', tec: 'TEC V1', prfaf: 'PRFAF', prfaf_v2: 'PRFAF V2' };
+    const draw = () => {
+      const t = st.q.trim().toLowerCase();
+      const us = D.users.filter((u) => (st.all || u.perms[st.form]) && (!t || `${u.name} ${u.email} ${u.employee_id || ''}`.toLowerCase().includes(t)));
+      const cell = (u, k) => { const p = u.perms[st.form] || {}; const dis = !ed || (k === 'admin' && !sup) ? 'disabled' : '';
+        if (k === 'scope') return `<select data-fp="${esc(u.user_id)}" data-k="scope" ${dis} aria-label="Approve for">${[['', 'All companies'], ['myeden', 'MyEden'], ['hds', 'HDS'], ['abn', 'Aborne']].map(([v, l]) => `<option value="${v}" ${(p.scope || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+        return `<input type="checkbox" data-fp="${esc(u.user_id)}" data-k="${k}" ${p[k] ? 'checked' : ''} ${dis} aria-label="${esc(k)}">`; };
+      box.innerHTML = `<section class="card"><div class="toolbar ac-filt">
+          <div class="seg">${D.forms.map((k) => `<button type="button" data-fpf="${esc(k)}" class="${st.form === k ? 'on' : ''}">${esc(FN[k] || k)}</button>`).join('')}</div>
+          <label class="search-in">${icon('search')}<input type="search" id="fp-q" value="${esc(st.q)}" placeholder="Name, email or Employee ID" aria-label="Search logins"></label>
+          <label class="chk"><input type="checkbox" id="fp-all" ${st.all ? 'checked' : ''}> Show every login</label></div>
+        <div class="table-wrap fill"><table class="data fp-t"><thead><tr><th>Login</th>${COLS.map(([, l]) => `<th class="c">${esc(l)}</th>`).join('')}</tr></thead><tbody>
+        ${us.map((u) => `<tr><td><b>${esc(u.name)}</b><br><small class="muted">${esc(u.email || '')}${u.employee_id ? ` · ${esc(u.employee_id)}` : ''}</small></td>${COLS.map(([k]) => `<td class="c">${cell(u, k)}</td>`).join('')}</tr>`).join('')
+          || `<tr><td colspan="${COLS.length + 1}" class="muted">${st.all ? 'No logins match.' : 'Nobody has permissions on this form yet. Tick “Show every login” to add someone.'}</td></tr>`}</tbody></table></div>
+        <p class="muted small">These are the permissions the form apps use (the same table), so a change applies in the apps at once. “Approve for” limits approving to one company group.
+          ${sup ? '' : ' Only a Super Admin can give Form Admin.'} CMS roles (Users, roles &amp; access) decide what someone sees in the CMS itself.</p></section>`;
+    };
+    box.onclick = (e) => { const b = e.target.closest('[data-fpf]'); if (b) { st.form = b.dataset.fpf; draw(); } };
+    box.oninput = (e) => { if (e.target.id === 'fp-q') { st.q = e.target.value; const pos = e.target.selectionStart; draw(); const i = $('#fp-q', box); i.focus(); i.setSelectionRange(pos, pos); } };
+    box.onchange = async (e) => {
+      if (e.target.id === 'fp-all') { st.all = e.target.checked; draw(); return; }
+      const i = e.target.closest('[data-fp]'); if (!i) return;
+      const k = i.dataset.k; const v = k === 'scope' ? (i.value || null) : i.checked; const u = D.users.find((x) => x.user_id === i.dataset.fp);
+      i.disabled = true;
+      try {
+        await API.rpc('cms_form_permission_set', { p_user: u.user_id, p_form: st.form, p_perms: { [k]: v } });
+        u.perms[st.form] = { ...(u.perms[st.form] || {}), [k]: v }; toast(`${u.name} · ${FN[st.form] || st.form} saved`);
+      } catch (x) { toast(x.message, 'err'); if (k === 'scope') i.value = u.perms[st.form]?.scope || ''; else i.checked = !v; }
+      i.disabled = false;
+    };
+    draw();
   }
 
   // ================================================================ NEW HIRES & LEAVERS (PRI-018, v2026.11.07)
@@ -1366,7 +1525,7 @@
     const params = new URLSearchParams(location.hash.split('?')[1] || '');
     let tab = params.get('tab') || 'logins';
     el.innerHTML = `${pageHead(item)}
-      <div class="tabs" role="tablist">${[['logins', 'Logins'], ['roles', 'Roles & permissions'], ['grid', 'Compare roles'], ['rules', 'Position rules']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${[['logins', 'Logins'], ['roles', 'Roles & permissions'], ['grid', 'Compare roles'], ['claims', 'Claim permissions'], ['rules', 'Position rules']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="roles-body">${loading()}</div>`;
     let users, matrix, extra = {};
     const names = () => { state.roleNames = Object.fromEntries(matrix.roles.map((r) => [r.code, r.name])); };
@@ -1522,6 +1681,8 @@
 
     function draw() {
       $$('.tabs button', el).forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+      body.onclick = null; body.oninput = null; body.onchange = null;
+      if (tab === 'claims') { claimPermsBox(body); return; }
       body.innerHTML = tab === 'grid' ? drawGrid() : tab === 'rules' ? drawRules() : tab === 'roles' ? drawRoles() : drawLogins();
       if (tab === 'roles') wireRoles();
       if (tab === 'logins') {

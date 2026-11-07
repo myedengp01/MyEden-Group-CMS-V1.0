@@ -212,6 +212,13 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - MEG-EAF V2 applicant and HR system pages move into the CMS in a later phase.
 - **F0 built (v2026.11.07):** Sync Check › Match claimants (aliases kept in `cms_claimant_aliases`, used by every claim → person link);
   email-style claimant names matched through the linked login or payroll email (12 → 7 names left for HR); PRFAF company from the ledger account.
+- **Action Center built (v2026.11.07-15:20):** "Approvals & Workflows" renamed **Action Center** and rebuilt: tiles per form (for you · to approve ·
+  to process · to pay, click to filter), tabs Action required · All claims · P/AC processing · My claims · Other tasks (letters, onboarding,
+  payroll, profile changes from the bell), filters (form, company, status, payment, submitted from/to, sort, search), row actions (open,
+  Mark paid when the checklist is done, Super Admin Delete with a reason via `cms_claim_delete` — same rules and soft delete as the portal),
+  Claim settings (claimant history months) and **Admin › Users, roles & access › Claim permissions** (the portal's `form_permissions`
+  table: submit, approve + company scope, process, mark paid, view, summary, ledger, Form Admin — Form Admin only by a Super Admin).
+  The bell ends with "Open the Action Center". Phone push waits for PRI-015.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call
