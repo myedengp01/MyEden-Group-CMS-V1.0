@@ -452,3 +452,10 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   company and the default self-service parts, and their approver comes from "reports to". Higher roles stay granted by hand.
 - **Defaults setting:** which self-service parts new staff get, chosen once by CLC.
 - **Why:** staff will make claims in the CMS (PRI-010 F1); today a login can only be made in the forms portal and starts with no access.
+- **Built (v2026.11.07-16:45):** **Invite** button on a person's profile and per row in People › Self-service Access, **Invite selected** and
+  **Invite everyone without a login** there (sent one by one; stops cleanly at the hourly email limit). The `cms-invite` function sends the
+  Supabase invite email from `noreply@mail.myeden.group` (a login that exists but was never used gets a "set your password" email; a login in
+  use is just linked). At the invite the login is linked to the person, gets **Staff** for their own company (only when the login has no role),
+  and the **default parts** (never re-enables a part HR switched off). Approver = **Reports to** (already used by leave, items, appraisals;
+  the invite warns when it is not set). **Defaults for invited staff** (Super Admin, in Self-service Access): starts as Profile, Payslips,
+  EA forms, Claims, Handbook, plus the Staff role. The invite link opens "Welcome to the MyEden Group CMS — choose a password".

@@ -3190,10 +3190,90 @@
   }
 
   // ---------------------------------------------------------------- Self-service Access (HR / Admin)
+  // ---------------------------------------------------------------- PRI-019 invite to the CMS (v2026.11.07)
+  // One person (profile, Self-service Access) or many (selected / everyone without a login). The cms-invite function sends the email
+  // (new login: invite; login never used: set-your-password) and then links the login, gives the Staff role and the default parts.
+  const loadInvites = () => API.rpc('cms_invite_status').catch(() => null);
+  const INV_MODE = { invited: 'Invite email sent', reset: 'Set-password email sent (they already had an unused login)', linked: 'Already had a login in use: linked, no email sent' };
+  async function inviteOne(personId, email) {
+    const { data, error } = await API.sb().functions.invoke('cms-invite', { body: { person_id: personId, email: email || null } });
+    if (error) {
+      let why = error.message || String(error);
+      try { const b = await error.context.json(); if (b && b.error) why = b.error; } catch (x) { /* keep the generic message */ }
+      const e = new Error(why); e.limit = /email limit/i.test(why); throw e;
+    }
+    return data;
+  }
+  function inviteWhat(I) {
+    const d = I?.defaults || {}; const parts = (d.parts || []).map((p) => (PARTS.find((x) => x[0] === p) || [p, p])[1]);
+    return `<ul class="plan small"><li>An email from <b>MyEden Group &lt;noreply@mail.myeden.group&gt;</b> to choose a password (none if they already use a login).</li>
+      <li>Their login is linked to their own record${d.staff_role === false ? '' : ', with the <b>Staff</b> role for their own company (only if the login has no role yet)'}.</li>
+      <li>Self-service parts switched on: <b>${esc(parts.join(', ') || 'none')}</b> (a part already switched off for them stays off).</li>
+      <li>Their approver is their <b>Reports to</b>. Higher roles are still granted by hand in Users, Roles &amp; Access.</li></ul>`;
+  }
+  async function inviteWindow(list, I, after) {   // list: [{person_id, name, email}]
+    if (list.length === 1) {
+      const r0 = list[0];
+      const ok = await modal({ title: `Invite ${r0.name} to the CMS`, ok: 'Send invite',
+        body: `${inviteWhat(I)}<label class="fld"><span>Email</span><input type="email" name="email" value="${esc(r0.email || '')}" required maxlength="200" placeholder="name@example.com"></label>
+          <p class="muted small">Taken from their record (Employee Master or payroll). Change it here if it is wrong; the record itself is not changed.</p>`,
+        onOk: async (f) => {
+          const email = f.email.value.trim();
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid email.');
+          const r = await inviteOne(r0.person_id, email);
+          toast(`${r0.name}: ${INV_MODE[r.mode] || 'done'}`);
+          if (!r.reports_to) toast(`${r0.name} has no Reports to: set it in Self-service Access › Reports to.`, 'err');
+        } });
+      if (ok) after?.();
+      return;
+    }
+    let ran = false;
+    await modal({ title: `Invite ${list.length} people to the CMS`, wide: true, ok: null, cancel: 'Close',
+      body: `${inviteWhat(I)}<div class="table-wrap"><table class="data"><tbody>${list.map((r) => `<tr data-inv="${esc(r.person_id)}"><td><b>${esc(r.name)}</b></td><td>${r.email ? esc(r.email) : '<span class="warn-txt">no email on record: skipped</span>'}</td><td class="small" data-st></td></tr>`).join('')}</tbody></table></div>
+        <p class="muted small">Sent one by one. If the hourly email limit is reached, the rest stop and can be invited again later. To fix a missing or wrong email, invite that person on their own.</p>
+        <div class="btn-row"><button type="button" class="btn primary" data-go>${icon('mail')}Send ${list.filter((r) => r.email).length} invite${list.filter((r) => r.email).length === 1 ? '' : 's'}</button></div>`,
+      onOpen: (wrap) => {
+        $('[data-go]', wrap).addEventListener('click', async (e) => {
+          const b = e.currentTarget; b.disabled = true; b.classList.add('busy'); ran = true;
+          const closeBtns = $$('[data-x]', wrap); closeBtns.forEach((x) => { x.disabled = true; });
+          let ok = 0; let stopped = false;
+          for (const r of list) {
+            const st = $(`[data-inv="${CSS.escape(r.person_id)}"] [data-st]`, wrap);
+            if (!r.email) { st.textContent = 'Skipped'; continue; }
+            if (stopped) { st.textContent = 'Not sent (limit reached)'; continue; }
+            st.textContent = 'Sending…';
+            try { const x = await inviteOne(r.person_id, r.email); st.innerHTML = `<span class="ok-txt">${esc(INV_MODE[x.mode] || 'Done')}</span>${x.reports_to ? '' : ' · <span class="warn-txt">no Reports to</span>'}`; ok += 1; }
+            catch (x) { st.innerHTML = `<span class="bad-txt">${esc(x.message)}</span>`; if (x.limit) stopped = true; }
+            await new Promise((res) => setTimeout(res, 1200));
+          }
+          b.classList.remove('busy'); b.textContent = `Finished: ${ok} of ${list.length}`;
+          closeBtns.forEach((x) => { x.disabled = false; });
+          toast(`${ok} of ${list.length} invited`);
+        });
+      } });
+    if (ran) after?.();
+  }
+  // Super Admin: which parts new staff get
+  function inviteDefaultsWindow(I, after) {
+    const d = I.defaults || {};
+    return modal({ title: 'Defaults for invited staff', ok: 'Save',
+      body: `<p class="small">Switched on for each person invited to the CMS (a part already switched off for them stays off).</p>
+        <div class="checks col">${PARTS.filter((p) => PART_READY(p[0])).map(([k, l, desc]) => `<label><input type="checkbox" name="part" value="${k}" ${(d.parts || []).includes(k) ? 'checked' : ''}> <b>${esc(l)}</b> <small class="muted">${esc(desc)}</small></label>`).join('')}</div>
+        <label class="chk"><input type="checkbox" name="staff" ${d.staff_role === false ? '' : 'checked'}> Give the <b>Staff</b> role for their own company (when the login has no role yet)</label>`,
+      onOk: async (f) => {
+        await API.rpc('cms_invite_defaults_set', { p: { parts: $$('input[name=part]:checked', f).map((i) => i.value), staff_role: f.staff.checked } });
+        toast('Invite defaults saved'); after?.();
+      } });
+  }
+
   async function selfServicePage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="ss-body">${loading()}</div>`;
     let S;
-    const load = async () => { S = await API.rpc('cms_self_service'); S.people.forEach((r) => upKeys(r, 'name')); };
+    let I = null;   // invite state (PRI-019)
+    const load = async () => { [S, I] = await Promise.all([API.rpc('cms_self_service'), loadInvites()]); S.people.forEach((r) => upKeys(r, 'name')); };
+    const inv = (r) => I?.people?.[r.person_id] || {};
+    const invRow = (r) => ({ person_id: r.person_id, name: r.name, email: inv(r).email || null });
+    const needsInvite = (r) => r.status !== 'former' && (!r.login || !inv(r).signed_in);
     try { await load(); } catch (e) { $('#ss-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { tab: q.get('tab') || 'access', q: '', co: 'all', former: false, sel: new Set(), month: S.months[0] || '', kind: 'payslip' };
@@ -3232,19 +3312,32 @@
       requestAnimationFrame(() => { const w = $('.table-wrap', box); if (w) w.scrollTop = keep.list; pageScroller().scrollTop = keep.page; });
       if (f.tab === 'access') {
         box.innerHTML = `${edit ? `<div class="bulk-bar"><span id="ssn">${f.sel.size} selected</span><select id="bpart" aria-label="Part">${PARTS.filter((p) => PART_READY(p[0])).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
-            <button type="button" class="btn sm primary" data-bulk="1" ${f.sel.size ? '' : 'disabled'}>Switch on</button><button type="button" class="btn sm" data-bulk="0" ${f.sel.size ? '' : 'disabled'}>Switch off</button></div>` : ''}
+            <button type="button" class="btn sm primary" data-bulk="1" ${f.sel.size ? '' : 'disabled'}>Switch on</button><button type="button" class="btn sm" data-bulk="0" ${f.sel.size ? '' : 'disabled'}>Switch off</button>
+            ${I?.can_invite ? `<button type="button" class="btn sm" data-invsel ${f.sel.size ? '' : 'disabled'}>${icon('mail')}Invite selected</button>` : ''}</div>` : ''}
+          ${I?.can_invite ? `<div class="ss-inv">${(() => { const n = S.people.filter((r) => r.status !== 'former' && !r.login).length; return `<button type="button" class="btn sm" data-invall ${n ? '' : 'disabled'}>${icon('user-plus')}Invite everyone without a login (${n})</button>`; })()}
+            ${I.can_defaults ? `<button type="button" class="btn sm ghost" data-invdef>${icon('list')}Defaults for invited staff</button>` : ''}
+            <span class="muted small">An invite emails them a link to choose a password, links the login to their record and switches on: ${esc((I.defaults?.parts || []).map((p) => (PARTS.find((x) => x[0] === p) || [p, p])[1]).join(', ') || 'nothing')}.</span></div>` : ''}
           <div class="table-wrap fill"><table class="data freeze2 ss-grid"><thead><tr>${selAll(list)}<th>Name</th><th>Login</th>${PARTS.map(([k, l, d, ph]) => `<th class="ctr" title="${esc(d)}">${esc(l)}${ph ? `<small class="sub">${ph}</small>` : ''}</th>`).join('')}</tr></thead><tbody>
-          ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>` : '<span class="tag warn xs">No login</span>'}</td>
+          ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>${inv(r).signed_in === false ? `<small class="sub warn-txt">not signed in yet${inv(r).invited_at ? ` · invited ${dShort(inv(r).invited_at)}` : ''}</small>` : ''}` : '<span class="tag warn xs">No login</span>'}
+              ${I?.can_invite && needsInvite(r) ? `<button type="button" class="btn xs" data-inv1="${esc(r.person_id)}">${r.login ? 'Send again' : 'Invite'}</button>` : ''}</td>
             ${PARTS.map(([k, , , ph]) => `<td class="ctr"><input type="checkbox" class="sw" data-part="${k}" data-p="${esc(r.person_id)}" ${r.parts.includes(k) ? 'checked' : ''} ${!edit || ph ? 'disabled' : ''} aria-label="${esc(k)} for ${esc(r.name)}"></td>`).join('')}</tr>`).join('')
           || `<tr><td colspan="${PARTS.length + 3}"><div class="empty small"><p>No one here</p></div></td></tr>`}</tbody></table></div>
           <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Leave stays off while leave runs in the other system.</p>`;
-        wireSel(box, list, () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-bulk]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
+        wireSel(box, list, () => { $('#ssn', box).textContent = `${f.sel.size} selected`; $$('[data-bulk], [data-invsel]', box).forEach((b) => { b.disabled = !f.sel.size; }); });
         $$('.sw', box).forEach((c) => c.addEventListener('change', async () => {
           try { await API.rpc('cms_self_set', { p_people: [c.dataset.p], p_part: c.dataset.part, p_enabled: c.checked });
             const r = S.people.find((x) => x.person_id === c.dataset.p); r.parts = c.checked ? [...r.parts, c.dataset.part] : r.parts.filter((x) => x !== c.dataset.part);
             toast(`${r.name}: ${PARTS.find((p) => p[0] === c.dataset.part)[1]} ${c.checked ? 'on' : 'off'}`);
           } catch (e) { c.checked = !c.checked; toast(e.message, 'err'); }
         }));
+        $$('[data-inv1]', box).forEach((b) => b.addEventListener('click', () => { const r = S.people.find((x) => x.person_id === b.dataset.inv1); inviteWindow([invRow(r)], I, reload); }));
+        $('[data-invall]', box)?.addEventListener('click', () => inviteWindow(S.people.filter((r) => r.status !== 'former' && !r.login).map(invRow), I, reload));
+        $('[data-invsel]', box)?.addEventListener('click', () => {
+          const pick = S.people.filter((r) => f.sel.has(r.person_id) && needsInvite(r));
+          if (!pick.length) { toast('Everyone selected already uses their login.', 'err'); return; }
+          inviteWindow(pick.map(invRow), I, reload);
+        });
+        $('[data-invdef]', box)?.addEventListener('click', () => inviteDefaultsWindow(I, reload));
         $$('[data-bulk]', box).forEach((b) => b.addEventListener('click', async () => {
           const part = $('#bpart', box).value; const on = b.dataset.bulk === '1';
           try { const n = await API.rpc('cms_self_set', { p_people: [...f.sel], p_part: part, p_enabled: on }); toast(`${PARTS.find((p) => p[0] === part)[1]} switched ${on ? 'on' : 'off'} for ${n} ${n === 1 ? 'person' : 'people'}`); f.sel.clear(); reload(); }
@@ -5815,7 +5908,7 @@
             <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)} (${svc(H.start)})` : ''}</span></div>
           <p class="small">${H.boss ? `Reports to <a href="#/person?id=${esc(H.boss_id)}"><b>${esc(H.boss)}</b></a>` : '<span class="muted">Reports to: not set</span>'}${D.edited ? ` <span class="muted">· details last changed by ${esc(D.edited.by || '')} ${dShort(D.edited.at)}</span>` : ''}</p>
         </div>
-        <div class="pf-acts">${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
+        <div class="pf-acts"><span id="pf-inv"></span>${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
       </section>
       <div class="seg pf-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="pf-body"></div>`;
@@ -5823,6 +5916,14 @@
     (async () => { try { const u = await profileImage(pid, 'photo', D.images?.photo); if (u) $('#pf-photo', el).innerHTML = `<img src="${esc(u)}" alt="Photo of ${esc(H.name)}">`; } catch (e) { /* initials stay */ } })();
     $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { $$('[data-tab]', el).forEach((x) => x.classList.toggle('on', x === b)); go(b.dataset.tab); }));
     $('[data-master]', el)?.addEventListener('click', () => editMaster());
+    // PRI-019: invite this person to the CMS (no login yet, or never signed in)
+    (async () => {
+      if (H.status === 'former') return;
+      const I = await loadInvites(); const x = I?.people?.[pid]; if (!I?.can_invite || !x || (x.login && x.signed_in)) return;
+      const slot = $('#pf-inv', el); if (!slot) return;
+      slot.innerHTML = `<button type="button" class="btn">${icon('mail')}${x.login ? 'Send the CMS invite again' : 'Invite to the CMS'}</button>`;
+      $('button', slot).addEventListener('click', () => inviteWindow([{ person_id: pid, name: H.name, email: x.email || null }], I, () => { slot.innerHTML = '<span class="tag ok">Invited</span>'; }));
+    })();
     const body = $('#pf-body', el);
     const P = D.personal || {}; const F = D.family || {}; const B = D.background || {}; const E = D.employment || {};
     const table = (head, rows, empty) => (rows.length ? `<div class="table-wrap"><table class="data"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="muted small">${esc(empty)}</p>`);
@@ -6572,7 +6673,7 @@
   }
 
   function newPasswordScreen() {
-    authShell('Set a new password', 'Use at least 8 characters.', `<form class="auth-form" id="np" novalidate>
+    authShell(inviting ? 'Welcome to the MyEden Group CMS' : 'Set a new password', inviting ? 'Choose a password for your login (at least 8 characters). You will use it with your email to sign in.' : 'Use at least 8 characters.', `<form class="auth-form" id="np" novalidate>
         ${ringField('New password', 'p1', 'password', 'new-password', 'lock')}
         ${ringField('Type it again', 'p2', 'password', 'new-password', 'lock')}
         <p class="form-err" hidden></p>
@@ -6601,7 +6702,7 @@
   }
 
   // ================================================================ start
-  let justSignedIn = false; let recovering = false;
+  let justSignedIn = false; let recovering = false; let inviting = false;
   async function start() {
     let session;
     try { session = await API.session(); }
@@ -6622,7 +6723,7 @@
   }
 
   const boot = () => {
-    if (/type=recovery/.test(location.hash)) recovering = true;
+    if (/type=(recovery|invite)/.test(location.hash)) { recovering = true; inviting = /type=invite/.test(location.hash); }
     try {
       API.onAuth((event) => {
         if (event === 'PASSWORD_RECOVERY') { recovering = true; newPasswordScreen(); }
@@ -6650,7 +6751,7 @@
   const hashPath = (h) => String(h || '').replace(/^#\/?/, '').split('?')[0];
   let lastHash = location.hash; let guardBack = false;
   window.addEventListener('hashchange', async () => {
-    if (/access_token|type=recovery/.test(location.hash)) return;
+    if (/access_token|type=(recovery|invite)/.test(location.hash)) return;
     if (guardBack) { guardBack = false; return; }                      // we just went back to the page with unsaved work
     const g = window.CMS_LEAVE_GUARD;
     if (g && hashPath(location.hash) !== hashPath(lastHash)) {

@@ -1157,3 +1157,7 @@ table.fp-t select{max-width:130px}
 .aw-grid .wide{grid-column:1/-1}
 .file-btn{cursor:pointer}
 .aw-row select,.aw-row input[type=text]{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+/* invite to the CMS (PRI-019, v2026.11.07) */
+.ss-inv{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.ss-grid td .btn.xs{margin-top:4px}
+.btn.xs{padding:3px 8px;font-size:12px;min-height:0}
