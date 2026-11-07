@@ -5973,6 +5973,37 @@
       <p class="muted small sy-help"><b>Claimant not matched</b>: the name on the form does not match a person in the Employee Master (e.g. a short name or an email), so the claim is not linked to that person in the CMS — use the person's full name on the form, or link the login. <b>Company not recognised</b>: people whose role covers only some companies will not see it. <b>Marks with no claim</b>: processing or payment ticks left on a claim that was deleted or put back to draft.</p></section>
       ${hist.length > 1 ? `<section class="card"><h3>Last ${hist.length} checks</h3><div class="sy-hist">${res.map((r) => `<div class="sy-row"><span class="small">${esc(r.label)}</span><span class="sy-dots">${hist.map((h) => { const b = h.by_source?.[r.code]; return `<i class="${!b ? 'na' : b.clean ? 'ok' : 'bad'}" title="${esc(dtShort(h.run_at))}${b ? ` · ${b.clean ? 'clean' : `${b.n} to look at`}` : ''}"></i>`; }).join('')}</span></div>`).join('')}</div></section>` : ''}`;
     $('#sy-run', box).addEventListener('click', async (e) => { e.target.disabled = true; e.target.lastChild.textContent = 'Checking…'; await syncPage(item, el, true); toast('Check finished'); });
+    box.insertAdjacentHTML('beforeend', '<div id="sy-match"></div>');
+    claimantMatchBox($('#sy-match', box));
+  }
+
+  // PRI-010 F0: claimant names on forms not matched to a person — match each name once (kept and used everywhere) (v2026.11.07)
+  async function claimantMatchBox(box) {
+    let U, M, P;
+    try { [U, M, P] = await Promise.all([API.rpc('cms_claimant_unmatched'), API.rpc('cms_claimant_matches'), loadPeople()]); }
+    catch (e) { box.innerHTML = errorCard(e.message); return; }
+    const opts = (r) => {
+      const sug = new Set((r.suggest || []).map((x) => x.id));
+      return `<option value="">Choose the person…</option>${(r.suggest || []).length ? `<optgroup label="Suggested">${r.suggest.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.employee_id || '—')} · ${esc(coShort(x.company) || x.company || '')}${x.status && x.status !== 'active' ? ` (${esc(x.status)})` : ''}</option>`).join('')}</optgroup>` : ''}
+        <optgroup label="Everyone">${P.filter((x) => !sug.has(x.id)).sort((a, b) => String(a.name).localeCompare(b.name)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.employee_id || '—')}</option>`).join('')}</optgroup>`;
+    };
+    box.innerHTML = `<section class="card"><div class="card-head"><h3>${icon('search-user')}Match claimants</h3><span class="muted small">${U.length ? `${num(U.length)} name${U.length === 1 ? '' : 's'} on ${num(U.reduce((a, r) => a + Number(r.count || 0), 0))} claims not linked to a person` : 'Every claimant is linked to a person'}</span></div>
+      <p class="muted small">A claim whose name does not match the Employee Master (a short name, a nickname or an email) is not linked to that person’s records. Match each name once; it is kept and used for all their claims, old and new. Names that are sign-in emails are matched automatically when the login is linked to the person.</p>
+      ${U.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Name on the claims</th><th>Forms</th><th>Latest</th><th>Person</th><th></th></tr></thead><tbody>
+        ${U.map((r, i) => `<tr data-i="${i}"><td><b>${esc(r.name)}</b></td><td class="small">${r.forms.map((f) => `${esc(f.form)} ${num(f.count)}`).join(' · ')}</td><td class="nowrap small">${dShort(r.latest)}</td>
+          <td><select data-p aria-label="Person for ${esc(r.name)}">${opts(r)}</select></td><td><button type="button" class="btn sm primary" data-save>Match</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${M.length ? `<details class="small"><summary>Matched names (${num(M.length)})</summary><ul class="plain">${M.map((m) => `<li><b>${esc(m.name)}</b> → ${esc(m.person)} (${esc(m.employee_id || '—')}) <span class="muted">· ${esc(m.by || '')} ${dShort(m.at)}</span> <button type="button" class="lnk" data-un="${esc(m.name)}">undo</button></li>`).join('')}</ul></details>` : ''}
+    </section>`;
+    $$('[data-save]', box).forEach((b) => b.addEventListener('click', async () => {
+      const tr = b.closest('tr'); const r = U[Number(tr.dataset.i)]; const pid = $('[data-p]', tr).value;
+      if (!pid) { toast('Choose the person first', 'err'); return; }
+      b.disabled = true;
+      try { await API.rpc('cms_claimant_match', { p_name: r.name, p_person: pid }); toast(`“${r.name}” matched`); claimantMatchBox(box); }
+      catch (e) { b.disabled = false; toast(e.message, 'err'); }
+    }));
+    $$('[data-un]', box).forEach((b) => b.addEventListener('click', async () => {
+      try { await API.rpc('cms_claimant_match', { p_name: b.dataset.un, p_person: null }); toast('Match removed'); claimantMatchBox(box); } catch (e) { toast(e.message, 'err'); }
+    }));
   }
 
   // ================================================================ Employee Directory (Phase 4 page, built with 6e)

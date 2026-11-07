@@ -90,6 +90,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 62. `20261106_cms_loec_jd_title.sql` — `cms_loec_save` saves the approved JD position title (`v2ResolvedJobTitle`) with the offer letter terms
 63. `20261107_cms_loec_clauses_cms_only.sql` — `cms_settings` (`loec_builder`), `cms_setting_get / set`, guard: new offer letter records only from the CMS; optional clause choices saved with the LOEC terms
 64. `20261107_cms_movement_report.sql` — `cms_movement_report(month, company)` and the permission `reports.movement_salary` (HR, Admin, Director)
+65. `20261107_cms_claimant_matching.sql` — `cms_claimant_aliases` and `cms_claimant_unmatched / match / matches`; claim → person also by alias and by sign-in email; PRFAF `company_code` from the ledger account (MEDU → MEH, ABORNE → ABP)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -139,6 +140,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.07-13:40** — PRI-010 F0: Admin › Sync Check › **Match claimants** — claim names that are not in the Employee Master (short names, nicknames) are matched once to the right person and kept; names that are sign-in emails are matched automatically through the linked login. PRFAF claims now carry their company (from the ledger account), so they are listed and filtered by company like the other forms.
 - **v2026.11.07-13:10** — New report **Payroll › New Hires & Leavers** (PRI-018): per payroll month, one company or all — headcount (opening + joined − left = closing), new hires, leavers, leaving soon and transfers between companies; print / PDF in A4 landscape. Salary figures only for roles with the new permission “See salaries in the New hires & leavers report” (HR, Admin, Director by default).
 - **v2026.11.07-12:30** — Offer letter (LOEC): optional clauses 5.5 overtime rule, 7.4 annual leave pro-rated in the joining / leaving year, 15.4 excess leave on leaving is unpaid — tick boxes, ticked by default on a new letter. Offer letters are now made only in the CMS: MEG-EAF V2 shows a notice with a link to the applicant's offer letter here and can no longer create or issue one (Super Admin can switch this on Offers & Onboarding). PRI-019 (Invite to the CMS) recorded.
 - **v2026.11.06-22:10** — Offer letter (LOEC): the job title is the approved JD position (MEG-EAF V2 “Resolved Position (for letter)”, e.g. Kindergarten Associate), not the general position family; the family, level and JD reference are shown under it. Offer terms: “Job title on the letter” and a read-only “Position family (general)”; the JD picker no longer overwrites the family. The JD position title is saved with the letter terms.

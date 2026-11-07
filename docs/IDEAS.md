@@ -210,6 +210,8 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - Then (Phase 6f for payroll, later for forms): old apps become read-only with a link to the CMS page, and staff are
   redirected to the CMS for all transactions.
 - MEG-EAF V2 applicant and HR system pages move into the CMS in a later phase.
+- **F0 built (v2026.11.07):** Sync Check › Match claimants (aliases kept in `cms_claimant_aliases`, used by every claim → person link);
+  email-style claimant names matched through the linked login or payroll email (12 → 7 names left for HR); PRFAF company from the ledger account.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call
