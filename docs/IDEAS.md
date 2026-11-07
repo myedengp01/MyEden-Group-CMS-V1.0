@@ -231,6 +231,15 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   `handbook-malay.js`, `handbook-entity-branding.js`), signed in with the CMS session (no MEG-EAF V2 login or app-access check), same
   `handbook_*` records; "Back to the CMS" returns to My Handbook; phone layout fixed. MEG-EAF V2's handbook page still works (side by side).
 - **Still in MEG-EAF V2 before it can be retired:** handbook admin (assign, versions, reading status page), the public application form.
+- **F1 built (v2026.11.07-18:10) — SCF in the CMS:** My Claims › New Staff Claim (`#/me/claims/scf`). Claimant / preparer from the login (no typed
+  names); company = own (choice of others with the new self-service part `claims_co`, CLC 7 Nov); bank from the payroll record (masked; Online
+  Transfer needs one); lines (date, supplier from the shared list or new, item / bill no., amount, remarks) with receipt photos (shrunk to JPEG,
+  `scf-receipts/<claim>/<line>/…jpg` like the SCF app; pictures only, a PDF receipt → screenshot); drafts autosave; server checks own claim,
+  draft only, amounts, receipts (required per line by default; Admin can switch off — then a line without a receipt needs a remark); submit →
+  P/AC processing (SCF has no approval step); printable copy with receipts; revision returns are edited and sent again. Emails via `scf-notify`:
+  claim received (claimant) + new claim (SCF processors from Claim permissions: process / mark paid / Form Admin) on submit; paid (claimant) when
+  marked paid in the CMS. Office users with SCF create (Admin, Super Admin or granted) use "New staff claim for someone" in the Action Center.
+  **F2** (side by side) starts now; then OTCF, MTCF, PRFAF, TEC the same way; **F3** form apps read-only.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

@@ -44,7 +44,7 @@
   const hasSelf = () => !!state.self?.parts?.length;
   const canRoute = (route) => {
     const it = PAGES.get(route);
-    if (it?.self) return it.self === '*' ? hasSelf() : [].concat(it.self).some(selfOn);
+    if (it?.self) return (it.self === '*' ? hasSelf() : [].concat(it.self).some(selfOn)) || (!!it.orCan && can(it.orCan, 'C'));
     return can(moduleOf(route), 'V');
   };
   const homeRoute = () => (canRoute('dashboard') ? 'dashboard' : hasSelf() ? 'me' : 'dashboard');
@@ -129,7 +129,7 @@
     return window.CMS_MENU.map((sec) => ({
       ...sec,
       items: sec.items.map((it) => it.group ? { ...it, items: it.items.filter((s) => !s.hidden && canRoute(s.route)) } : it)
-        .filter((it) => it.group ? it.items.length : canRoute(it.route)),
+        .filter((it) => it.group ? it.items.length : !it.hidden && canRoute(it.route)),
     })).filter((sec) => sec.items.length);
   }
 
@@ -1133,6 +1133,8 @@
   }
 
   const DECIDABLE = ['otcf', 'mtcf', 'tec', 'tec-v2'];
+  // "your claim has been paid" email to the claimant (SCF; v2026.11.07). The payment stands even if the email fails.
+  const claimPaidMail = (form, id) => { if (form === 'scf') API.sb().functions.invoke('scf-notify', { body: { event: 'paid', submission_id: id } }).catch(() => {}); };
   const isDirector = () => (state.access?.roles || []).some((r) => r.code === 'director');
   const isDirectorOrAdmin = () => (state.access?.roles || []).some((r) => ['director', 'admin', 'super_admin'].includes(r.code));
   const canDecide = (r) => r.stage === 'approval' && DECIDABLE.includes(r.form_code) && can3(r.module, 'A', r.company_code)
@@ -1255,7 +1257,7 @@
             else if (act === 'note') { const t = $('[data-note]', box).value.trim(); if (!t) { toast('Write a note first', 'err'); return; } await run(() => API.rpc('cms_claim_note', { p_form: form, p_id: id, p_note: t }), 'Note added'); }
             else if (act === 'pay' || act === 'unpay') {
               const ok = await confirmBox(act === 'pay' ? 'Mark this claim as paid?' : 'Undo the payment?', act === 'pay' ? `<b>${esc(row.serial_no)}</b> · ${esc(row.claimant_name)} · ${fmtAmt(row)}<br><small class="muted">The claimant sees it as paid in ${esc(app)}.</small>` : `<b>${esc(row.serial_no)}</b> goes back to waiting for payment. SCF payments can only be undone within 60 days.`, act === 'pay' ? 'Mark as paid' : 'Undo payment', act === 'unpay');
-              if (ok) await run(() => API.rpc('cms_claim_paid', { p_form: form, p_id: id, p_done: act === 'pay' }), act === 'pay' ? 'Marked as paid' : 'Payment undone');
+              if (ok) await run(async () => { await API.rpc('cms_claim_paid', { p_form: form, p_id: id, p_done: act === 'pay' }); if (act === 'pay') claimPaidMail(form, id); }, act === 'pay' ? 'Marked as paid' : 'Payment undone');
             }
           };
         };
@@ -1291,9 +1293,16 @@
   async function approvalsPage(item, el) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { tab: q.get('tab') || 'action', form: q.get('form') || 'all', co: 'all', stage: 'all', pay: 'all', from: '', to: '', sort: 'new', q: '' };
-    el.innerHTML = `${pageHead(item)}<div id="ac-tiles"></div>
+    el.innerHTML = `${pageHead(item, can('scf', 'C') ? `<button type="button" class="btn" id="ac-behalf">${icon('plus')}New staff claim for someone</button>` : '')}<div id="ac-tiles"></div>
       <div class="tabs" role="tablist" id="ac-tabs"></div><div id="ac-body">${loading()}</div><div id="ac-set"></div>`;
     let rows = [];
+    $('#ac-behalf', el)?.addEventListener('click', async () => {
+      let ppl = []; try { ppl = (await loadPeople()).filter((p) => p.status !== 'former'); } catch (e) { toast(e.message, 'err'); return; }
+      await modal({ title: 'New staff claim (SCF) for someone', ok: 'Start the claim',
+        body: `<label class="fld"><span>Who is claiming</span><select name="p" required><option value="">— choose —</option>${ppl.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employee_id ? ` · ${esc(p.employee_id)}` : ''}</option>`).join('')}</select></label>
+          <p class="muted small">You prepare it and attach the receipts; it is filed under their name, and they see it in My Claims.</p>`,
+        onOk: (f) => { if (!f.p.value) throw new Error('Choose the person.'); location.hash = `#/me/claims/scf?for=${f.p.value}`; } });
+    });
     const sup = isSuper();
     const tabs = [['action', 'Action required'], ['all', 'All claims'], ['proc', 'P/AC processing'], ['mine', 'My claims'], ['other', 'Other tasks']];
     const inTab = (r, t) => t === 'action' ? needsMe(r) : t === 'proc' ? ['processing', 'payment'].includes(r.stage) : t === 'mine' ? isMyClaim(r) : true;
@@ -1368,7 +1377,11 @@
       box.innerHTML = `<details class="card ac-settings"><summary><b>${icon('list')}Claim settings</b> <span class="muted small">history shown to staff, who can submit, approve, process and pay</span></summary>
         ${s ? `<div class="toolbar"><label class="fld inline"><span>Staff see their own claims for the last</span><select id="ac-hist" ${s.can_edit ? '' : 'disabled'}>${[1, 2, 3, 6, 12].map((m) => `<option value="${m}" ${s.history_months === m ? 'selected' : ''}>${m} month${m === 1 ? '' : 's'}</option>`).join('')}</select></label>
           <span class="muted small">Applies in every form app.</span></div>` : ''}
+        ${s && 'scf_receipts_required' in s ? `<label class="chk"><input type="checkbox" id="ac-rcpt" ${s.scf_receipts_required !== false ? 'checked' : ''} ${s.can_edit ? '' : 'disabled'}> Staff claims (SCF) made in the CMS need a receipt on every line <span class="muted small">(when off, a line without a receipt needs a remark)</span></label>` : ''}
         ${can('admin.roles') ? `<p><a class="btn sm" href="#/admin/roles?tab=claims">${icon('lock')}Claim permissions</a> <span class="muted small">Same permissions the form apps use (submit, approve with company scope, process, mark paid, view, Form Admin).</span></p>` : ''}</details>`;
+      $('#ac-rcpt', box)?.addEventListener('change', async (e) => {
+        try { await API.rpc('cms_scf_settings_set', { p: { receipts_required: e.target.checked } }); toast(e.target.checked ? 'Receipts required on every line' : 'Receipts no longer required on every line'); } catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'err'); }
+      });
       $('#ac-hist', box)?.addEventListener('change', async (e) => {
         try { await API.rpc('cms_claim_history_months_set', { p_months: Number(e.target.value) }); toast('Claimant history saved'); } catch (x) { toast(x.message, 'err'); }
       });
@@ -1400,7 +1413,7 @@
       }
       if (e.target.closest('[data-acpay]')) {
         const ok = await confirmBox('Mark this claim as paid?', `<b>${esc(r.serial_no)}</b> · ${esc(r.claimant_name)} · ${fmtAmt(r)}`, 'Mark as paid', false);
-        if (ok) { try { await API.rpc('cms_claim_paid', { p_form: r.form_code, p_id: r.id, p_done: true }); toast('Marked as paid'); await reload(); } catch (x) { toast(x.message, 'err'); } }
+        if (ok) { try { await API.rpc('cms_claim_paid', { p_form: r.form_code, p_id: r.id, p_done: true }); claimPaidMail(r.form_code, r.id); toast('Marked as paid'); await reload(); } catch (x) { toast(x.message, 'err'); } }
         return;
       }
       openClaim(r.form_code, r.id, reload);
@@ -2901,6 +2914,7 @@
     ['leave', 'Leave', 'My Leave: apply for leave (not in use yet: leave runs in the other system)'],
     ['handbook', 'Handbook', 'My Handbook: open the handbook and see what they acknowledged'],
     ['certs', 'Certificates', 'My Certificates: their certificates and expiry; send a new certificate to HR'],
+    ['claims_co', 'Claims: other companies', 'May make a staff claim (SCF) under another company, not only their own'],
   ];
   const PART_READY = (p) => !(PARTS.find((x) => x[0] === p) || [])[3];
   const PROFILE_FIELDS = [['contact', 'Phone'], ['email', 'Email'], ['home_address', 'Home address'], ['emergency_name', 'Emergency contact'],
@@ -3671,6 +3685,179 @@
   }
 
   // ================================================================ 4c · MY CLAIMS, MY HANDBOOK
+  // ================================================================ PRI-010 F1 · new Staff Claim (SCF) made in the CMS (v2026.11.07)
+  // Same scf_submissions row, serial, receipt storage and revision process as the SCF app. Claimant and preparer from the login;
+  // bank from the payroll record; drafts saved as you go; receipts (photos) per line; submit → P/AC processing in the Action Center.
+  const scfBucket = () => API.sb().storage.from('scf-receipts');
+  const scfDmy = (iso) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '');
+  const scfIso = (dmy) => { const m = String(dmy || '').match(/^(\d{2})-(\d{2})-(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+  async function scfShrink(file) {   // photo → JPEG, longest side 1600 px
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('This file is not a picture. Take a photo or a screenshot of the receipt.')); i.src = url; });
+      const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.82));
+      return { blob, isA4: img.naturalHeight / img.naturalWidth > 1.3 && img.naturalWidth > 1200 };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  const scfThumbs = new Map();   // path → signed URL
+  async function scfThumb(path) {
+    if (scfThumbs.has(path)) return scfThumbs.get(path);
+    const { data } = await scfBucket().createSignedUrl(path, 3600); const u = data?.signedUrl || ''; scfThumbs.set(path, u); return u;
+  }
+  async function meScfPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    let id = q.get('id') || null; const forPerson = q.get('for') || null;
+    el.innerHTML = `${pageHead(item)}<div id="scf-body">${loading()}</div>`;
+    let C; let row = null;
+    try {
+      if (id) { row = await API.rpc('cms_scf_get', { p_id: id }); }
+      C = await API.rpc('cms_scf_context', { p_person: row?.person_id && row.person_id !== state.access?.person?.id ? row.person_id : forPerson });
+    } catch (e) { $('#scf-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    if (row && !row.editable) { scfPrint(el, row, () => { location.hash = '#/me/claims'; }); return; }
+    const now = new Date(Date.now() + 8 * 36e5);
+    const coOf = (scf) => (C.companies.find((c) => c.scf === scf) || {}).code;
+    const D = {
+      company: row ? (coOf(row.company_code) || C.company) : C.company,
+      period_from: row?.period_from || MONTHS[now.getUTCMonth()], period_to: row?.period_to || row?.period_from || MONTHS[now.getUTCMonth()],
+      period_year: row?.period_year || String(now.getUTCFullYear()), payment_method: row?.payment_method || (C.bank ? 'Online Transfer' : 'Cash'),
+      rows: (row?.line_items || []).map((r) => ({ ...r, receipts: r.receipts || [] })),
+    };
+    if (!D.rows.length) D.rows.push({ date: '', supplier: '', item: '', amount: '', remarks: '', receipts: [] });
+    const req = C.settings?.receipts_required !== false;
+    let saving = null; let dirty = false; let timer = null;
+    const body = $('#scf-body', el);
+    const total = () => D.rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    const payload = () => ({ person_id: C.behalf ? C.id : null, company: D.company, period_from: D.period_from, period_to: D.period_to, period_year: D.period_year,
+      payment_method: D.payment_method, rows: D.rows.map((r) => ({ date: r.date, supplier: r.supplier, item: r.item, amount: r.amount === '' ? 0 : Number(r.amount), remarks: r.remarks || '', receipts: r.receipts })) });
+    const status = (t, tone) => { const s = $('#scf-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => {
+        const r = await API.rpc('cms_scf_save', { p_id: id, p: payload(), p_submit: submit });
+        if (!id) { id = r.id; history.replaceState(null, '', `#/me/claims/scf?id=${id}`); }
+        dirty = false; status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${r.serial_no}`);
+        $('#scf-serial', body).textContent = r.serial_no;
+        return r;
+      })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`The claim could not be saved (${e.message}). Leave anyway?`); } } };
+    const mOpts = (cur) => MONTHS.map((m) => `<option ${m === cur ? 'selected' : ''}>${m}</option>`).join('');
+    const lineHtml = (r, i) => `<div class="scf-line card" data-i="${i}">
+        <div class="scf-lh"><b>Line ${i + 1}</b>${D.rows.length > 1 ? `<button type="button" class="icon-btn sm" data-rm="${i}" aria-label="Remove line ${i + 1}">${icon('x')}</button>` : ''}</div>
+        <div class="scf-g">
+          <label class="fld"><span>Date</span><input type="date" data-k="date" value="${esc(scfIso(r.date))}" max="${now.toISOString().slice(0, 10)}"></label>
+          <label class="fld"><span>Amount (RM)</span><input type="number" inputmode="decimal" step="0.01" min="0" data-k="amount" value="${esc(r.amount === '' || r.amount == null ? '' : Number(r.amount).toFixed(2))}"></label>
+          <label class="fld wide"><span>Supplier / shop</span><input type="text" list="scf-sup" data-k="supplier" value="${esc(r.supplier || '')}" maxlength="120" autocomplete="off"></label>
+          <label class="fld wide"><span>Item(s) / bill / invoice no.</span><input type="text" data-k="item" value="${esc(r.item || '')}" maxlength="120"></label>
+          <label class="fld wide"><span>Remarks <small class="muted">(optional${req ? '' : '; needed if there is no receipt'})</small></span><input type="text" data-k="remarks" value="${esc(r.remarks || '')}" maxlength="300"></label>
+        </div>
+        <div class="scf-rc"><span class="small"><b>Receipt${r.receipts.length === 1 ? '' : 's'}</b> ${r.receipts.length ? `(${r.receipts.length})` : req ? '<span class="warn-txt">needed</span>' : '<span class="muted">none</span>'}</span>
+          <div class="scf-th">${r.receipts.map((x, j) => `<span class="scf-t" data-path="${esc(x.path)}"><img alt="Receipt ${j + 1}"><button type="button" class="icon-btn xs" data-rr="${i}|${j}" aria-label="Remove receipt">${icon('x')}</button></span>`).join('')}</div>
+          <label class="btn sm">${icon('plus')}Take photo<input type="file" accept="image/*" capture="environment" data-up="${i}" hidden></label>
+          <label class="btn sm ghost">Choose picture<input type="file" accept="image/*" data-up="${i}" multiple hidden></label></div></div>`;
+    function draw() {
+      body.innerHTML = `<section class="card scf-head">
+          <div class="scf-who"><b>${esc(C.name)}</b><small class="sub">${esc(C.employee_id || '')}${C.behalf ? ` · prepared by ${esc(C.preparer)}` : ''}</small>${C.behalf ? '<span class="tag warn xs">On behalf</span>' : ''}</div>
+          <div class="scf-g">
+            ${C.companies.length > 1 ? `<label class="fld wide"><span>Company</span><select data-h="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === D.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`
+              : `<div class="fld wide"><span>Company</span><b>${esc(C.companies[0]?.name || C.company)}</b></div>`}
+            <label class="fld"><span>Claim for (from)</span><select data-h="period_from">${mOpts(D.period_from)}</select></label>
+            <label class="fld"><span>to</span><select data-h="period_to">${mOpts(D.period_to)}</select></label>
+            <label class="fld"><span>Year</span><input type="number" data-h="period_year" value="${esc(D.period_year)}" min="2024" max="2099"></label>
+          </div>
+          <div class="seg scf-pay">${['Online Transfer', 'Cash'].map((m) => `<button type="button" data-pm="${m}" class="${D.payment_method === m ? 'on' : ''}">${m}</button>`).join('')}</div>
+          <p class="small">${D.payment_method === 'Online Transfer' ? (C.bank ? `Paid to <b>${esc(C.bank.name)}</b> ${esc(C.bank.masked)} (from your payroll record; to change it, send a change request in My Profile).` : '<span class="bad-txt">No bank account on your payroll record.</span> Choose Cash, or ask HR to add your bank details.') : 'Paid in cash.'}</p>
+          <p class="small muted">Serial no. <code id="scf-serial">${esc(row?.serial_no || 'given when first saved')}</code> · <span id="scf-st">${id ? 'Saved' : 'Not saved yet'}</span></p>
+          ${row?.revision_reason ? `<div class="warn-box small"><b>Returned for changes:</b> ${esc(row.revision_reason)}</div>` : ''}</section>
+        <datalist id="scf-sup">${(C.suppliers || []).map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+        <div id="scf-lines">${D.rows.map(lineHtml).join('')}</div>
+        <div class="btn-row"><button type="button" class="btn" data-add>${icon('plus')}Add a line</button></div>
+        <section class="card scf-foot"><div class="scf-tot">Total <b id="scf-total">${money(total())}</b></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-submit>${icon('check-circle')}${row?.revision_reason ? 'Send again' : 'Submit claim'}</button>
+            <button type="button" class="btn" data-save>Save draft</button>
+            ${id && !row?.submitted_at ? '<button type="button" class="btn ghost danger-txt" data-discard>Discard draft</button>' : ''}</div>
+          <p class="muted small">${req ? 'Every line needs a photo of its receipt.' : 'Attach receipts where you have them; a line without one needs a remark.'} After you submit, the claim is locked and goes to Payroll / Accounts.</p></section>`;
+      $$('.scf-t', body).forEach(async (t) => { const u = await scfThumb(t.dataset.path); if (u) $('img', t).src = u; });
+    }
+    draw();
+    body.addEventListener('input', (e) => {
+      const i = e.target.closest('[data-i]'); const k = e.target.dataset.k; const h = e.target.dataset.h;
+      if (i && k) { D.rows[+i.dataset.i][k] = k === 'date' ? scfDmy(e.target.value) : e.target.value; if (k === 'amount') $('#scf-total', body).textContent = money(total()); later(); }
+      else if (h) { D[h] = e.target.value; later(); }
+    });
+    body.addEventListener('change', async (e) => {
+      const h = e.target.dataset.h; if (h) { D[h] = e.target.value; if (h === 'period_from' && MONTHS.indexOf(D.period_to) < MONTHS.indexOf(D.period_from)) { D.period_to = D.period_from; draw(); } later(); return; }
+      const up = e.target.closest('input[data-up]'); if (!up) return;
+      const files = [...(up.files || [])]; up.value = ''; if (!files.length) return;
+      const i = +up.dataset.up;
+      try {
+        clearTimeout(timer);
+        if (!id || dirty) { status('Saving…'); await save(); }
+        for (const f of files) {
+          status(`Uploading ${f.name || 'photo'}…`);
+          const { blob, isA4 } = await scfShrink(f);
+          const path = `${id}/${i + 1}/${Date.now()}${Math.floor(Math.random() * 1000)}.jpg`;
+          const { error } = await scfBucket().upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+          if (error) throw error;
+          D.rows[i].receipts.push({ path, isA4 });
+        }
+        await save(); draw(); toast(files.length > 1 ? `${files.length} receipts attached` : 'Receipt attached');
+      } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+    });
+    body.addEventListener('click', async (e) => {
+      const pm = e.target.closest('[data-pm]'); if (pm) { D.payment_method = pm.dataset.pm; draw(); later(); return; }
+      if (e.target.closest('[data-add]')) { D.rows.push({ date: '', supplier: '', item: '', amount: '', remarks: '', receipts: [] }); draw(); $$('.scf-line', body).pop()?.scrollIntoView({ behavior: 'smooth', block: 'center' }); later(); return; }
+      const rm = e.target.closest('[data-rm]');
+      if (rm) { const r = D.rows[+rm.dataset.rm]; if ((r.amount || r.supplier || r.receipts.length) && !(await confirmBox(`Remove line ${+rm.dataset.rm + 1}?`, 'Its receipts are removed from the claim too.', 'Remove', true))) return; D.rows.splice(+rm.dataset.rm, 1); draw(); later(); return; }
+      const rr = e.target.closest('[data-rr]');
+      if (rr) { const [i, j] = rr.dataset.rr.split('|').map(Number); const [x] = D.rows[i].receipts.splice(j, 1); draw(); await save().catch(() => {}); scfBucket().remove([x.path]).catch(() => {}); return; }
+      const t = e.target.closest('.scf-t img'); if (t?.src) { window.open(t.src, '_blank', 'noopener'); return; }
+      if (e.target.closest('[data-save]')) { clearTimeout(timer); try { await save(); toast('Draft saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (e.target.closest('[data-discard]')) {
+        if (!(await confirmBox('Discard this draft?', 'It is removed from My Claims. This cannot be undone here.', 'Discard', true))) return;
+        clearTimeout(timer); dirty = false;
+        try { await API.rpc('cms_scf_discard', { p_id: id }); toast('Draft discarded'); location.hash = '#/me/claims'; } catch (x) { toast(x.message, 'err'); }
+        return;
+      }
+      if (e.target.closest('[data-submit]')) {
+        const ok = await confirmBox('Submit this claim?', `<b>${esc(C.name)}</b> · ${esc(D.period_from)}${D.period_to !== D.period_from ? ` – ${esc(D.period_to)}` : ''} ${esc(D.period_year)} · ${D.rows.length} line${D.rows.length === 1 ? '' : 's'} · <b>${money(total())}</b><br><small class="muted">After submitting you cannot change it. Payroll / Accounts will check and pay it.</small>`, 'Submit', false);
+        if (!ok) return;
+        clearTimeout(timer);
+        try {
+          const r = await save(true);
+          API.sb().functions.invoke('scf-notify', { body: { event: 'submitted', submission_id: r.id } }).catch(() => {});
+          window.CMS_LEAVE_GUARD = null;
+          toast(`Claim ${r.serial_no} submitted`);
+          const done = await API.rpc('cms_scf_get', { p_id: r.id });
+          scfPrint(el, done, () => { location.hash = '#/me/claims'; });
+        } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    });
+  }
+  // printable copy with receipts (claimant keeps it; same content as the SCF app's printout)
+  async function scfPrint(el, r, back) {
+    const lines = r.line_items || [];
+    const recs = lines.flatMap((l, i) => (l.receipts || []).map((x) => ({ ...x, n: i + 1 })));
+    const urls = await Promise.all(recs.map((x) => scfThumb(x.path).catch(() => '')));
+    const co = (state.org?.companies || []).find((c) => private_scfCode(c.code) === r.company_code);
+    const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>STAFF CLAIM FORM (SCF)</h2><p>${esc(co?.name || r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.serial_no)}</code><small>${esc(r.claim_date || '')}</small></div></div>
+        <dl class="scf-kv"><div><dt>Claimed by</dt><dd>${esc(r.claimed_by)}</dd></div><div><dt>Prepared by</dt><dd>${esc(r.prepared_by || r.claimed_by)}</dd></div>
+          <div><dt>Claim period</dt><dd>${esc(r.period_from || '')}${r.period_to && r.period_to !== r.period_from ? ` – ${esc(r.period_to)}` : ''} ${esc(r.period_year || '')}</dd></div>
+          <div><dt>Payment</dt><dd>${esc(r.payment_method || '')}${r.bank_name ? ` · ${esc(r.bank_name)} ${esc(r.bank_masked || '')}` : ''}</dd></div></dl>
+        <table class="data scf-pt"><thead><tr><th>No.</th><th>Date</th><th>Supplier</th><th>Item(s) / bill / inv. no.</th><th class="num">Amount (RM)</th><th>Receipts</th></tr></thead>
+          <tbody>${lines.map((l, i) => `<tr><td>${i + 1}</td><td class="nowrap">${esc(l.date)}</td><td>${esc(l.supplier)}${l.remarks ? `<small class="sub">${esc(l.remarks)}</small>` : ''}</td><td>${esc(l.item || '')}</td><td class="num">${m2(l.amount)}</td><td>${(l.receipts || []).length}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="4"><b>TOTAL</b></td><td class="num"><b>${m2(r.total)}</b></td><td></td></tr></tfoot></table>
+        <p class="small muted">Status: ${esc(r.status === 'draft' ? 'Draft (not submitted)' : 'Submitted')}${r.submitted_at ? ` ${dtShort(r.submitted_at)}` : ''}. Made in the MyEden Group CMS.</p></section>`;
+    const recSheets = urls.map((u, k) => (u ? `<section class="sheet scf-sheet scf-rs"><p class="small"><b>${esc(r.serial_no)}</b> · line ${recs[k].n} · receipt</p><img src="${esc(u)}" alt="Receipt for line ${recs[k].n}"></section>` : ''));
+    docView(el, `SCF ${r.serial_no}`, [sheet, ...recSheets], back);
+  }
+  const private_scfCode = (c) => ({ HD: 'HDS', ABP: 'ABN' }[String(c || '').toUpperCase()] || String(c || '').toUpperCase());
+
   const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'] };
   async function meClaimsPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="mc-body">${loading()}</div>`;
@@ -3681,16 +3868,18 @@
     const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
     const draw = () => {
       const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
-      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`).join('')}</div>
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (k === 'scf' ? `<a class="btn primary" href="#/me/claims/scf">${icon('plus')}New ${esc(l)}</a>`
+          : `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`)).join('')}</div>
         <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
-          ${list.map((r) => `<tr><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small></td><td class="nowrap">${dShort(r.submitted_at)}</td>
+          ${list.map((r) => `<tr${r.form === 'scf' ? ` class="click" data-scf="${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${r.form === 'scf' && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/scf?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
             <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
             <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
               ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty small"><p>No claims here</p><span>New claims are made in the claim forms (buttons above).</span></div>'}</section>
+          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff claims (SCF) are made here in the CMS.</span></div>'}</section>
         <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (!e.target.closest('a')) location.hash = `#/me/claims/scf?id=${tr.dataset.scf}`; }));
     };
     draw();
   }
@@ -6512,7 +6701,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

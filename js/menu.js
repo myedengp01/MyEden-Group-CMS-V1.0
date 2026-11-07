@@ -20,6 +20,7 @@ window.CMS_MENU = [
     { route: 'me/payslips', label: 'My Payslips & EA', icon: 'wallet', phase: 4, live: true, self: ['payslips', 'ea'], desc: 'Payslips and EA forms HR has released to you, from finalised payroll months. View, print or save as PDF.' },
     { route: 'me/salary', label: 'My Salary History', icon: 'trend', phase: 4, live: true, self: 'salary', desc: 'Your salary and each change, by month.' },
     { route: 'me/claims', label: 'My Claims', icon: 'file-check', phase: 4, live: true, self: 'claims', desc: 'Your staff, overtime and mileage claims and where each one is: waiting for approval, approved, paid.' },
+    { route: 'me/claims/scf', label: 'Staff Claim (SCF)', icon: 'file-check', phase: 4, live: true, hidden: true, self: 'claims', orCan: 'scf', desc: 'Make a staff claim: lines with receipts, saved as you go, then submit to Payroll / Accounts.' },
     { route: 'me/handbook', label: 'My Handbook', icon: 'shield', phase: 4, live: true, self: 'handbook', desc: 'Your Employee Handbook: read it, and see what you have acknowledged.' },
     { route: 'me/leave', label: 'My Leave', icon: 'calendar', phase: 4, live: true, self: 'leave', desc: 'Apply for leave and see your requests. Approved by the person you report to (or anyone above them).' },
     { route: 'me/appraisal', label: 'My Appraisal', icon: 'trend', phase: 5, live: true, self: 'appraisal', desc: 'Your self-assessment and appraisal results, and appraisals of people who report to you.' },
