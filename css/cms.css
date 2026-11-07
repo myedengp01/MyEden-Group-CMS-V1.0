@@ -1187,3 +1187,26 @@ table.fp-t select{max-width:130px}
 .chk-fld .chk{display:flex;align-items:center;gap:6px;min-height:38px}
 .scf-g .fld input[type=checkbox]{width:auto;min-height:0}
 .row-acts{display:flex;gap:6px;align-items:center}
+/* tuition claims (TEC V2) in the CMS (PRI-010 F1, v2026.11.07) */
+.tec-pg{margin:10px 0;padding:12px 14px}
+.tec-time{display:flex;gap:6px;align-items:center}
+.tec-time input,.tec-time select{flex:1;min-width:0}
+.tec-std{display:flex;flex-wrap:wrap;gap:4px 14px}
+.tec-std .chk{display:inline-flex;align-items:center;gap:5px;min-height:30px}
+.tec-std .chk input{width:auto;min-height:0}
+.tec-wrap{margin:8px 0}
+.tec-t{font-size:12.5px}
+.tec-t th,.tec-t td{padding:4px 5px;vertical-align:middle}
+.tec-t .tec-mh{text-align:center}
+.tec-t .tec-k{font-size:11px;color:var(--mute);white-space:nowrap}
+.tec-t .tec-nm{min-width:150px;width:100%}
+.tec-t .tec-fee{width:84px;text-align:right}
+.tec-t .tec-d{padding:2px 1px;text-align:center}
+.tec-t .tec-d select{width:44px;padding:3px 1px;text-align:center;text-align-last:center;min-height:30px}
+.tec-t .tec-d.wk select{color:#8a1f1f;font-weight:700;background:#fdeceb}
+.tec-t tbody tr:nth-child(4n+3) td,.tec-t tbody tr:nth-child(4n+4) td{background:var(--soft)}
+.tec-gr{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+.sheet.tec-sheet{padding:10mm 10mm}
+.tec-pt{font-size:10.5px}.tec-pt th,.tec-pt td{padding:3px 4px}.tec-pt .tec-d{width:6mm;text-align:center}.tec-pt .tec-k{font-size:9px;color:#666}
+@media print { body.doc-mode .sheet.tec-sheet { page: land; width: 297mm; min-height: 0; } }
+@media (max-width:600px){.scf-g .tec-my{grid-column:1/-1}}

@@ -252,6 +252,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   the MTCF app); server works out km, amount (km × rate, 2 dp) and the period (first – last trip), refuses future dates and incomplete trips on
   submit; same serial `<CODE>-MTCF-YYYYMM-XXXX`; approval scope by company as before; approvers emailed via `mtcf-notify`. MTCF has no deleted
   column, so CMS drafts are kept (no Discard button). Next: PRFAF, then TEC.
+- **F1 TEC V2 + tutors built (v2026.11.07-21:10)** (CLC chose TEC before PRFAF): `#/me/claims/tec` for staff (claims part, or `tec` create on
+  behalf) and tutors; layout of MEG-TEC-V2 kept; MEG / MEH only; venue % set by Admin in Claim settings (`tec_settings`), server computes venue and
+  net and refuses a page without course, standard, students, names or fees on submit; serial and grouping as MEG-TEC-V2. Tutors are a separate
+  `cms_tutors` list (not the Employee Master, not payroll); Admin creates them and invites them (`cms-invite` `{tutor_id}`), Tutor role = module
+  `tutor_self` only; staff names are refused as tutors. The PIC still checks claims in MEG-TEC-V2 / the Action Center. Next: PRFAF (plan first).
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

@@ -44,10 +44,11 @@
   const hasSelf = () => !!state.self?.parts?.length;
   const canRoute = (route) => {
     const it = PAGES.get(route);
-    if (it?.self) return (it.self === '*' ? hasSelf() : [].concat(it.self).some(selfOn)) || (!!it.orCan && can(it.orCan, 'C'));
+    if (it?.tutorOnly) return acts('tutor_self').includes('V');   // tutors (TEC): no Super Admin shortcut, it is their own page
+    if (it?.self) return (it.self === '*' ? hasSelf() : [].concat(it.self).some(selfOn)) || (!!it.orCan && can(it.orCan, 'C')) || (!!it.orTutor && acts('tutor_self').includes('V'));
     return can(moduleOf(route), 'V');
   };
-  const homeRoute = () => (canRoute('dashboard') ? 'dashboard' : hasSelf() ? 'me' : 'dashboard');
+  const homeRoute = () => (canRoute('dashboard') ? 'dashboard' : hasSelf() ? 'me' : acts('tutor_self').includes('V') ? 'tutor' : 'dashboard');
   const isSuper = () => !!state.access?.is_super_admin;
 
   // ---------------------------------------------------------------- small helpers
@@ -1293,17 +1294,21 @@
   async function approvalsPage(item, el) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { tab: q.get('tab') || 'action', form: q.get('form') || 'all', co: 'all', stage: 'all', pay: 'all', from: '', to: '', sort: 'new', q: '' };
-    const behalfForms = [['scf', 'scf', 'Staff claim (SCF)'], ['otcf', 'overtime', 'Overtime (OTCF)'], ['mtcf', 'mtcf', 'Mileage (MTCF)']].filter(([, m]) => can(m, 'C'));
+    const behalfForms = [['scf', 'scf', 'Staff claim (SCF)'], ['otcf', 'overtime', 'Overtime (OTCF)'], ['mtcf', 'mtcf', 'Mileage (MTCF)'], ['tec', 'tec', 'Tuition (TEC)']].filter(([, m]) => can(m, 'C'));
     el.innerHTML = `${pageHead(item, behalfForms.length ? `<button type="button" class="btn" id="ac-behalf">${icon('plus')}New claim for someone</button>` : '')}<div id="ac-tiles"></div>
       <div class="tabs" role="tablist" id="ac-tabs"></div><div id="ac-body">${loading()}</div><div id="ac-set"></div>`;
     let rows = [];
     $('#ac-behalf', el)?.addEventListener('click', async () => {
       let ppl = []; try { ppl = (await loadPeople()).filter((p) => p.status !== 'former'); } catch (e) { toast(e.message, 'err'); return; }
+      const tut = behalfForms.some(([k]) => k === 'tec') ? ((await API.rpc('cms_tutors_list').catch(() => null))?.tutors || []).filter((t) => t.active) : [];
       await modal({ title: 'New claim for someone', ok: 'Start the claim',
         body: `<label class="fld"><span>Form</span><select name="f">${behalfForms.map(([k, , l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
-          <label class="fld"><span>Who is claiming</span><select name="p" required><option value="">— choose —</option>${ppl.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employee_id ? ` · ${esc(p.employee_id)}` : ''}</option>`).join('')}</select></label>
-          <p class="muted small">You prepare it and attach the receipts; it is filed under their name, and they see it in My Claims.</p>`,
-        onOk: (f) => { if (!f.p.value) throw new Error('Choose the person.'); location.hash = `#/me/claims/${f.f.value}?for=${f.p.value}`; } });
+          <label class="fld"><span>Who is claiming</span><select name="p" required><option value="">— choose —</option><optgroup label="Staff">${ppl.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employee_id ? ` · ${esc(p.employee_id)}` : ''}</option>`).join('')}</optgroup>
+            ${tut.length ? `<optgroup label="Tutors (tuition claims only)">${tut.map((t) => `<option value="t:${esc(t.id)}">${esc(t.name)} · tutor</option>`).join('')}</optgroup>` : ''}</select></label>
+          <p class="muted small">You prepare it and attach the receipts; it is filed under their name, and they see it in My Claims (tutors: in their tuition claims).</p>`,
+        onOk: (f) => { const v = f.p.value; if (!v) throw new Error('Choose the person.');
+          if (v.startsWith('t:')) { if (f.f.value !== 'tec') throw new Error('Tutors only make tuition (TEC) claims.'); location.hash = `#/me/claims/tec?tutor=${v.slice(2)}`; return; }
+          location.hash = `#/me/claims/${f.f.value}?for=${v}`; } });
     });
     const sup = isSuper();
     const tabs = [['action', 'Action required'], ['all', 'All claims'], ['proc', 'P/AC processing'], ['mine', 'My claims'], ['other', 'Other tasks']];
@@ -1380,9 +1385,14 @@
         ${s ? `<div class="toolbar"><label class="fld inline"><span>Staff see their own claims for the last</span><select id="ac-hist" ${s.can_edit ? '' : 'disabled'}>${[1, 2, 3, 6, 12].map((m) => `<option value="${m}" ${s.history_months === m ? 'selected' : ''}>${m} month${m === 1 ? '' : 's'}</option>`).join('')}</select></label>
           <span class="muted small">Applies in every form app.</span></div>` : ''}
         ${s && 'scf_receipts_required' in s ? `<label class="chk"><input type="checkbox" id="ac-rcpt" ${s.scf_receipts_required !== false ? 'checked' : ''} ${s.can_edit ? '' : 'disabled'}> Staff claims (SCF) made in the CMS need a receipt on every line <span class="muted small">(when off, a line without a receipt needs a remark)</span></label>` : ''}
+        ${s && 'tec_venue_pct' in s ? `<div class="toolbar"><label class="fld inline"><span>Tuition (TEC) venue fee</span><input type="number" id="ac-venue" min="0" max="100" step="0.01" value="${esc(s.tec_venue_pct)}" ${s.can_edit ? '' : 'disabled'} style="width:6.5em"> %</label>
+          <span class="muted small">Taken from each student's monthly fee in TEC claims made in the CMS (net pay = fee − venue fee). Claims already made keep their amounts.</span></div>` : ''}
         ${can('admin.roles') ? `<p><a class="btn sm" href="#/admin/roles?tab=claims">${icon('lock')}Claim permissions</a> <span class="muted small">Same permissions the form apps use (submit, approve with company scope, process, mark paid, view, Form Admin).</span></p>` : ''}</details>`;
       $('#ac-rcpt', box)?.addEventListener('change', async (e) => {
         try { await API.rpc('cms_scf_settings_set', { p: { receipts_required: e.target.checked } }); toast(e.target.checked ? 'Receipts required on every line' : 'Receipts no longer required on every line'); } catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'err'); }
+      });
+      $('#ac-venue', box)?.addEventListener('change', async (e) => {
+        try { await API.rpc('cms_tec_settings_set', { p_venue_pct: Number(e.target.value) }); toast(`Tuition venue fee set to ${Number(e.target.value)} %`); } catch (x) { toast(x.message, 'err'); }
       });
       $('#ac-hist', box)?.addEventListener('change', async (e) => {
         try { await API.rpc('cms_claim_history_months_set', { p_months: Number(e.target.value) }); toast('Claimant history saved'); } catch (x) { toast(x.message, 'err'); }
@@ -4123,25 +4133,278 @@
     docView(el, `MTCF ${r.serial_no}`, [sheet], back);
   }
 
-  const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'] };
+  // ================================================================ PRI-010 F1 · Tuition claims (TEC V2) in the CMS: staff teachers and outside tutors
+  // Same tec_v2_submissions table and page format as MEG-TEC-V2: one page per course (or more pages for a long class list), students with
+  // 10 class days and 10 replacement days, monthly fee; the venue fee is the % set by Admin (Action Center › Claim settings), net pay = fee − venue.
+  // Serial per course <code>-DDMMYYYYHHMM; pages of one course are kept together, with the course total on its last page. The PIC checks it in MEG-TEC-V2.
+  const isTutor = () => acts('tutor_self').includes('V');
+  const tecPad = (a) => Array.from({ length: 10 }, (_, i) => String((a || [])[i] ?? ''));
+  const tecStud = (s = {}) => ({ name: s.name || '', monthlyFee: s.monthlyFee ?? '', actualDays: tecPad(s.actualDays), replacementDays: tecPad(s.replacementDays) });
+  const tecPage0 = () => ({ course_name: '', standards: [], time_from: '', time_to: '', students: [tecStud()] });
+  const tecR2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const tecVen = (fee, pct) => tecR2((parseFloat(fee) || 0) * pct / 100);
+  const tecCoName = (c) => (window.CMS_COMPANIES.find((x) => x.code === c) || {}).name || c;
+  const tecBack = () => (isTutor() ? '#/tutor' : '#/me/claims');
+  async function meTecPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    let id = q.get('id') || null; const forPerson = q.get('for') || null; const forTutor = q.get('tutor') || null;
+    el.innerHTML = `${pageHead(item)}<div id="tc-body">${loading()}</div>`;
+    let C; let row = null;
+    try {
+      if (id) row = await API.rpc('cms_tec_get', { p_id: id });
+      if (row && !row.editable) { tecPrint(el, row, () => { location.hash = tecBack(); }); return; }
+      C = await API.rpc('cms_tec_context', row
+        ? { p_person: !row.tutor && row.person && row.person !== state.access?.person?.id ? row.person : null, p_tutor: row.tutor || null }
+        : { p_person: forPerson, p_tutor: forTutor });
+    } catch (e) { $('#tc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const back = C.behalf ? '#/approvals' : tecBack();
+    const now = new Date(Date.now() + 8 * 36e5);
+    const p0 = row?.pages?.[0];
+    const D = { company: row?.company_code || C.company, month: Number(p0?.month) || now.getUTCMonth() + 1, year: Number(p0?.year) || now.getUTCFullYear(),
+      pages: (row?.pages || []).map((p) => ({ course_name: p.course_name || '', standards: [...(p.standards || [])], time_from: p.time_from || '', time_to: p.time_to || '', students: (p.students || []).map(tecStud) })) };
+    if (!D.pages.length) D.pages.push(tecPage0());
+    const pct = Number(C.venue_pct) || 0;
+    let saving = null; let dirty = false; let timer = null;
+    const body = $('#tc-body', el);
+    const payload = () => ({ person_id: C.kind === 'staff' && C.behalf ? C.id : null, tutor_id: C.kind === 'tutor' && C.behalf ? C.tutor_id : null,
+      company: D.company, month: D.month, year: D.year,
+      pages: D.pages.map((p) => ({ ...p, students: p.students.map((s) => ({ ...s, monthlyFee: s.monthlyFee === '' ? 0 : Number(s.monthlyFee) })) })) });
+    const status = (t, tone) => { const s = $('#tc-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => {
+        const r = await API.rpc('cms_tec_save', { p_id: id, p: payload(), p_submit: submit });
+        if (!id) { id = r.id; history.replaceState(null, '', `#/me/claims/tec?id=${id}`); }
+        dirty = false; status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${r.serials.length ? ` · ${r.serials.join(', ')}` : ''}`);
+        return r;
+      })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`The claim could not be saved (${e.message}). Leave anyway?`); } } };
+    const dim = () => new Date(D.year, D.month, 0).getDate();
+    const wkend = (d) => { if (!d) return false; const w = new Date(D.year, D.month - 1, Number(d)).getDay(); return w === 0 || w === 6; };
+    const pageNet = (p) => p.students.reduce((s, x) => s + (parseFloat(x.monthlyFee) || 0) - tecVen(x.monthlyFee, pct), 0);
+    const groups = () => { const g = new Map(); D.pages.forEach((p, i) => { if (!p.course_name) return; const x = g.get(p.course_name) || { pages: [], net: 0 }; x.pages.push(i); x.net += pageNet(p); g.set(p.course_name, x); }); return g; };
+    const grand = () => D.pages.reduce((s, p) => s + pageNet(p), 0);
+    const daySel = (pi, si, k, j, v) => `<td class="tec-d ${wkend(v) ? 'wk' : ''}"><select data-day="${pi}|${si}|${k}|${j}" aria-label="${k === 'a' ? 'Class' : 'Replacement'} day ${j + 1}"><option value=""></option>${Array.from({ length: dim() }, (_, d) => `<option ${String(d + 1) === v ? 'selected' : ''}>${d + 1}</option>`).join('')}</select></td>`;
+    const studRows = (p, pi) => p.students.map((s, si) => `<tr data-s="${pi}|${si}"><td rowspan="2" class="num">${si + 1}</td>
+        <td rowspan="2"><input type="text" class="tec-nm" data-sk="name" value="${esc(s.name)}" maxlength="120" placeholder="Name (level)" aria-label="Student ${si + 1} name"></td>
+        <td class="tec-k">Class</td>${s.actualDays.map((v, j) => daySel(pi, si, 'a', j, v)).join('')}
+        <td rowspan="2"><input type="number" inputmode="decimal" step="0.01" min="0" class="tec-fee" data-sk="monthlyFee" value="${esc(s.monthlyFee)}" aria-label="Student ${si + 1} monthly fee"></td>
+        <td rowspan="2" class="num" data-ven>${m2(tecVen(s.monthlyFee, pct))}</td><td rowspan="2" class="num" data-net><b>${m2((parseFloat(s.monthlyFee) || 0) - tecVen(s.monthlyFee, pct))}</b></td>
+        <td rowspan="2">${p.students.length > 1 ? `<button type="button" class="icon-btn sm" data-rms="${pi}|${si}" aria-label="Remove student ${si + 1}">${icon('x')}</button>` : ''}</td></tr>
+      <tr data-s="${pi}|${si}"><td class="tec-k">Replacement</td>${s.replacementDays.map((v, j) => daySel(pi, si, 'r', j, v)).join('')}</tr>`).join('');
+    const pageHtml = (p, pi) => {
+      const fee = p.students.reduce((s, x) => s + (parseFloat(x.monthlyFee) || 0), 0); const ven = p.students.reduce((s, x) => s + tecVen(x.monthlyFee, pct), 0);
+      return `<section class="card tec-pg" data-p="${pi}">
+        <div class="scf-lh"><b>Page ${pi + 1}${p.course_name ? ` · ${esc(p.course_name)}` : ''}</b><span class="row-acts"><button type="button" class="btn xs ghost" data-dup="${pi}" title="A new page for the same course, without the students">${icon('plus')}More students, same course</button>${D.pages.length > 1 ? `<button type="button" class="icon-btn sm" data-rmp="${pi}" aria-label="Remove page ${pi + 1}">${icon('x')}</button>` : ''}</span></div>
+        <div class="scf-g">
+          <label class="fld"><span>Course</span><select data-pk="course_name"><option value="">— choose —</option>${C.courses.map((c) => `<option value="${esc(c.name)}" ${c.name === p.course_name ? 'selected' : ''}>${esc(c.name)}${c.code ? ` (${esc(c.code)})` : ''}</option>`).join('')}</select></label>
+          <div class="fld"><span>Time <small class="muted">(optional)</small></span><span class="tec-time"><input type="time" data-pk="time_from" value="${esc(p.time_from)}" aria-label="From"><span>to</span><input type="time" data-pk="time_to" value="${esc(p.time_to)}" aria-label="To"></span></div>
+          <div class="fld wide"><span>Standard</span><span class="tec-std">${C.standards.map((s) => `<label class="chk"><input type="checkbox" data-std="${esc(s)}" ${p.standards.includes(s) ? 'checked' : ''}> ${esc(s)}</label>`).join('')}</span></div></div>
+        <div class="table-wrap tec-wrap"><table class="data tec-t"><thead><tr><th>No.</th><th>Student's name</th><th></th><th colspan="10" class="tec-mh">${esc(MONTHS[D.month - 1].toUpperCase())} ${D.year}</th><th class="num">Monthly fee</th><th class="num">Venue fee (${m2(pct)}%)</th><th class="num">Net pay</th><th></th></tr></thead>
+          <tbody>${studRows(p, pi)}</tbody>
+          <tfoot><tr><td colspan="13"><b>Total</b></td><td class="num" data-tf>${m2(fee)}</td><td class="num" data-tv>${m2(ven)}</td><td class="num" data-tn><b>${m2(fee - ven)}</b></td><td></td></tr></tfoot></table></div>
+        <div class="btn-row"><button type="button" class="btn sm" data-adds="${pi}">${icon('plus')}Add student</button>${p.students.length > 1 ? `<button type="button" class="btn sm ghost" data-same="${pi}" title="Copy the first student's class and replacement days to every student on this page">Same days for all students</button>` : ''}</div></section>`;
+    };
+    const sumHtml = () => { const g = groups(); return `${[...g].map(([c, x]) => `<div class="tec-gr"><span>${esc(c)} <small class="muted">${x.pages.length} page${x.pages.length === 1 ? '' : 's'}</small></span><b>${money(x.net)}</b></div>`).join('')}
+        <div class="scf-tot">Net pay <span><b>${money(grand())}</b></span></div>`; };
+    function totals(pi) {
+      const p = D.pages[pi]; const sec = $(`.tec-pg[data-p="${pi}"]`, body); if (!sec) return;
+      p.students.forEach((s, si) => { const tr = $(`tr[data-s="${pi}|${si}"]`, sec); if (!tr) return; $('[data-ven]', tr).textContent = m2(tecVen(s.monthlyFee, pct)); $('[data-net]', tr).innerHTML = `<b>${m2((parseFloat(s.monthlyFee) || 0) - tecVen(s.monthlyFee, pct))}</b>`; });
+      const fee = p.students.reduce((s, x) => s + (parseFloat(x.monthlyFee) || 0), 0); const ven = p.students.reduce((s, x) => s + tecVen(x.monthlyFee, pct), 0);
+      $('[data-tf]', sec).textContent = m2(fee); $('[data-tv]', sec).textContent = m2(ven); $('[data-tn]', sec).innerHTML = `<b>${m2(fee - ven)}</b>`;
+      $('#tc-sum', body).innerHTML = sumHtml();
+    }
+    function draw() {
+      const yrs = [now.getUTCFullYear() - 1, now.getUTCFullYear(), now.getUTCFullYear() + 1];
+      body.innerHTML = `<section class="card scf-head">
+          <div class="scf-who"><b>${esc(C.name)}</b><small class="sub">${C.kind === 'tutor' ? 'Tutor' : esc(C.employee_id || '')}${C.behalf ? ` · prepared by ${esc(C.preparer)}` : ''}</small>${C.behalf ? '<span class="tag warn xs">On behalf</span>' : ''}</div>
+          <div class="scf-g"><label class="fld tec-my"><span>Company</span><select data-h="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === D.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+            <div class="fld tec-my"><span>Month of</span><span class="tec-time"><select data-h="month" aria-label="Month">${MONTHS.map((m, i) => `<option value="${i + 1}" ${i + 1 === D.month ? 'selected' : ''}>${m}</option>`).join('')}</select><select data-h="year" aria-label="Year">${yrs.map((y) => `<option ${y === D.year ? 'selected' : ''}>${y}</option>`).join('')}</select></span></div></div>
+          <div class="btn-row">${C.templates.length ? `<label class="fld inline"><span>Template</span><select data-tpl><option value="">Load a saved class list…</option>${C.templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label>` : ''}<button type="button" class="btn sm ghost" data-tsave title="Save the courses and students (without the days) to load next month">Save as template</button></div>
+          <p class="small muted">Serial no. per course, given when first saved · <span id="tc-st">${id ? 'Saved' : 'Not saved yet'}</span></p></section>
+        <div>${D.pages.map(pageHtml).join('')}</div>
+        <div class="btn-row"><button type="button" class="btn" data-addp>${icon('plus')}Add a course page</button></div>
+        <section class="card scf-foot"><div id="tc-sum">${sumHtml()}</div>
+          <div class="btn-row"><button type="button" class="btn primary" data-submit>${icon('check-circle')}Submit to the PIC</button><button type="button" class="btn" data-save>Save draft</button>${id ? '<button type="button" class="btn ghost danger" data-discard>Discard draft</button>' : ''}</div>
+          <p class="muted small">Venue fee = ${m2(pct)}% of each monthly fee (set by Admin). Pages of the same course share one serial no.; the course total is on its last page. After you submit, the PIC checks it and Payroll / Accounts pays it.</p></section>`;
+    }
+    draw();
+    body.addEventListener('input', (e) => {
+      const tr = e.target.closest('tr[data-s]'); const k = e.target.dataset.sk;
+      if (tr && k) { const [pi, si] = tr.dataset.s.split('|').map(Number); D.pages[pi].students[si][k] = e.target.value; if (k === 'monthlyFee') totals(pi); later(); }
+    });
+    body.addEventListener('change', async (e) => {
+      const t = e.target;
+      if (t.dataset.h) { D[t.dataset.h] = t.dataset.h === 'company' ? t.value : Number(t.value); if (t.dataset.h !== 'company') { const m = dim(); D.pages.forEach((p) => p.students.forEach((s) => { s.actualDays = s.actualDays.map((d) => (Number(d) > m ? '' : d)); s.replacementDays = s.replacementDays.map((d) => (Number(d) > m ? '' : d)); })); draw(); } later(); return; }
+      if (t.dataset.day) { const [pi, si, k, j] = t.dataset.day.split('|'); D.pages[+pi].students[+si][k === 'a' ? 'actualDays' : 'replacementDays'][+j] = t.value; t.parentElement.classList.toggle('wk', wkend(t.value)); later(); return; }
+      const sec = t.closest('.tec-pg'); if (!sec) {
+        if (t.dataset.tpl !== undefined && t.value) {
+          const tp = C.templates.find((x) => x.id === t.value); t.value = '';
+          if (!tp) return;
+          if (D.pages.some((p) => p.course_name || p.students.some((s) => s.name)) && !(await confirmBox('Load this template?', `The pages here are replaced with <b>${esc(tp.name)}</b> (courses and students; the days are left empty).`, 'Load template'))) return;
+          D.pages = (tp.pages || []).map((p) => ({ course_name: p.course_name || '', standards: [...(p.standards || [])], time_from: p.time_from || '', time_to: p.time_to || '', students: (p.students || []).map((s) => tecStud({ name: s.name, monthlyFee: s.monthlyFee })) }));
+          if (!D.pages.length) D.pages.push(tecPage0());
+          draw(); later(); toast('Template loaded');
+        }
+        return;
+      }
+      const pi = +sec.dataset.p; const p = D.pages[pi];
+      if (t.dataset.std) { p.standards = t.checked ? [...new Set([...p.standards, t.dataset.std])] : p.standards.filter((x) => x !== t.dataset.std); later(); return; }
+      if (t.dataset.pk) { p[t.dataset.pk] = t.value; if (t.dataset.pk === 'course_name') { draw(); } later(); }
+    });
+    body.addEventListener('click', async (e) => {
+      const b = (s) => e.target.closest(s);
+      if (b('[data-addp]')) { D.pages.push(tecPage0()); draw(); later(); return; }
+      if (b('[data-dup]')) { const pi = +b('[data-dup]').dataset.dup; const p = D.pages[pi]; let at = pi; D.pages.forEach((x, i) => { if (x.course_name && x.course_name === p.course_name) at = i; }); D.pages.splice(at + 1, 0, { ...tecPage0(), course_name: p.course_name, standards: [...p.standards], time_from: p.time_from, time_to: p.time_to }); draw(); later(); return; }
+      if (b('[data-rmp]')) { const pi = +b('[data-rmp]').dataset.rmp; const p = D.pages[pi];
+        if ((p.course_name || p.students.some((s) => s.name)) && !(await confirmBox('Remove this page?', `Page ${pi + 1}${p.course_name ? ` (${esc(p.course_name)})` : ''} and its ${p.students.length} student${p.students.length === 1 ? '' : 's'} are removed from the claim.`, 'Remove page', true))) return;
+        D.pages.splice(pi, 1); draw(); later(); return; }
+      if (b('[data-adds]')) { const pi = +b('[data-adds]').dataset.adds; const last = D.pages[pi].students.slice(-1)[0]; D.pages[pi].students.push(tecStud({ monthlyFee: last?.monthlyFee ?? '' })); draw(); later(); $$(`.tec-pg[data-p="${pi}"] .tec-nm`, body).pop()?.focus(); return; }
+      if (b('[data-rms]')) { const [pi, si] = b('[data-rms]').dataset.rms.split('|').map(Number); D.pages[pi].students.splice(si, 1); draw(); later(); return; }
+      if (b('[data-same]')) { const pi = +b('[data-same]').dataset.same; const [f, ...rest] = D.pages[pi].students; rest.forEach((s) => { s.actualDays = [...f.actualDays]; s.replacementDays = [...f.replacementDays]; }); draw(); later(); toast('Days copied to every student on this page'); return; }
+      if (b('[data-tsave]')) {
+        await modal({ title: 'Save as template', ok: 'Save template', body: `<label class="fld"><span>Template name</span><input name="n" maxlength="80" required value="${esc(MONTHS[D.month - 1])} class list"></label><p class="muted small">Saves the courses, standards, times, students and fees (not the days). A template with the same name is replaced.</p>`,
+          onOk: async (f) => { const n = f.n.value.trim(); if (!n) throw new Error('Give the template a name.');
+            const pages = D.pages.map((p) => ({ course_name: p.course_name, standards: p.standards, time_from: p.time_from, time_to: p.time_to, students: p.students.filter((s) => s.name).map((s) => ({ name: s.name, monthlyFee: Number(s.monthlyFee) || 0, venueFee: tecVen(s.monthlyFee, pct) })) }));
+            const tid = await API.rpc('cms_tec_template_save', { p_name: n, p_pages: pages });
+            C.templates = [{ id: tid, name: n, pages }, ...C.templates.filter((x) => x.id !== tid)]; } });
+        return;
+      }
+      if (b('[data-save]')) { clearTimeout(timer); try { await save(); toast('Draft saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (b('[data-discard]')) {
+        if (!(await confirmBox('Discard this draft?', 'The draft is removed from your claims. This cannot be undone.', 'Discard draft', true))) return;
+        clearTimeout(timer); try { await API.rpc('cms_tec_discard', { p_id: id }); dirty = false; window.CMS_LEAVE_GUARD = null; toast('Draft discarded'); location.hash = back; } catch (x) { toast(x.message, 'err'); }
+        return;
+      }
+      if (b('[data-submit]')) {
+        for (let i = 0; i < D.pages.length; i += 1) {
+          const p = D.pages[i]; const w = `Page ${i + 1}${p.course_name ? ` (${p.course_name})` : ''}`;
+          const why = !p.course_name ? 'choose the course' : !p.standards.length ? 'tick at least one Standard' : !p.students.length ? 'add the students'
+            : p.students.some((s) => !s.name.trim() || !(parseFloat(s.monthlyFee) > 0)) ? 'every student needs a name and a monthly fee' : '';
+          if (why) { toast(`${w}: ${why}.`, 'err'); $(`.tec-pg[data-p="${i}"]`, body)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+        }
+        const g = groups(); const n = D.pages.reduce((s, p) => s + p.students.length, 0);
+        const ok = await confirmBox('Submit this claim to the PIC?', `<b>${esc(C.name)}</b> · ${esc(MONTHS[D.month - 1])} ${D.year} · ${[...g.keys()].map(esc).join(', ')} · ${n} student${n === 1 ? '' : 's'} · <b>${money(grand())}</b><br><small class="muted">After submitting you cannot change it.</small>`, 'Submit', false);
+        if (!ok) return;
+        clearTimeout(timer);
+        try {
+          const r = await save(true);
+          API.sb().functions.invoke('tec-v2-notify', { body: { event: 'submitted', submission_id: r.id } }).catch(() => {});
+          window.CMS_LEAVE_GUARD = null; toast(`Claim ${r.serials.join(', ')} submitted to the PIC`);
+          tecPrint(el, await API.rpc('cms_tec_get', { p_id: r.id }), () => { location.hash = back; });
+        } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    });
+  }
+  function tecPrint(el, r, back) {
+    const pages = r.pages || [];
+    const st = { draft: 'Draft (not submitted)', submitted: 'With the PIC', done: `Checked${r.done_by_name ? ` by ${r.done_by_name}` : ''}` }[r.status] || r.status;
+    const per = new Map(); pages.forEach((p) => per.set(p.course_name, (per.get(p.course_name) || 0) + 1));
+    const seen = new Map();
+    const sheets = pages.map((p, i) => {
+      const k = (seen.get(p.course_name) || 0) + 1; seen.set(p.course_name, k);
+      const ss = p.students || []; const fee = ss.reduce((s, x) => s + Number(x.monthlyFee || 0), 0); const ven = ss.reduce((s, x) => s + Number(x.venueFee || 0), 0);
+      return `<section class="sheet scf-sheet tec-sheet"><div class="scf-ph"><div><h2>MONTHLY TUITION / ENRICHMENT CLASS PAYMENT (TEC)</h2><p>${esc(tecCoName(r.company_code))}</p></div><div class="scf-sn"><code>${esc(p.serial_no || '—')}</code><small>${esc(p.course_name)} · page ${k} of ${per.get(p.course_name)}</small></div></div>
+        <dl class="scf-kv"><div><dt>Teacher</dt><dd>${esc(r.teacher_name)}</dd></div><div><dt>Course</dt><dd>${esc(p.course_name)}</dd></div><div><dt>Standard</dt><dd>${esc((p.standards || []).join(', ') || '—')}</dd></div>
+          <div><dt>Time</dt><dd>${p.time_from ? `${esc(p.time_from)} – ${esc(p.time_to || '')}` : '—'}</dd></div><div><dt>Month of</dt><dd>${esc((MONTHS[(Number(p.month) || 1) - 1] || '').toUpperCase())} ${esc(p.year)}</dd></div><div><dt>Status</dt><dd>${esc(st)}</dd></div></dl>
+        <table class="data scf-pt tec-pt"><thead><tr><th>No.</th><th>Student's name</th><th></th>${Array.from({ length: 10 }, (_, j) => `<th class="tec-d">${j + 1}</th>`).join('')}<th class="num">Monthly fee</th><th class="num">Venue fee</th><th class="num">Net pay</th></tr></thead>
+          <tbody>${ss.map((s, j) => `<tr><td rowspan="2">${j + 1}</td><td rowspan="2">${esc(s.name)}</td><td class="tec-k">Class</td>${tecPad(s.actualDays).map((d) => `<td class="tec-d">${esc(d)}</td>`).join('')}<td rowspan="2" class="num">${m2(s.monthlyFee)}</td><td rowspan="2" class="num">${m2(s.venueFee)}</td><td rowspan="2" class="num"><b>${m2(s.netPay)}</b></td></tr>
+            <tr><td class="tec-k">Replacement</td>${tecPad(s.replacementDays).map((d) => `<td class="tec-d">${esc(d)}</td>`).join('')}</tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="13"><b>TOTAL</b></td><td class="num"><b>${m2(fee)}</b></td><td class="num"><b>${m2(ven)}</b></td><td class="num"><b>${m2(p.subtotal)}</b></td></tr>
+            ${p.is_group_total_page ? `<tr><td colspan="15"><b>GRAND TOTAL (${esc(p.course_name)}) — ${per.get(p.course_name)} pages</b></td><td class="num"><b>RM ${m2(p.group_total)}</b></td></tr>` : ''}</tfoot></table>
+        <p class="small muted">${i === pages.length - 1 ? `Claim total (all courses): <b>RM ${m2(r.total)}</b> · ` : ''}Made in the MyEden Group CMS · Ref: MEG-FRM-OR-001 v1.0</p></section>`;
+    });
+    docView(el, `TEC ${[...new Set(pages.map((p) => p.serial_no))].join(', ')}`, sheets.length ? sheets : ['<section class="sheet"><p>This claim has no pages.</p></section>'], back);
+  }
+  const TEC_TONE = { approval: 'warn', processing: 'blue', paid: 'ok', draft: '' };
+  async function tutorHomePage(item, el) {
+    el.innerHTML = `${pageHead(item, `<a class="btn primary" href="#/me/claims/tec">${icon('plus')}New tuition claim</a>`)}<div id="tu-body">${loading()}</div>`;
+    let rows; try { rows = await API.rpc('cms_tec_mine'); } catch (e) { $('#tu-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    $('#tu-body', el).innerHTML = `<section class="card">${rows.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Net pay (RM)</th><th>Where it is</th></tr></thead><tbody>
+        ${rows.map((r) => `<tr class="click" data-tid="${esc(r.id)}" tabindex="0"><td><b>${esc(r.serial_no)}</b>${r.stage === 'draft' ? '<small class="sub"><a href="#/me/claims/tec?id=' + esc(r.id) + '">Continue ›</a></small>' : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td><td class="num nowrap">${m2(r.amount)}</td>
+          <td><span class="tag ${TEC_TONE[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at ? `<small class="sub">checked ${dShort(r.approved_at)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty small"><p>No tuition claims yet</p><span>Start one with “New tuition claim”: a page per course, your students and their class days. It is saved as you go.</span></div>'}</section>
+      <p class="muted small">You submit your claim to the PIC, who checks it; Payroll / Accounts then pays it. You can save a class list as a template and load it next month.</p>`;
+    $$('[data-tid]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.closest('a')) return; location.hash = `#/me/claims/tec?id=${tr.dataset.tid}`; }));
+  }
+  async function tutorInvite(t) {
+    const { data, error } = await API.sb().functions.invoke('cms-invite', { body: { tutor_id: t.id } });
+    if (error) { let why = error.message || String(error); try { const b = await error.context.json(); if (b && b.error) why = b.error; } catch (x) { /* keep it */ } throw new Error(why); }
+    return data;
+  }
+  async function tutorsPage(item, el) {
+    let L; const f = { v: 'on', q: '' };
+    const load = async () => { L = await API.rpc('cms_tutors_list'); if (!L) throw new Error('You cannot see the tutors.'); };
+    el.innerHTML = `${pageHead(item)}<div id="tt-body">${loading()}</div>`;
+    try { await load(); } catch (e) { $('#tt-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const signTag = (t) => (!t.login ? '<span class="tag xs">Not invited</span>' : t.signed_in ? '<span class="tag ok xs">Signed in</span>' : `<span class="tag warn xs">Invited</span><small class="sub">${dShort(t.invited_at)}${t.sent > 1 ? ` · sent ${t.sent}×` : ''}</small>`);
+    function edit(t) {
+      const x = t || { company: 'MEG', courses: [], active: true };
+      return modal({ title: t ? `Tutor · ${t.name}` : 'Add a tutor', ok: t ? 'Save' : 'Add tutor',
+        body: `<label class="fld"><span>Name (as on their bank account)</span><input name="name" required maxlength="120" value="${esc(x.name || '')}"></label>
+          <div class="scf-g"><label class="fld"><span>Email <small class="muted">(for the sign-in invite)</small></span><input name="email" type="email" maxlength="160" value="${esc(x.email || '')}"></label>
+            <label class="fld"><span>Phone</span><input name="phone" type="tel" maxlength="40" value="${esc(x.phone || '')}"></label></div>
+          <label class="fld"><span>Company they claim from</span><select name="company">${['MEG', 'MEH'].map((c) => `<option value="${c}" ${x.company === c ? 'selected' : ''}>${esc(tecCoName(c))}</option>`).join('')}</select></label>
+          <div class="fld"><span>Courses they teach <small class="muted">(for reference)</small></span><span class="tec-std">${(L.courses || []).map((c) => `<label class="chk"><input type="checkbox" name="course" value="${esc(c)}" ${x.courses.includes(c) ? 'checked' : ''}> ${esc(c)}</label>`).join('')}</span></div>
+          <label class="fld"><span>Notes</span><textarea name="notes" rows="2" maxlength="500" class="ta">${esc(x.notes || '')}</textarea></label>
+          ${t ? `<label class="chk"><input type="checkbox" name="active" ${x.active ? 'checked' : ''}> Active <span class="muted small">(switching a tutor off stops their sign-in to the CMS)</span></label>` : ''}
+          <p class="muted small">Tutors are outside teachers, not staff: they are not in the Employee Master or payroll. They sign in only to make and follow their own tuition claims.</p>`,
+        onOk: async (fm) => {
+          await API.rpc('cms_tutor_save', { p_id: t ? t.id : null, p: { name: fm.name.value, email: fm.email.value, phone: fm.phone.value, company: fm.company.value,
+            courses: $$('input[name=course]:checked', fm).map((c) => c.value), notes: fm.notes.value, ...(t ? { active: fm.active.checked } : {}) } });
+          toast(t ? 'Tutor saved' : 'Tutor added'); await load(); draw();
+        } });
+    }
+    function draw() {
+      const ql = f.q.toLowerCase();
+      const list = L.tutors.filter((t) => (f.v === 'on' ? t.active : !t.active) && (!ql || `${t.name} ${t.email || ''} ${t.phone || ''}`.toLowerCase().includes(ql)));
+      const nOn = L.tutors.filter((t) => t.active).length;
+      $('#tt-body', el).innerHTML = `<section class="card"><div class="toolbar"><div class="seg"><button type="button" data-v="on" class="${f.v === 'on' ? 'on' : ''}">Active <span>${nOn}</span></button><button type="button" data-v="off" class="${f.v === 'off' ? 'on' : ''}">Switched off <span>${L.tutors.length - nOn}</span></button></div>
+          <input type="search" class="search" id="tt-q" placeholder="Search name, email or phone" value="${esc(f.q)}" aria-label="Search tutors">
+          ${L.can_edit ? `<button type="button" class="btn primary" data-add>${icon('plus')}Add tutor</button>` : ''}</div>
+        ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Tutor</th><th>Company</th><th>Contact</th><th>CMS sign-in</th><th class="num">Claims</th><th></th></tr></thead><tbody>
+          ${list.map((t) => `<tr data-id="${esc(t.id)}"><td><b>${esc(t.name)}</b>${t.courses.length ? `<small class="sub">${esc(t.courses.join(', '))}</small>` : ''}</td><td>${esc(t.company)}</td>
+            <td>${t.email ? esc(t.email) : '<span class="muted">no email</span>'}${t.phone ? `<small class="sub">${esc(t.phone)}</small>` : ''}</td><td>${signTag(t)}</td><td class="num">${num(t.claims)}</td>
+            <td class="row-acts nowrap">${L.can_edit ? `<button type="button" class="btn xs" data-edit>Edit</button>${t.active && t.email && !t.signed_in ? `<button type="button" class="btn xs" data-inv>${t.login ? 'Send again' : 'Invite'}</button>` : ''}` : ''}${t.active && can('tec', 'C') ? `<a class="btn xs ghost" href="#/me/claims/tec?tutor=${esc(t.id)}" title="Make a tuition claim for this tutor">New claim</a>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty small"><p>${L.tutors.length ? 'No tutors here' : 'No tutors yet'}</p><span>${L.can_edit ? 'Add outside tutors who claim tuition (TEC), then invite them to sign in.' : 'An Admin adds tutors.'}</span></div>`}</section>
+        <p class="muted small">Invite sends an email from MyEden Group &lt;noreply@mail.myeden.group&gt; to choose a password. A tutor sees only their own tuition claims. Staff who also teach claim from My Claims, not as tutors.</p>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $('#tt-q', el).addEventListener('input', (e) => { f.q = e.target.value; const pos = e.target.selectionStart; draw(); const s = $('#tt-q', el); s.focus(); s.setSelectionRange(pos, pos); });
+      $('[data-add]', el)?.addEventListener('click', () => edit(null));
+      $$('tr[data-id]', el).forEach((tr) => {
+        const t = L.tutors.find((x) => x.id === tr.dataset.id);
+        $('[data-edit]', tr)?.addEventListener('click', () => edit(t));
+        $('[data-inv]', tr)?.addEventListener('click', () => confirmBox(`${t.login ? 'Send the invite again' : 'Invite'} · ${t.name}`,
+          `An email goes to <b>${esc(t.email)}</b> to choose a password for the MyEden Group CMS. They get the <b>Tutor</b> role: only their own tuition claims.`, 'Send invite', false,
+          async () => { const r = await tutorInvite(t); toast(INV_MODE[r.mode] || 'Invite sent'); await load(); draw(); }));
+      });
+    }
+    draw();
+  }
+
+  const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'], tec: ['MEG-TEC-V2', 'Tuition (TEC)'] };
+  const CLAIM_ROUTE = { scf: 'scf', otcf: 'otcf', mtcf: 'mtcf', 'tec-v2': 'tec' };
   async function meClaimsPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="mc-body">${loading()}</div>`;
-    let rows; try { rows = await API.rpc('cms_my_claims'); } catch (e) { $('#mc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    let rows; try { const [a, t] = await Promise.all([API.rpc('cms_my_claims'), API.rpc('cms_tec_mine').catch(() => [])]); rows = [...a, ...(t || [])].sort((x, y) => String(y.submitted_at || '9').localeCompare(String(x.submitted_at || '9'))); } catch (e) { $('#mc-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const f = { v: 'open' };
     const V = [['open', 'In progress', (r) => ['approval', 'processing', 'payment', 'draft'].includes(r.stage)], ['paid', 'Paid', (r) => r.stage === 'paid'],
       ['no', 'Not approved', (r) => r.stage === 'disapproved'], ['all', 'All', () => true]];
     const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
     const draw = () => {
       const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
-      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (['scf', 'otcf', 'mtcf'].includes(k) ? `<a class="btn primary" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (['scf', 'otcf', 'mtcf', 'tec'].includes(k) ? `<a class="btn ${k === 'tec' ? '' : 'primary'}" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
           : `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`)).join('')}</div>
         <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
-          ${list.map((r) => `<tr${['scf', 'otcf', 'mtcf'].includes(r.form) ? ` class="click" data-scf="${esc(r.form)}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${['scf', 'otcf', 'mtcf'].includes(r.form) && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(r.form)}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
+          ${list.map((r) => `<tr${CLAIM_ROUTE[r.form] ? ` class="click" data-scf="${esc(CLAIM_ROUTE[r.form])}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${CLAIM_ROUTE[r.form] && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(CLAIM_ROUTE[r.form])}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
             <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
             <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
               ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF), overtime (OTCF) and mileage (MTCF) claims are made here in the CMS.</span></div>'}</section>
+          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF), overtime (OTCF), mileage (MTCF) and tuition (TEC) claims are made here in the CMS.</span></div>'}</section>
         <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
       $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.closest('a')) return; const [fm, cid] = tr.dataset.scf.split('|'); location.hash = `#/me/claims/${fm}?id=${cid}`; }));
@@ -6966,7 +7229,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

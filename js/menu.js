@@ -19,10 +19,12 @@ window.CMS_MENU = [
     { route: 'me/profile', label: 'My Profile', icon: 'users', phase: 4, live: true, self: 'profile', desc: 'Your employment and personal details. Changes are sent to HR for approval.' },
     { route: 'me/payslips', label: 'My Payslips & EA', icon: 'wallet', phase: 4, live: true, self: ['payslips', 'ea'], desc: 'Payslips and EA forms HR has released to you, from finalised payroll months. View, print or save as PDF.' },
     { route: 'me/salary', label: 'My Salary History', icon: 'trend', phase: 4, live: true, self: 'salary', desc: 'Your salary and each change, by month.' },
-    { route: 'me/claims', label: 'My Claims', icon: 'file-check', phase: 4, live: true, self: 'claims', desc: 'Your staff, overtime and mileage claims and where each one is: waiting for approval, approved, paid.' },
+    { route: 'me/claims', label: 'My Claims', icon: 'file-check', phase: 4, live: true, self: 'claims', desc: 'Your staff, overtime, mileage and tuition claims and where each one is: waiting for approval, approved, paid.' },
     { route: 'me/claims/scf', label: 'Staff Claim (SCF)', icon: 'file-check', phase: 4, live: true, hidden: true, self: 'claims', orCan: 'scf', desc: 'Make a staff claim: lines with receipts, saved as you go, then submit to Payroll / Accounts.' },
     { route: 'me/claims/otcf', label: 'Overtime Claim (OTCF)', icon: 'clock', phase: 4, live: true, hidden: true, self: 'claims', orCan: 'overtime', desc: 'Claim overtime for a month: each overtime time with its day, saved as you go, then submit for approval.' },
     { route: 'me/claims/mtcf', label: 'Mileage Claim (MTCF)', icon: 'trend', phase: 4, live: true, hidden: true, self: 'claims', orCan: 'mtcf', desc: 'Claim mileage: each trip with date, purpose, from, to and km; paid at the company rate per km.' },
+    { route: 'me/claims/tec', label: 'Tuition Claim (TEC)', icon: 'file-check', phase: 4, live: true, hidden: true, self: 'claims', orCan: 'tec', orTutor: true, desc: 'Monthly tuition / enrichment class claim: a page per course with your students, their class and replacement days and fees. The venue fee is taken off; saved as you go, then submit to the PIC.' },
+    { route: 'tutor', label: 'My Tuition Claims', icon: 'file-check', phase: 4, live: true, tutorOnly: true, desc: 'Your tuition / enrichment class claims (TEC) and where each one is: with the PIC, checked, paid.' },
     { route: 'me/handbook', label: 'My Handbook', icon: 'shield', phase: 4, live: true, self: 'handbook', desc: 'Your Employee Handbook: read it, and see what you have acknowledged.' },
     { route: 'me/leave', label: 'My Leave', icon: 'calendar', phase: 4, live: true, self: 'leave', desc: 'Apply for leave and see your requests. Approved by the person you report to (or anyone above them).' },
     { route: 'me/appraisal', label: 'My Appraisal', icon: 'trend', phase: 5, live: true, self: 'appraisal', desc: 'Your self-assessment and appraisal results, and appraisals of people who report to you.' },
@@ -39,6 +41,7 @@ window.CMS_MENU = [
       { route: 'people/import', label: 'Import from Workbook', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'Bring staff in from the MEG-EPPD payroll workbook.' },
       { route: 'people/selfservice', label: 'Self-service Access', phase: 4, live: true, desc: 'What each person can see in their own self-service: switch parts on per person, release payslips and EA forms, set who each person reports to, and approve profile changes.' },
       { route: 'person', label: 'Employee Profile', phase: 4, live: true, hidden: true, desc: 'Everything about one person.' },
+      { route: 'people/tutors', label: 'Tutors', phase: 4, live: true, desc: 'Outside tutors who claim tuition (TEC): their record, the company they claim from and their CMS sign-in invite. Tutors are not staff and not in payroll.' },
       { route: 'people/directory', label: 'Employee Directory', phase: 4, live: true, desc: 'Who is who: position, centre and department, company and who each person reports to. Phone and email, other companies, the org chart and Excel export each follow their own permission.' },
       { route: 'org', label: 'Organisation Structure', phase: 0, desc: 'Companies, centres and departments, and the positions in each.', plan: ['Myeden Group · Myeden Edu Hub · Happy Dino · Aborne Project', 'Centres: Taska Genius Eden, PJK Eden, Tadika Genius Eden, Tadika Happy Dino, HQ', 'Department codes E1–E11, E3+, HQ'] },
       { route: 'documents', label: 'Employee Documents', phase: 5, live: true, desc: 'Contracts, IC copies, certificates, signed letters and other files per employee (shared with MEG-EAF V2): upload, replace and open.' },
@@ -132,7 +135,7 @@ window.CMS_SOURCES = {
 
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
-  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
+  'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', 'people/tutors': 'tutors', tutor: 'tutor_self', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',

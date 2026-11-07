@@ -99,6 +99,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 71. `20261107_cms_my_claims_no_approval_labels.sql`, `20261107_cms_claim_settings_scf.sql` — My Claims labels for forms without approval; receipts setting in Claim settings
 72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 73. `20261107_cms_mtcf_new.sql` — F1 MTCF: `cms_mtcf_context / get / save` (+ `_fix_year`)
+74. `20261107_cms_tec_tutors.sql` — F1 TEC V2 and tutors: `cms_tutors`, `cms_tutor_links`, Tutor role, `cms_tutors_list / tutor_save / tutor_invite_prepare / finish`, `cms_tec_context / get / mine / save / discard / template_save / settings_set` (+ `_save_fix_pages`, `_save_standards`)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -150,6 +151,13 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.07-21:10** — PRI-010 F1: **tuition claims (TEC V2) in the CMS.** Staff teachers: My Claims › New Tuition (TEC). The MEG-TEC-V2 page
+  layout is kept: a page per course (company MEG / MEH, month, course, standards, optional time), students with 10 class days and 10 replacement days
+  (weekends marked) and the monthly fee; venue fee = Admin's % (Action Center › Claim settings, 5 % now), net pay = fee − venue. “More students, same
+  course” adds a page that shares the serial (`<course code>-DDMMYYYYHHMM`); the course total is on its last page. Saved as you go; templates (class
+  lists) saved and loaded; submit → PIC emailed (`tec-v2-notify`); printable A4 landscape sheets. **Tutors:** People › Tutors (Admin adds the record:
+  name, email, phone, company, courses; switch off stops their sign-in) and **Invite** emails a sign-in; a tutor gets only **My Tuition Claims**.
+  “New claim for someone” offers TEC for staff or a tutor. Tutor names are not counted as unmatched claimants. `cms-invite` takes `{tutor_id}`.
 - **v2026.11.07-19:20** — PRI-010 F1: **staff make Mileage claims (MTCF) in the CMS** (My Claims › New Mileage): trips with date, purpose, from / to (their past places suggested), km, remarks and an optional journey photo; “Return trip” adds the way back; total km × the company rate; saved as they go; submit → approval as before. “New claim for someone” now also offers MTCF.
 - **v2026.11.07-18:50** — PRI-010 F1: **staff make Overtime claims (OTCF) in the CMS** (My Claims › New Overtime): one entry per overtime time (day, from, to, meal break, claim type auto from the day, public holiday from the payroll holiday list, remarks; several a day), hours worked out, overlapping times refused, Employment Act reminders (12 h a day, 104 h a month), saved as you go, submit → approval in the Action Center / OTCF app with the same rules and emails. “New claim for someone” in the Action Center now offers SCF or OTCF.
 - **v2026.11.07-18:10** — PRI-010 **F1: staff make SCF claims in the CMS** (My Claims › New Staff Claim): claimant and preparer from the login, own company (others with the self-service part “Claims: other companies”), period, Online Transfer to the bank on their payroll record or Cash, lines with receipt photos (camera on phones), saved as they go, submit → P/AC processing in the Action Center, printable copy with receipts, returned claims edited and sent again. Same SCF table, serials and receipt storage as the SCF app. Emails: claim received (claimant), new claim (SCF processors), paid (claimant). Admins: receipts required on/off (Claim settings) and “New staff claim for someone”.
