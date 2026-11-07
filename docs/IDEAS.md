@@ -19,6 +19,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-012 | 2026-10-29 | Attendance app in the CMS: staff clock in / out on the phone with geo location (centre geofence), attendance records feed payroll (overtime, part-time hours, unpaid absence, allowances) | Recorded — waiting for CLC's 7 decisions |
 | PRI-013 | 2026-11-02 | Pay calculation methods recorded (daily / calendar-day / hourly rates, unpaid leave, overtime, rest day, public holiday, AL payout and buy-back, notice in lieu, leave entitlements, statutory) with 8 open points to decide; idea: a "How pay is worked out" page in the CMS | Recorded — waiting for CLC's decisions on the open points |
 | PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | **Built in v2026.11.03-17:55** |
+| PRI-020 | 2026-11-07 | Retire the form apps' own sign-in together: once every form (SCF, OTCF, MTCF, PRFAF, TEC) is made in the CMS and stable, all form apps at once get the CMS notice / redirect and become read-only (F3) | Recorded; waits until all forms are stable in the CMS |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -472,3 +473,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   and the **default parts** (never re-enables a part HR switched off). Approver = **Reports to** (already used by leave, items, appraisals;
   the invite warns when it is not set). **Defaults for invited staff** (Super Admin, in Self-service Access): starts as Profile, Payslips,
   EA forms, Claims, Handbook, plus the Staff role. The invite link opens "Welcome to the MyEden Group CMS — choose a password".
+
+## PRI-020 · Form apps' own sign-in retired together — recorded 2026-11-07
+- **Today:** each form app (MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-PRFAF, MEG-TEC) asks for its own sign-in (same email and password as the CMS,
+  but a separate signed-in session), even when the person is already signed in to the CMS.
+- **Agreed with CLC:** no change per form now. When **all** forms are made in the CMS and confirmed stable, do it **together, at once**:
+  each form app shows a notice ("New claims are now made in the MyEden Group CMS → My Claims") with a link, then becomes read-only
+  (view / print old claims) or redirects to the CMS (PRI-010 F3). Options considered: notice only, shared sign-in, read-only.
+- **Until then:** staff make SCF claims in the CMS (F1); office work is in the Action Center; the form apps keep working side by side.
