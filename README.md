@@ -92,6 +92,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 64. `20261107_cms_movement_report.sql` — `cms_movement_report(month, company)` and the permission `reports.movement_salary` (HR, Admin, Director)
 65. `20261107_cms_claimant_matching.sql` — `cms_claimant_aliases` and `cms_claimant_unmatched / match / matches`; claim → person also by alias and by sign-in email; PRFAF `company_code` from the ledger account (MEDU → MEH, ABORNE → ABP)
 66. `20261107_cms_action_center.sql` — Action Center: `cms_claim_delete` (Super Admin, reason, portal's delete rules), `cms_claim_settings` / `cms_claim_history_months_set`, `cms_form_permissions` / `cms_form_permission_set` (claim permissions in the shared `form_permissions` table)
+67. `20261107_cms_recruit_hr.sql` — E1: `cms_app_hr`, `cms_app_set_stage`, `cms_app_office_save`, `cms_loec_record_update` (signed copy, verify, stamp duty, stamp certificate), CMS storage policies on `eaf-loec`, `cms_recruit_families` / `cms_recruit_family_open`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -141,6 +142,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
 
 ## Change log
+- **v2026.11.07-16:30** — PRI-010 E1: the application window now does the MEG-EAF V2 HR work — move the stage, Interview & Office Use (with interview date, place and notes), and for an issued offer letter the signed copy upload, HR verification, stamp duty and stamp certificate. New **Posts open for applications** button on Applications.
 - **v2026.11.07-15:20** — PRI-010 **Action Center** replaces Approvals & Workflows: tiles per form, tabs (Action required, All claims, P/AC processing, My claims, Other tasks), filters, Mark paid and Super Admin Delete (with a reason) from the list, Claim settings (claimant history) and a new **Claim permissions** tab in Users, roles & access that edits the same permissions the form apps use.
 - **v2026.11.07-13:40** — PRI-010 F0: Admin › Sync Check › **Match claimants** — claim names that are not in the Employee Master (short names, nicknames) are matched once to the right person and kept; names that are sign-in emails are matched automatically through the linked login. PRFAF claims now carry their company (from the ledger account), so they are listed and filtered by company like the other forms.
 - **v2026.11.07-13:10** — New report **Payroll › New Hires & Leavers** (PRI-018): per payroll month, one company or all — headcount (opening + joined − left = closing), new hires, leavers, leaving soon and transfers between companies; print / PDF in A4 landscape. Salary figures only for roles with the new permission “See salaries in the New hires & leavers report” (HR, Admin, Director by default).

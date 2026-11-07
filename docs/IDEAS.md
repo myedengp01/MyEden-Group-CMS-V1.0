@@ -219,6 +219,14 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   Claim settings (claimant history months) and **Admin › Users, roles & access › Claim permissions** (the portal's `form_permissions`
   table: submit, approve + company scope, process, mark paid, view, summary, ledger, Form Admin — Form Admin only by a Super Admin).
   The bell ends with "Open the Action Center". Phone push waits for PRI-015.
+- **E1 built (v2026.11.07-16:30):** the MEG-EAF V2 HR page parts are in the CMS application window (Recruitment › Applications / Shortlist &
+  Interviews): **Move the stage** (same allowed steps, decision set as MEG-EAF V2 does, note kept in the history), **Interview & Office Use**
+  (interviewers, decision, final salary, hours, start date, department, documents received, comments — same payload keys — plus new interview
+  date / time, place and notes), and after the offer letter is issued: **signed copy upload** (dates, signatory, PDF), **HR verification**,
+  **stamp duty** (status, due / submitted / stamped dates, reference, physical original and where it is kept) and **stamp certificate upload**
+  — same `eaf_loec_records` row, same guard trigger, same storage bucket (folder uses the reference with "/" written as "-").
+  Upgrade: uploading the signed copy moves the application to Offer accepted. **Posts open for applications** (button on Applications) opens /
+  closes general job titles on the public form, as in the JD Manual. Applicants still apply on the MEG-EAF V2 form; photos and IC images stay there.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

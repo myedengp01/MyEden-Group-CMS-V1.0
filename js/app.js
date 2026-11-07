@@ -1917,7 +1917,8 @@
 
   // ---------------------------------------------------------------- 3.1 applications (and Shortlist & Interviews)
   async function applicationsPage(item, el) {
-    el.innerHTML = `${pageHead(item, eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost'))}<div id="ap-body">${loading()}</div>`;
+    el.innerHTML = `${pageHead(item, `${can('recruitment') ? `<button type="button" class="btn sm" id="ap-open">${icon('briefcase')}Posts open for applications</button>` : ''}${eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost')}`)}<div id="ap-body">${loading()}</div>`;
+    $('#ap-open', el)?.addEventListener('click', recruitOpenWindow);
     let rows;
     try { [rows] = await Promise.all([API.rpc('cms_recruit_applications'), loadOrg()]); }
     catch (e) { $('#ap-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
@@ -1942,7 +1943,7 @@
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="atable"><thead><tr><th>Submitted</th><th>Applicant</th><th>Company</th><th>Position</th><th>Stage</th><th>Offer letter</th><th>Start</th><th>Employee</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="acount"></p>
-        <p class="muted small">From MEG-EAF V2. Click an application for its summary and stage history. Screening, Office Use, shortlisting, interviews and the offer letter are done in MEG-EAF V2; once an offer is accepted and the onboarding handoff is prepared, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
+        <p class="muted small">From MEG-EAF V2. Click an application to move its stage, record the interview and Office Use, prepare the offer letter, and record the signed copy and stamp duty. Applicants still apply through the MEG-EAF V2 form (photos and IC images stay there); once the offer is accepted, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
@@ -1962,13 +1963,149 @@
     $('#aq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
     $('#aco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
     $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
-    const open = (id) => applicationWindow(id);
+    const open = (id) => applicationWindow(id, () => applicationsPage(item, el));
     $('#atable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) open(tr.dataset.id); });
     $('#atable tbody', el).addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') open(tr.dataset.id); });
   }
 
-  async function applicationWindow(id) {
-    let a;
+  // ---------------------------------------------------------------- PRI-010 E1: the MEG-EAF V2 HR page parts, in the application window (v2026.11.07)
+  // Stage, interview & Office Use, and after the offer letter is issued: signed copy, HR verification, stamp duty, stamp certificate.
+  const OFFICE_DOCS = [['IC', 'Photocopy of IC'], ['BankAcc', 'Personal bank account'], ['Certs', 'Relevant certificates']];
+  const loecFolder = (L) => `${String(L.company_code || 'meg').toLowerCase()}/${new Date().getFullYear()}/${String(L.document_id).replace(/\//g, '-')}`;
+  async function loecPdf(path) {
+    const { data, error } = await API.sb().storage.from('eaf-loec').createSignedUrl(path, 300);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank', 'noopener');
+  }
+  async function appHrBox(box, appId, onChanged) {
+    let H;
+    try { H = await API.rpc('cms_app_hr', { p_app: appId }); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+    const O = H.office || {}; const L = H.loec; const ed = !!H.can_edit; const off = !!H.can_offer; const dis = ed ? '' : 'disabled';
+    const v = (k) => esc(O[k] == null ? '' : O[k]);
+    const docs = Array.isArray(O.cb_doc) ? O.cb_doc : [];
+    const LST = { ...LOEC, superseded: 'Superseded', cancelled: 'Cancelled' };
+    const signedOn = L && L.signed_copy_path;
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    box.innerHTML = `
+      ${ed && H.next.length ? `<section class="aw-sec"><h4 class="sec-h">Move the stage</h4><div class="aw-row">
+          <select id="aw-to" aria-label="Move to">${H.next.map((s) => `<option value="${esc(s)}">${esc(appStageOf(s)[1])}</option>`).join('')}</select>
+          <input id="aw-note" type="text" maxlength="300" placeholder="Note (optional, kept in the stage history)">
+          <button type="button" class="btn primary sm" data-aw="stage">Move</button></div>
+        <p class="muted small">Same steps as MEG-EAF V2. Shortlisted sets the decision to Approved, Not selected to Disapproved, KIV to KIV.</p></section>` : ''}
+      <details class="aw-sec" ${['shortlisted', 'under_review', 'kiv', 'submitted'].includes(H.stage) ? 'open' : ''}><summary><b>Interview &amp; Office Use</b></summary>
+        <div class="aw-grid">
+          <label class="fld"><span>Interview date &amp; time</span><input type="datetime-local" data-of="cmsInterviewAt" value="${v('cmsInterviewAt')}" ${dis}></label>
+          <label class="fld"><span>Interview place / link</span><input type="text" data-of="cmsInterviewPlace" value="${v('cmsInterviewPlace')}" maxlength="200" ${dis}></label>
+          <label class="fld"><span>Interviewed by</span><input type="text" data-of="interviewedBy" value="${v('interviewedBy')}" maxlength="120" ${dis}></label>
+          <label class="fld"><span>2nd interviewed by</span><input type="text" data-of="interviewedBy2" value="${v('interviewedBy2')}" maxlength="120" ${dis}></label>
+          <label class="fld wide"><span>Interview notes</span><textarea data-of="cmsInterviewNotes" rows="2" maxlength="2000" class="ta" ${dis}>${v('cmsInterviewNotes')}</textarea></label>
+          <label class="fld"><span>Decision</span><select data-of="decision" ${dis}>${['', 'Approved', 'Disapproved', 'KIV', 'Others'].map((d) => `<option value="${d}" ${(O.decision || '') === d ? 'selected' : ''}>${d || '— not decided —'}</option>`).join('')}</select></label>
+          <label class="fld"><span>Final approved salary (RM)</span><input type="number" step="0.01" min="0" data-of="finalSalary" value="${v('finalSalary')}" ${dis}></label>
+          <label class="fld"><span>Working hours from</span><input type="time" data-of="finalFrom" value="${v('finalFrom')}" ${dis}></label>
+          <label class="fld"><span>to</span><input type="time" data-of="finalTo" value="${v('finalTo')}" ${dis}></label>
+          <label class="fld"><span>Start date</span><input type="date" data-of="finalStart" value="${v('finalStart')}" ${dis}></label>
+          <label class="fld"><span>Department</span><input type="text" data-of="finalDept" value="${v('finalDept')}" maxlength="120" ${dis}></label>
+          <fieldset class="fld wide"><legend>Documents received</legend><div class="checks">${OFFICE_DOCS.map(([k, l]) => `<label><input type="checkbox" data-doc="${k}" ${docs.includes(k) ? 'checked' : ''} ${dis}> ${esc(l)}</label>`).join('')}
+            <label>Others <input type="text" data-of="docOther" value="${v('docOther')}" maxlength="120" ${dis}></label></div></fieldset>
+          <label class="fld wide"><span>Comments</span><textarea data-of="officeComments" rows="2" maxlength="2000" class="ta" ${dis}>${v('officeComments')}</textarea></label>
+        </div>
+        ${ed ? '<button type="button" class="btn primary sm" data-aw="office">Save Office Use</button>' : '<p class="muted small">Your role can view this but not change it.</p>'}
+        <p class="muted small">The same fields as Office Use in MEG-EAF V2: a change here shows there, and the other way round. The offer letter takes its terms from its own page.</p></details>
+      ${L && L.status !== 'draft' ? `<section class="aw-sec"><h4 class="sec-h">Signed offer letter &amp; stamp duty</h4>
+        <p class="small"><code>${esc(L.document_id)}</code> · revision ${esc(L.revision)} · <b>${esc(LST[L.status] || L.status)}</b>${L.stamp_status ? ` · stamp ${esc(STAMP[L.stamp_status] || L.stamp_status)}` : ''}${L.stamp_due_date && !['stamped', 'not_required'].includes(L.stamp_status) ? ` · due ${dShort(L.stamp_due_date)}` : ''}</p>
+        <div class="aw-grid">
+          <label class="fld"><span>Employee signed on</span><input type="date" data-lx="employee_signed_date" value="${esc(L.employee_signed_date || '')}" ${signedOn || !off ? 'disabled' : ''}></label>
+          <label class="fld"><span>Employer signed on</span><input type="date" data-lx="employer_signed_date" value="${esc(L.employer_signed_date || '')}" ${signedOn || !off ? 'disabled' : ''}></label>
+          <label class="fld"><span>Employer signatory</span><input type="text" data-lx="employer_signatory" value="${esc(L.employer_signatory || '')}" maxlength="120" placeholder="Name, designation" ${signedOn || !off ? 'disabled' : ''}></label>
+        </div>
+        ${off && L.status === 'issued' && !signedOn ? `<div class="aw-row"><label class="btn sm primary file-btn">${icon('download')}Upload the signed copy (PDF)<input type="file" accept="application/pdf" data-up="signed" hidden></label>
+          <span class="muted small">Enter both dates and the signatory first. The application moves to Offer accepted.</span></div>` : ''}
+        ${signedOn ? `<p class="small"><button type="button" class="btn sm ghost" data-pdf="${esc(L.signed_copy_path)}">${icon('eye')}Signed copy</button> uploaded ${dtShort(L.signed_uploaded_at)}
+          ${L.verified_at ? ` · verified ${dtShort(L.verified_at)}${L.verified_by_name ? ` by ${esc(L.verified_by_name)}` : ''}` : ''}</p>` : ''}
+        ${off && L.status === 'signed_uploaded' ? `<div class="aw-row"><button type="button" class="btn sm primary" data-aw="verify">${icon('check-circle')}Verify the signed copy</button>
+          <span class="muted small">Check: correct version, both signatures, every page.</span></div>` : ''}
+        ${signedOn ? `<div class="aw-grid">
+          <label class="fld"><span>Stamp duty</span><select data-lx="stamp_status" ${off ? '' : 'disabled'}>${Object.entries(STAMP).map(([k, l]) => `<option value="${k}" ${(L.stamp_status || 'pending') === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Due</span><input type="date" data-lx="stamp_due_date" value="${esc(L.stamp_due_date || '')}" ${off ? '' : 'disabled'}></label>
+          <label class="fld"><span>Submitted on</span><input type="date" data-lx="stamp_submitted_date" value="${esc(L.stamp_submitted_date || '')}" ${off ? '' : 'disabled'}></label>
+          <label class="fld"><span>Stamped on</span><input type="date" data-lx="stamp_completed_date" value="${esc(L.stamp_completed_date || '')}" ${off ? '' : 'disabled'}></label>
+          <label class="fld"><span>Stamp reference</span><input type="text" data-lx="stamp_reference" value="${esc(L.stamp_reference || '')}" maxlength="120" ${off ? '' : 'disabled'}></label>
+          <label class="fld"><span>Physical original</span><select data-lx="physical_original_received" ${off ? '' : 'disabled'}><option value="false">Not received</option><option value="true" ${L.physical_original_received ? 'selected' : ''}>Received</option></select></label>
+          <label class="fld wide"><span>Kept at</span><input type="text" data-lx="physical_original_location" value="${esc(L.physical_original_location || '')}" maxlength="200" ${off ? '' : 'disabled'}></label>
+        </div>
+        ${off ? '<button type="button" class="btn sm" data-aw="meta">Save stamp duty details</button>' : ''}
+        ${L.stamp_certificate_path ? ` <button type="button" class="btn sm ghost" data-pdf="${esc(L.stamp_certificate_path)}">${icon('eye')}Stamp certificate</button>`
+          : off && L.verified_at ? ` <label class="btn sm file-btn">${icon('download')}Upload the stamp certificate (PDF)<input type="file" accept="application/pdf" data-up="stamp" hidden></label>` : ''}` : ''}
+        <p class="muted small">Same record and rules as MEG-EAF V2: once uploaded, a signed copy or stamp certificate cannot be replaced (make a new revision instead).</p></section>`
+        : L ? `<p class="muted small">Offer letter <code>${esc(L.document_id)}</code> is a draft: open it to approve and issue; the signed copy and stamp duty are recorded here after it is issued.</p>` : ''}`;
+    const busy = async (b, fn, msg) => { if (b) { b.disabled = true; b.classList.add('busy'); } try { await fn(); toast(msg); onChanged?.(); await appHrBox(box, appId, onChanged); } catch (x) { toast(x.message, 'err'); if (b) { b.disabled = false; b.classList.remove('busy'); } } };
+    const lx = (k) => $(`[data-lx="${k}"]`, box)?.value ?? '';
+    box.onclick = async (e) => {
+      const p = e.target.closest('[data-pdf]'); if (p) { try { await loecPdf(p.dataset.pdf); } catch (x) { toast(x.message, 'err'); } return; }
+      const b = e.target.closest('button[data-aw]'); if (!b) return;
+      const act = b.dataset.aw;
+      if (act === 'stage') {
+        const to = $('#aw-to', box).value;
+        const ok = await confirmBox(`Move to ${appStageOf(to)[1]}?`, `From <b>${esc(appStageOf(H.stage)[1])}</b>. This is recorded in the stage history${['rejected'].includes(to) ? ' and closes the application' : ''}.`, 'Move', to === 'rejected');
+        if (ok) await busy(b, () => API.rpc('cms_app_set_stage', { p_app: appId, p_to: to, p_note: $('#aw-note', box).value.trim() || null }), `Moved to ${appStageOf(to)[1]}`);
+      } else if (act === 'office') {
+        const p = {}; $$('[data-of]', box).forEach((i) => { p[i.dataset.of] = i.value; });
+        p.cb_doc = $$('[data-doc]:checked', box).map((i) => i.dataset.doc);
+        await busy(b, () => API.rpc('cms_app_office_save', { p_app: appId, p }), 'Office Use saved');
+      } else if (act === 'verify') {
+        const ok = await confirmBox('Verify the signed copy?', 'Confirm HR has checked the correct offer letter version, the employee signature, the employer signature and that every page is there. Stamp duty tracking starts.', 'Verify', false);
+        if (ok) await busy(b, () => API.rpc('cms_loec_record_update', { p_loec: L.id, p_action: 'verify', p: {} }), 'Signed copy verified');
+      } else if (act === 'meta') {
+        const p = {}; ['stamp_status', 'stamp_due_date', 'stamp_submitted_date', 'stamp_completed_date', 'stamp_reference', 'physical_original_location'].forEach((k) => { p[k] = lx(k); });
+        p.physical_original_received = lx('physical_original_received') === 'true';
+        await busy(b, () => API.rpc('cms_loec_record_update', { p_loec: L.id, p_action: 'meta', p }), 'Stamp duty details saved');
+      }
+    };
+    box.onchange = async (e) => {
+      const i = e.target.closest('input[data-up]'); if (!i) return;
+      const f = i.files && i.files[0]; i.value = ''; if (!f) return;
+      if (f.type !== 'application/pdf') { toast('Upload a PDF file.', 'err'); return; }
+      if (f.size > 15 * 1024 * 1024) { toast('The PDF is larger than 15 MB.', 'err'); return; }
+      const kind = i.dataset.up;
+      const p = {};
+      if (kind === 'signed') {
+        ['employee_signed_date', 'employer_signed_date', 'employer_signatory'].forEach((k) => { p[k] = lx(k).trim(); });
+        if (!p.employee_signed_date || !p.employer_signed_date || !p.employer_signatory) { toast('Enter both signed dates and the employer signatory first.', 'err'); return; }
+        if (p.employee_signed_date > today || p.employer_signed_date > today) { toast('A signed date cannot be in the future.', 'err'); return; }
+      }
+      const path = `${loecFolder(L)}/${kind === 'signed' ? 'SIGNED' : 'STAMP_CERTIFICATE'}.pdf`;
+      await busy(null, async () => {
+        const { error } = await API.sb().storage.from('eaf-loec').upload(path, f, { contentType: 'application/pdf', upsert: false });
+        if (error && !/exists|duplicate/i.test(error.message || '')) throw error;
+        await API.rpc('cms_loec_record_update', { p_loec: L.id, p_action: kind === 'signed' ? 'signed' : 'stamp_cert', p: { ...p, path } });
+      }, kind === 'signed' ? 'Signed copy uploaded · moved to Offer accepted' : 'Stamp certificate uploaded · offer letter completed');
+    };
+  }
+
+  // open / close general job titles for applications (the public form lists open ones), as in the JD Manual
+  async function recruitOpenWindow() {
+    await modal({ title: 'Posts open for applications', wide: true, ok: null, cancel: 'Close', body: `<div class="ro-body">${loading()}</div>`, onOpen: async (wrap) => {
+      const box = $('.ro-body', wrap);
+      const draw = async () => {
+        let F; try { F = await API.rpc('cms_recruit_families'); } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; return; }
+        const by = [...new Set(F.map((x) => x.entity))];
+        box.innerHTML = `<p class="muted small">Open general job titles appear on the public application form. A title can be opened only when it has at least one approved JD level in the JD Manual.</p>
+          ${by.map((en) => { const rs = F.filter((x) => x.entity === en); return `<h4 class="sec-h">${esc(rs[0].entity_name || en)} <span class="muted small">${rs.filter((x) => x.open).length} open</span></h4>
+            <div class="table-wrap"><table class="data"><tbody>${rs.map((r) => `<tr><td><b>${esc(r.name)}</b><small class="sub">${num(r.approved)} approved JD level${r.approved === 1 ? '' : 's'}</small></td>
+              <td class="num nowrap"><small class="muted">${r.open ? 'Open' : 'Closed'}</small> <label class="switch" title="${r.open ? 'Close' : 'Open'} for applications"><input type="checkbox" data-ro="${esc(r.id)}" ${r.open ? 'checked' : ''} ${r.can_edit && (r.open || r.approved) ? '' : 'disabled'} aria-label="${esc(r.name)} open for applications"><span></span></label></td></tr>`).join('')}</tbody></table></div>`; }).join('')}`;
+      };
+      box.onchange = async (e) => {
+        const i = e.target.closest('[data-ro]'); if (!i) return; i.disabled = true;
+        try { await API.rpc('cms_recruit_family_open', { p_department: i.dataset.ro, p_open: i.checked }); toast(i.checked ? 'Opened for applications' : 'Closed for applications'); }
+        catch (x) { toast(x.message, 'err'); }
+        await draw();
+      };
+      await draw();
+    } });
+  }
+
+  async function applicationWindow(id, after) {
+    let a; let changed = false;
     try { a = await API.rpc('cms_recruit_application', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
     const kv = (k, v) => (v ? `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>` : '');
     // the offer letter can be prepared in the CMS once the decision is Approved (or the application is shortlisted / in the offer stages), until hired
@@ -1992,8 +2129,11 @@
         <h4 class="sec-h">Stage history</h4>
         ${a.events.length ? `<ol class="timeline">${a.events.map((e) => `<li><b>${esc(appStageOf(e.to)[1])}</b>${e.from ? ` <span class="muted small">from ${esc(appStageOf(e.from)[1])}</span>` : ''}<small class="sub">${dShort(e.at)} · ${esc(e.by || '—')}${e.note ? ` · ${esc(e.note)}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted small">No stage changes recorded yet.</p>'}
         <div class="btn-row">${loecOk ? `<a class="btn primary" href="#/loec?app=${esc(a.id)}" data-x>${icon('file-check')}${a.loec ? 'Open offer letter (LOEC)' : 'Prepare offer letter (LOEC)'}</a>` : ''}${eafBtn('hr', 'Open in MEG-EAF V2', loecOk ? '' : 'primary')}${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
+        <div id="aw-hr" class="aw-hr">${loading()}</div>
         <p class="muted small">MEG-EAF V2 opens on its HR page; search for ${esc(a.name)} there. Photos and IC images stay in MEG-EAF V2.</p>`,
+      onOpen: (wrap) => appHrBox($('#aw-hr', wrap), id, () => { changed = true; }),
     });
+    if (changed && after) after();
   }
 
   // ---------------------------------------------------------------- 3.3a offer letter (LOEC) prepared in the CMS (PRI-017, v2026.11.06)
