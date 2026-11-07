@@ -1186,3 +1186,4 @@ table.fp-t select{max-width:130px}
 @media (max-width:600px){.scf-line{padding:10px}.scf-g{grid-template-columns:1fr 1fr}}
 .chk-fld .chk{display:flex;align-items:center;gap:6px;min-height:38px}
 .scf-g .fld input[type=checkbox]{width:auto;min-height:0}
+.row-acts{display:flex;gap:6px;align-items:center}

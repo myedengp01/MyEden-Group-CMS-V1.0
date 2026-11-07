@@ -1293,7 +1293,7 @@
   async function approvalsPage(item, el) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { tab: q.get('tab') || 'action', form: q.get('form') || 'all', co: 'all', stage: 'all', pay: 'all', from: '', to: '', sort: 'new', q: '' };
-    const behalfForms = [['scf', 'scf', 'Staff claim (SCF)'], ['otcf', 'overtime', 'Overtime (OTCF)']].filter(([, m]) => can(m, 'C'));
+    const behalfForms = [['scf', 'scf', 'Staff claim (SCF)'], ['otcf', 'overtime', 'Overtime (OTCF)'], ['mtcf', 'mtcf', 'Mileage (MTCF)']].filter(([, m]) => can(m, 'C'));
     el.innerHTML = `${pageHead(item, behalfForms.length ? `<button type="button" class="btn" id="ac-behalf">${icon('plus')}New claim for someone</button>` : '')}<div id="ac-tiles"></div>
       <div class="tabs" role="tablist" id="ac-tabs"></div><div id="ac-body">${loading()}</div><div id="ac-set"></div>`;
     let rows = [];
@@ -4002,6 +4002,127 @@
     docView(el, `OTCF ${r.serial_no}`, [sheet], back);
   }
 
+  // ================================================================ PRI-010 F1 · new Mileage claim (MTCF) made in the CMS (v2026.11.07)
+  // Trips (date, purpose, from, to, km, remarks, optional journey photos); rate per km from the company's MTCF rate; the server works out
+  // the totals and the claim period. Approval as before (Action Center or the MTCF app, approval scope by company).
+  const mtBucket = () => API.sb().storage.from('mtcf-receipts');
+  const mtThumbs = new Map();
+  async function mtThumb(path) { if (mtThumbs.has(path)) return mtThumbs.get(path); const { data } = await mtBucket().createSignedUrl(path, 3600); const u = data?.signedUrl || ''; mtThumbs.set(path, u); return u; }
+  async function meMtcfPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    let id = q.get('id') || null; const forPerson = q.get('for') || null;
+    el.innerHTML = `${pageHead(item)}<div id="mt-body">${loading()}</div>`;
+    let C; let row = null;
+    try {
+      if (id) row = await API.rpc('cms_mtcf_get', { p_id: id });
+      C = await API.rpc('cms_mtcf_context', { p_person: row?.person && row.person !== state.access?.person?.id ? row.person : forPerson });
+    } catch (e) { $('#mt-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    if (row && !row.editable) { mtcfPrint(el, row, () => { location.hash = '#/me/claims'; }); return; }
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const D = { company: row ? ((C.companies.find((c) => c.mtcf === row.company_code) || {}).code || C.company) : C.company,
+      trips: (row?.trips || []).map((t) => ({ ...t, receipts: t.receipts || [] })) };
+    if (!D.trips.length) D.trips.push({ date: '', purpose: '', start_location: '', end_location: '', distance_km: '', remarks: '', receipts: [] });
+    const rate = () => Number((C.companies.find((c) => c.code === D.company) || {}).rate || 0);
+    const km = () => D.trips.reduce((s, t) => s + (parseFloat(t.distance_km) || 0), 0);
+    let saving = null; let dirty = false; let timer = null;
+    const body = $('#mt-body', el);
+    const payload = () => ({ person_id: C.behalf ? C.id : null, company: D.company, trips: D.trips.map((t) => ({ ...t, distance_km: t.distance_km === '' ? 0 : Number(t.distance_km) })) });
+    const status = (t, tone) => { const s = $('#mt-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => {
+        const r = await API.rpc('cms_mtcf_save', { p_id: id, p: payload(), p_submit: submit });
+        if (!id) { id = r.id; history.replaceState(null, '', `#/me/claims/mtcf?id=${id}`); }
+        dirty = false; status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${r.serial_no}`); $('#mt-serial', body).textContent = r.serial_no;
+        return r;
+      })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`The claim could not be saved (${e.message}). Leave anyway?`); } } };
+    const totals = () => { $('#mt-km', body).textContent = `${km().toFixed(2)} km`; $('#mt-rm', body).textContent = money(Math.round(km() * rate() * 100) / 100); };
+    const tripHtml = (t, i) => `<div class="scf-line card" data-i="${i}">
+        <div class="scf-lh"><b>Trip ${i + 1}</b><span class="row-acts"><button type="button" class="btn xs ghost" data-ret="${i}" title="Add the way back">⇄ Return trip</button>${D.trips.length > 1 ? `<button type="button" class="icon-btn sm" data-rm="${i}" aria-label="Remove trip ${i + 1}">${icon('x')}</button>` : ''}</span></div>
+        <div class="scf-g">
+          <label class="fld"><span>Date</span><input type="date" data-k="date" value="${esc(t.date)}" max="${today}"></label>
+          <label class="fld"><span>Distance (km)</span><input type="number" inputmode="decimal" step="0.1" min="0" data-k="distance_km" value="${esc(t.distance_km === '' || t.distance_km == null ? '' : t.distance_km)}"></label>
+          <label class="fld"><span>From</span><input type="text" list="mt-places" data-k="start_location" value="${esc(t.start_location)}" maxlength="120"></label>
+          <label class="fld"><span>To</span><input type="text" list="mt-places" data-k="end_location" value="${esc(t.end_location)}" maxlength="120"></label>
+          <label class="fld wide"><span>Purpose</span><input type="text" data-k="purpose" value="${esc(t.purpose)}" maxlength="200"></label>
+          <label class="fld wide"><span>Remarks <small class="muted">(optional)</small></span><input type="text" data-k="remarks" value="${esc(t.remarks || '')}" maxlength="200"></label>
+        </div>
+        <div class="scf-rc"><span class="small"><b>Journey photo</b> <span class="muted">(optional, e.g. the map or the odometer)</span></span>
+          <div class="scf-th">${t.receipts.map((x, j) => `<span class="scf-t" data-path="${esc(x.path)}"><img alt="Photo ${j + 1}"><button type="button" class="icon-btn xs" data-rr="${i}|${j}" aria-label="Remove photo">${icon('x')}</button></span>`).join('')}</div>
+          <label class="btn sm ghost">${icon('plus')}Add photo<input type="file" accept="image/*" data-up="${i}" hidden></label></div></div>`;
+    function draw() {
+      body.innerHTML = `<section class="card scf-head">
+          <div class="scf-who"><b>${esc(C.name)}</b><small class="sub">${esc(C.employee_id || '')}${C.behalf ? ` · prepared by ${esc(C.preparer)}` : ''}</small>${C.behalf ? '<span class="tag warn xs">On behalf</span>' : ''}</div>
+          <div class="scf-g">${C.companies.length > 1 ? `<label class="fld wide"><span>Company</span><select data-h="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === D.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`
+            : `<div class="fld wide"><span>Company</span><b>${esc(C.companies[0]?.name || C.company)}</b></div>`}</div>
+          <p class="small">Rate: <b>${money(rate())}</b> per km (set by HR for the company).${rate() ? '' : ' <span class="bad-txt">No rate set yet: ask HR.</span>'}</p>
+          <p class="small muted">Serial no. <code id="mt-serial">${esc(row?.serial_no || 'given when first saved')}</code> · <span id="mt-st">${id ? 'Saved' : 'Not saved yet'}</span></p></section>
+        <datalist id="mt-places">${(C.places || []).map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+        <div>${D.trips.map(tripHtml).join('')}</div>
+        <div class="btn-row"><button type="button" class="btn" data-add>${icon('plus')}Add a trip</button></div>
+        <section class="card scf-foot"><div class="scf-tot">Total <span><b id="mt-km">0 km</b> · <b id="mt-rm">RM 0.00</b></span></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-submit>${icon('check-circle')}Submit for approval</button><button type="button" class="btn" data-save>Save draft</button></div>
+          <p class="muted small">The claim period runs from the first to the last trip. Amount = total km × the company rate. After you submit, your approver decides it and you get an email.</p></section>`;
+      totals();
+      $$('.scf-t', body).forEach(async (t) => { const u = await mtThumb(t.dataset.path); if (u) $('img', t).src = u; });
+    }
+    draw();
+    body.addEventListener('input', (e) => {
+      const i = e.target.closest('[data-i]'); const k = e.target.dataset.k;
+      if (i && k) { D.trips[+i.dataset.i][k] = e.target.value; if (k === 'distance_km') totals(); later(); }
+    });
+    body.addEventListener('change', async (e) => {
+      if (e.target.dataset.h === 'company') { D.company = e.target.value; draw(); later(); return; }
+      const up = e.target.closest('input[data-up]'); if (!up) return;
+      const f = up.files?.[0]; up.value = ''; if (!f) return; const i = +up.dataset.up;
+      try {
+        clearTimeout(timer); if (!id || dirty) { status('Saving…'); await save(); }
+        status('Uploading photo…');
+        const { blob } = await scfShrink(f);
+        const path = `${id}/${i + 1}/${Date.now()}.jpg`;
+        const { error } = await mtBucket().upload(path, blob, { contentType: 'image/jpeg', upsert: false }); if (error) throw error;
+        D.trips[i].receipts.push({ path }); await save(); draw(); toast('Photo attached');
+      } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+    });
+    body.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-add]')) { const last = D.trips[D.trips.length - 1];
+        D.trips.push({ date: last?.date || '', purpose: last?.purpose || '', start_location: last?.end_location || '', end_location: '', distance_km: '', remarks: '', receipts: [] }); draw(); later(); return; }
+      const ret = e.target.closest('[data-ret]');
+      if (ret) { const t = D.trips[+ret.dataset.ret]; D.trips.splice(+ret.dataset.ret + 1, 0, { date: t.date, purpose: t.purpose, start_location: t.end_location, end_location: t.start_location, distance_km: t.distance_km, remarks: '', receipts: [] }); draw(); later(); return; }
+      const rm = e.target.closest('[data-rm]'); if (rm) { D.trips.splice(+rm.dataset.rm, 1); draw(); later(); return; }
+      const rr = e.target.closest('[data-rr]');
+      if (rr) { const [i, j] = rr.dataset.rr.split('|').map(Number); const [x] = D.trips[i].receipts.splice(j, 1); draw(); await save().catch(() => {}); mtBucket().remove([x.path]).catch(() => {}); return; }
+      const im = e.target.closest('.scf-t img'); if (im?.src) { window.open(im.src, '_blank', 'noopener'); return; }
+      if (e.target.closest('[data-save]')) { clearTimeout(timer); try { await save(); toast('Draft saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (e.target.closest('[data-submit]')) {
+        const ok = await confirmBox('Submit this claim for approval?', `<b>${esc(C.name)}</b> · ${D.trips.length} trip${D.trips.length === 1 ? '' : 's'} · <b>${km().toFixed(2)} km · ${money(Math.round(km() * rate() * 100) / 100)}</b><br><small class="muted">After submitting you cannot change it.</small>`, 'Submit', false);
+        if (!ok) return;
+        clearTimeout(timer);
+        try {
+          const r = await save(true);
+          API.sb().functions.invoke('mtcf-notify', { body: { event: 'submitted', submission_id: r.id } }).catch(() => {});
+          window.CMS_LEAVE_GUARD = null; toast(`Claim ${r.serial_no} submitted for approval`);
+          mtcfPrint(el, await API.rpc('cms_mtcf_get', { p_id: r.id }), () => { location.hash = '#/me/claims'; });
+        } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    });
+  }
+  function mtcfPrint(el, r, back) {
+    const st = { draft: 'Draft (not submitted)', submitted: 'Waiting for approval', approved: `Approved${r.approved_by_name ? ` by ${r.approved_by_name}` : ''}`, disapproved: `Not approved${r.disapproval_reason ? `: ${r.disapproval_reason}` : ''}` }[r.status] || r.status;
+    const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>MILEAGE TRACKING &amp; CLAIM FORM (MTCF)</h2><p>${esc(r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.serial_no)}</code><small>${esc(r.date_of_claim || '')}</small></div></div>
+        <dl class="scf-kv"><div><dt>Claimant</dt><dd>${esc(r.claimant_name)}</dd></div><div><dt>Period</dt><dd>${dShort(r.start_date)} – ${dShort(r.end_date)}</dd></div>
+          <div><dt>Rate</dt><dd>RM ${m2(r.rate_rm_per_km)} per km</dd></div><div><dt>Status</dt><dd>${esc(st)}</dd></div></dl>
+        <table class="data scf-pt"><thead><tr><th>No.</th><th>Date</th><th>Purpose</th><th>From</th><th>To</th><th class="num">km</th><th>Remarks</th></tr></thead>
+          <tbody>${(r.trips || []).map((t, i) => `<tr><td>${i + 1}</td><td class="nowrap">${dShort(t.date)}</td><td>${esc(t.purpose)}</td><td>${esc(t.start_location)}</td><td>${esc(t.end_location)}</td><td class="num">${Number(t.distance_km || 0).toFixed(2)}</td><td>${esc(t.remarks || '')}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="5"><b>TOTAL</b></td><td class="num"><b>${Number(r.total_mileage_km || 0).toFixed(2)}</b></td><td><b>RM ${m2(r.total_amount)}</b></td></tr></tfoot></table>
+        <p class="small muted">Made in the MyEden Group CMS.</p></section>`;
+    docView(el, `MTCF ${r.serial_no}`, [sheet], back);
+  }
+
   const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'] };
   async function meClaimsPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="mc-body">${loading()}</div>`;
@@ -4012,15 +4133,15 @@
     const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
     const draw = () => {
       const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
-      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (k === 'scf' || k === 'otcf' ? `<a class="btn primary" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (['scf', 'otcf', 'mtcf'].includes(k) ? `<a class="btn primary" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
           : `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`)).join('')}</div>
         <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
-          ${list.map((r) => `<tr${['scf', 'otcf'].includes(r.form) ? ` class="click" data-scf="${esc(r.form)}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${['scf', 'otcf'].includes(r.form) && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(r.form)}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
+          ${list.map((r) => `<tr${['scf', 'otcf', 'mtcf'].includes(r.form) ? ` class="click" data-scf="${esc(r.form)}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${['scf', 'otcf', 'mtcf'].includes(r.form) && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(r.form)}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
             <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
             <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
               ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF) and overtime (OTCF) claims are made here in the CMS.</span></div>'}</section>
+          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF), overtime (OTCF) and mileage (MTCF) claims are made here in the CMS.</span></div>'}</section>
         <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
       $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.closest('a')) return; const [fm, cid] = tr.dataset.scf.split('|'); location.hash = `#/me/claims/${fm}?id=${cid}`; }));
@@ -6845,7 +6966,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

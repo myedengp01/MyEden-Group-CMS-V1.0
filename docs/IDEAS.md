@@ -247,6 +247,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   sheet (one row per day, extra times as `slot` rows, same field names and number formats), refuses overlapping times on a day and a meal break
   longer than the time, and warns on > 12 h a day (with working hours on a Normal day) and > 104 h a month. Same serial format, `person_id` set,
   approval unchanged (Action Center / OTCF app; no self-approval; approver / admin claims need another admin); approvers emailed via `otcf-notify`.
+- **F1 MTCF built (v2026.11.07-19:20):** My Claims › New Mileage (`#/me/claims/mtcf`): trips (date, purpose, from, to, km, remarks, optional journey photo in
+  `mtcf-receipts/<claim>/<trip>/`), "Return trip" button, places suggested from their earlier claims; rate from `mtcf_rates` for the company (set in
+  the MTCF app); server works out km, amount (km × rate, 2 dp) and the period (first – last trip), refuses future dates and incomplete trips on
+  submit; same serial `<CODE>-MTCF-YYYYMM-XXXX`; approval scope by company as before; approvers emailed via `mtcf-notify`. MTCF has no deleted
+  column, so CMS drafts are kept (no Discard button). Next: PRFAF, then TEC.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call
