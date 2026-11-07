@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Employee Handbook · MyEden Group CMS</title>
+<style>
+*{box-sizing:border-box}
+:root{--navy:#0f172a;--brand:#0f766e;--brand2:#0891b2;--ink:#172033;--muted:#64748b;--line:#d8dee8;--bg:#f3f6fa;--card:#fff;--done:#f1f5f9}
+html,body{margin:0;height:100%;font-family:Arial,"Noto Sans",sans-serif;color:var(--ink);background:var(--bg)}
+.top{height:68px;background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:8px 16px;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+.brandbox{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.brandbox img{width:40px;height:40px;object-fit:contain;background:#fff;border-radius:7px;padding:3px}
+.brandname{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brandsub{font-size:10px;color:#cbd5e1;margin-top:2px}
+.top button,.top a{border:0;border-radius:6px;padding:8px 11px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-block}
+.btn-white{background:#fff;color:#111827}.btn-blue{background:#2563eb;color:#fff}.btn-green{background:#0f766e;color:#fff}
+.top .admin-only{display:none}.top.is-admin .admin-only{display:inline-block}
+.layout{max-width:1550px;margin:0 auto;padding:14px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;height:calc(100vh - 68px)}
+.sidebar{height:100%;display:flex;flex-direction:column;gap:10px;min-height:0}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
+.employee-card{flex:0 0 auto;padding:13px}.progress-card{flex:0 0 auto;padding:13px;max-height:42vh;overflow:auto}
+.nav-card{flex:1 1 260px;min-height:220px;padding:12px;display:flex;flex-direction:column}
+.nav-scroll{overflow:auto;min-height:0;padding-right:4px}
+.meta-title{font-weight:900;font-size:14px;margin-bottom:7px}.meta-row{font-size:11px;line-height:1.45;margin:3px 0;color:#475569}.meta-row b{color:#172033}
+.status{display:inline-block;border-radius:999px;padding:3px 7px;font-size:9px;font-weight:900;text-transform:uppercase}.s-assigned{background:#eef2ff;color:#4338ca}.s-viewed{background:#e0f2fe;color:#075985}.s-read{background:#fef3c7;color:#92400e}.s-acknowledged{background:#dcfce7;color:#166534}
+.progress-bar{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:8px 0 5px}.progress-fill{height:100%;background:linear-gradient(90deg,#0ea5e9,#14b8a6);width:0}
+.progress-big{font-size:22px;font-weight:900;color:#0f766e}.progress-note{font-size:10px;color:#64748b;line-height:1.4}
+.mark-read{width:100%;border:0;border-radius:6px;padding:9px 10px;font-weight:900;margin-top:8px;background:#0f766e;color:white;cursor:pointer}.mark-read:disabled{background:#cbd5e1;color:#64748b;cursor:not-allowed}
+.nav-chapter{margin:8px 0 3px;font-size:11px;font-weight:900;color:#334155}.nav-chapter small{float:right;color:#0f766e}
+.nav-item{display:flex;align-items:flex-start;gap:6px;padding:4px 5px;border-radius:5px;color:#334155;text-decoration:none;font-size:10px;line-height:1.35}.nav-item:hover{background:#eef6ff}.nav-item.done{color:#94a3b8;text-decoration:line-through}.nav-dot{width:13px;flex:0 0 13px;text-align:center;font-weight:900;color:#94a3b8}.nav-item.done .nav-dot{color:#16a34a}
+.main{overflow:auto;min-width:0;padding-bottom:50px}.doc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px 28px;box-shadow:0 2px 12px rgba(15,23,42,.05)}
+.doc-cover{display:flex;align-items:center;gap:14px;padding:4px 0 22px;border-bottom:3px solid #0f766e;margin-bottom:20px}.doc-cover img{width:68px;height:68px;object-fit:contain}.doc-cover h1{font-size:22px;margin:0;color:#0f4c5c}.doc-cover p{margin:4px 0 0;color:#64748b;font-size:12px}
+.chapter{margin:26px 0 12px;padding:7px 0;border-bottom:2px solid #0f766e;font-size:19px;color:#064e5a}
+.clause{border:1px solid transparent;border-radius:8px;padding:10px 12px 11px;margin:7px 0 12px;transition:.15s}
+.clause.done{background:var(--done);border-color:#e2e8f0;color:#64748b}
+.clause-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:7px}.clause-head input{width:17px;height:17px;margin-top:2px;accent-color:#0f766e;cursor:pointer}.clause.done .clause-head input{cursor:default}
+.clause-title{font-size:14px;font-weight:900;color:#1e293b;line-height:1.4;flex:1}.clause.done .clause-title{color:#64748b}
+.tools{display:flex;gap:5px;flex:0 0 auto}.iconbtn{border:1px solid #cbd5e1;background:#fff;border-radius:5px;padding:3px 6px;font-size:11px;cursor:pointer;font-weight:400}.iconbtn:hover{background:#eff6ff}
+.clause-body{font-size:12.5px;line-height:1.65}.clause-body p{text-align:justify;margin:7px 0}.clause-body ul,.clause-body ol{margin:6px 0 8px 22px;padding:0}.clause-body li{margin:3px 0}
+.doc-table{width:100%;border-collapse:collapse;margin:9px 0 12px;font-size:11.5px}
+.doc-table th,.doc-table td{border:1px solid #cbd5e1;padding:7px 8px;text-align:left;vertical-align:top;line-height:1.45}
+.doc-table th{background:#f1f5f9;font-weight:900;color:#1e293b}
+.doc-table tr:nth-child(even) td{background:#fafcff}.policy{border-left:4px solid #0ea5e9;background:#f0f9ff;padding:7px 9px;margin:7px 0;border-radius:4px}.benefit{border-left-color:#16a34a;background:#f0fdf4}.safeguard{border-left-color:#f59e0b;background:#fffbeb}
+.step{display:flex;gap:8px;margin:6px 0;padding:7px 9px;background:#f8fafc;border-radius:5px}.step b{color:#0f766e}
+.preface{font-size:12.5px;line-height:1.65;margin:8px 0;text-align:justify}
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.58);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}.modal-bg.open{display:flex}.modal{width:min(900px,96vw);max-height:88vh;overflow:auto;background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3)}.modal-head{position:sticky;top:0;background:#0f172a;color:white;padding:12px 15px;display:flex;gap:10px;align-items:center}.modal-head h3{margin:0;font-size:15px;flex:1}.modal-head button{border:0;background:white;border-radius:5px;padding:5px 9px;cursor:pointer}.modal-body{padding:16px;font-size:12.5px;line-height:1.65}.modal-body h4{margin:14px 0 6px}.refbox{background:#f8fafc;border-left:4px solid #2563eb;padding:10px;border-radius:5px;margin-bottom:10px;white-space:pre-wrap}.zhbox{font-family:Arial,"Microsoft YaHei","Noto Sans CJK SC",sans-serif;font-size:13px;line-height:1.75;white-space:pre-wrap}.official-links a{display:inline-block;margin:4px 6px 0 0;padding:6px 8px;background:#eff6ff;border-radius:5px;color:#1d4ed8;text-decoration:none;font-weight:700}
+.ackbox{margin-top:10px;padding:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;font-size:11px;line-height:1.5}.ackbox textarea{width:100%;min-height:100px;margin:7px 0;border:1px solid #cbd5e1;border-radius:5px;padding:7px;background:#fff}.ackbox input[type=text]{width:100%;padding:7px;border:1px solid #cbd5e1;border-radius:5px;margin:7px 0}.ackbox button{border:0;background:#0f766e;color:#fff;border-radius:5px;padding:8px 10px;font-weight:800;cursor:pointer}
+.notice{font-size:10px;color:#64748b}
+.top-ref-btn{font-weight:400!important}.hidden{display:none!important}
+@media(max-width:900px){.layout{grid-template-columns:1fr;height:auto}.sidebar{height:auto}.nav-card{max-height:420px}.main{overflow:visible}.top{height:auto;flex-wrap:wrap}.layout{height:auto}.brandbox{min-width:260px}}
+@page{size:A4;margin:14mm 12mm 16mm 12mm;@bottom-right{content:counter(page) '/' counter(pages);font-family:Arial,sans-serif;font-size:9pt;color:#475569}}@media print{.top,.sidebar,.tools,.clause-head input,.no-print{display:none!important}.layout{display:block;height:auto;padding:0}.main{overflow:visible}.doc{border:0;box-shadow:none;padding:0}.clause{break-inside:avoid}.chapter{break-after:avoid}.clause.done{background:#fff;color:#111}.clause.done .clause-title{color:#111}}
+/* CMS: phones (CLC 7 Nov 2026) - nothing wider than the screen */
+@media(max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}.sidebar,.main,.card,.doc{min-width:0;max-width:100%}}
+@media(max-width:600px){.layout{padding:8px;gap:8px}.brandbox{min-width:0;flex:1 1 100%}.brandname{white-space:normal}.doc{padding:14px 12px}.doc-table{display:block;overflow-x:auto}.clause{padding:8px 6px}.top{gap:6px}.top button,.top a{padding:7px 9px;font-size:13px}.modal-bg{padding:6px}}
+</style>
+<script src="handbook-entity-branding.js"></script>
+<script src="handbook-malay.js?v=20261012-ms3"></script>
+</head>
+<body>
+<div class="top" id="topbar">
+  <div class="brandbox">
+    <img id="topEntityLogo" src="data:image/png;base64,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" alt="Entity logo">
+    <div><div class="brandname" id="topCompany">MyEden Group</div><div class="brandsub">MyEden Group CMS · Employee Handbook</div></div>
+  </div>
+  <select class="admin-only" id="adminHandbookSelect" onchange="loadAdminHandbook(this.value)" style="max-width:260px;padding:8px 9px;border-radius:6px;border:0;font-weight:400"></select>
+  <button class="btn-white top-ref-btn" type="button" onclick="openClauseSearch()">Search Clauses</button>
+  <button class="btn-white top-ref-btn" id="chineseTopBtn" type="button" onclick="openChineseReference()">中文</button>
+  <button class="btn-white top-ref-btn hidden" id="malayTopBtn" type="button" onclick="HandbookMalay.openFull()">Bahasa Malaysia</button>
+  <button class="btn-white admin-only" onclick="window.print()">Print / Save PDF</button>
+  <a class="btn-white" href="../app/#/me/handbook">‹ Back to the CMS</a>
+</div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="card employee-card" id="employeeCard"><div class="meta-row">Loading employee...</div></div>
+    <div class="card progress-card" id="progressCard">
+      <div class="meta-title">Reading Status</div>
+      <div class="progress-big" id="progressPct">0%</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-note" id="progressText">0 of 217 clauses confirmed.</div>
+      <div id="deadlinePanel" class="notice" style="margin-top:8px;font-size:10px;line-height:1.45"></div>
+      <button class="mark-read" id="markReadBtn" disabled onclick="markRead()">Mark Handbook as Read</button>
+      <div id="ackPanel" class="ackbox hidden"></div>
+    </div>
+    <div class="card nav-card">
+      <div class="meta-title">Handbook Navigation</div>
+      <div class="nav-scroll" id="toc"><div class="meta-row">Loading navigation...</div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="doc" id="doc"><div class="meta-row">Loading MyEden Employee Handbook v2.0...</div></div>
+  </main>
+</div>
+
+<div class="modal-bg" id="dialog" onclick="if(event.target===this)closeDialog()">
+  <div class="modal">
+    <div class="modal-head"><h3 id="dialogTitle"></h3><button onclick="closeDialog()">Close</button></div>
+    <div class="modal-body" id="dialogBody"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+var SUPABASE_URL='https://vzngfswtofegimfcoigx.supabase.co';
+var SUPABASE_ANON_KEY='sb_publishable_V5o_-Bkz5M7Y75j-eN03rQ_pkQ8Kem9';
+var SESSION_KEY='cms.auth';   // the CMS sign-in (same site), so staff read the handbook without signing in again (CLC 7 Nov 2026)
+var CMS_BACK='../app/#/me/handbook';
+var PORTAL_UVN='v2026.10.07-13:30';
+var SESSION=null,BOOT=null,HB=null,PROGRESS={checked_count:0,required_clause_count:217,progress_percent:0};
+var CHECKED=new Set(),DOC_EN=null,DOC_ZH=null,CLAUSE_MAP={},ZH_MAP={},DEADLINE_TIMER=null;
+var CHAPTER_TITLES={
+ '1':'HANDBOOK GOVERNANCE, SCOPE & DEFINITIONS','2':'WELCOME, COMPANY IDENTITY, MISSION, VISION & VALUES',
+ '3':'CODE OF PROFESSIONAL CONDUCT','4':'EMPLOYMENT, APPOINTMENT, PROBATION, PROMOTION & TRANSFER',
+ '5':'WORKING HOURS, ATTENDANCE, OFF DAY, REST DAY, OVERTIME & FLEXIBLE WORK',
+ '6':'REMUNERATION, PAYROLL, STATUTORY CONTRIBUTIONS & BENEFITS','7':'LEAVE & ABSENCE ENTITLEMENTS',
+ '8':'PUBLIC HOLIDAYS','9':'CHILD SAFEGUARDING & CHILD PROTECTION','10':'CHILD OPERATIONAL SAFETY, HEALTH & EXTERNAL ACTIVITIES',
+ '11':'CHILD DIGITAL MEDIA, PRIVACY, PERSONAL DEVICES & CCTV','12':'COMPANY IT RESOURCES, INTERNET & SOCIAL MEDIA',
+ '13':'CONFIDENTIALITY, RECORDS & INTELLECTUAL PROPERTY','14':'WORKPLACE RELATIONSHIPS, CONFLICTS, GIFTS & ANTI-BRIBERY',
+ '15':'EQUAL OPPORTUNITY, ANTI-DISCRIMINATION, HARASSMENT, BULLYING & VIOLENCE','16':'PERFORMANCE & CAPABILITY MANAGEMENT',
+ '17':'MISCONDUCT FRAMEWORK - CATEGORY A & CATEGORY B','18':'INVESTIGATION, SHOW CAUSE, DOMESTIC INQUIRY, DISCIPLINE & APPEAL',
+ '19':'GRIEVANCE, WHISTLEBLOWING & NON-RETALIATION','20':'WORKPLACE HEALTH, SAFETY, SECURITY & SUBSTANCE CONTROL',
+ '21':'RESIGNATION, TERMINATION, RETRENCHMENT, RETIREMENT & OFFBOARDING','22':'COMPANY PROPERTY, ACCESS, VISITORS & BUSINESS SECURITY',
+ '23':'EMERGENCY, CRISIS & BUSINESS CONTINUITY','24':'POLICY ADMINISTRATION, AMENDMENTS, SEVERABILITY & ACKNOWLEDGEMENT'
+};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function readSession(){try{var s=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');return s&&s.currentSession?s.currentSession:s}catch(e){return null}}
+function storeSession(){try{if(SESSION&&SESSION.access_token){if(!SESSION.expires_at&&SESSION.expires_in)SESSION.expires_at=Math.floor(Date.now()/1000)+SESSION.expires_in;localStorage.setItem(SESSION_KEY,JSON.stringify(SESSION))}}catch(e){}}   // keep the CMS session in step after a refresh
+function clearSession(){SESSION=null}
+function baseHeaders(){var h={'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'X-Client-Info':'CMS-HANDBOOK/'+PORTAL_UVN};if(SESSION&&SESSION.access_token)h.Authorization='Bearer '+SESSION.access_token;return h}
+async function api(path,opts,retry){opts=opts||{};opts.headers=Object.assign({},opts.headers||{},baseHeaders());var r=await fetch(SUPABASE_URL+path,opts);if(r.status===401&&SESSION&&SESSION.refresh_token&&!retry){await refreshSession();return api(path,opts,true)}var txt=await r.text(),b=null;try{b=txt?JSON.parse(txt):null}catch(e){}if(!r.ok)throw new Error((b&&(b.message||b.msg||b.error_description||b.hint))||('HTTP '+r.status));return b}
+async function rpc(n,a){return api('/rest/v1/rpc/'+n,{method:'POST',body:JSON.stringify(a||{})})}
+async function refreshSession(){var fresh=readSession();if(fresh&&fresh.access_token&&SESSION&&fresh.access_token!==SESSION.access_token){SESSION=fresh;return}   // the CMS already refreshed it
+var r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},body:JSON.stringify({refresh_token:SESSION.refresh_token})});var b=await r.json();if(!r.ok)throw new Error('Session expired');SESSION=b;storeSession()}
+function companyName(c){return ({MEG:'MyEden Group Sdn. Bhd.',MEH:'MyEden Edu Hub Sdn. Bhd.',HDS:'Happy Dino Sdn. Bhd.',ABP:'Aborne Project Sdn. Bhd.'})[String(c||'').toUpperCase()]||c||'—'}
+function entityBrand(code){
+ var k=String(code||'MEG').toUpperCase(),map=window.HANDBOOK_ENTITY_BRANDING||{};
+ return map[k]||map.MEG||{name:companyName(k),logo:''};
+}
+function activeEntityCode(){
+ if(HB&&HB.employee&&HB.employee.company_code)return String(HB.employee.company_code).toUpperCase();
+ return String(HB&&HB.preview_entity_code||'MEG').toUpperCase();
+}
+function applyEntityBranding(){
+ var b=entityBrand(activeEntityCode()),img=document.getElementById('topEntityLogo');
+ if(img){
+   if(b.logo){img.src=b.logo;img.style.display='block';}
+   else{img.removeAttribute('src');img.style.display='none';}
+ }
+ var top=document.getElementById('topCompany');if(top)top.textContent=b.name||companyName(activeEntityCode());
+}
+
+function fmt(v){if(!v)return '—';try{return new Date(v).toLocaleString('en-MY')}catch(e){return v}}
+function chapterCode(s){
+ var m=String(s||'').match(/^([AB])\./i);if(m)return m[1].toUpperCase();
+ m=String(s||'').match(/^(\d{1,2})\./);if(m)return m[1];
+ m=String(s||'').match(/^APPENDIX\s+([A-E])/i);if(m)return 'APP-'+m[1].toUpperCase();
+ m=String(s||'').match(/^附录\s*([A-E])/i);if(m)return 'APP-'+m[1].toUpperCase();
+ return 'DOC-'+Math.random().toString(36).slice(2,7);
+}
+function isLegalText(t){
+ return /^(LEGAL REFERENCE|SAFEGUARDING REFERENCE|CHILD-SAFE EVENT REFERENCE|EVENT CONTROL REFERENCE)\s*\|/i.test(String(t||'').trim());
+}
+function isLegalBlock(b){return b&&b.type==='paragraph'&&isLegalText(b.text)}
+function splitTableLegalRows(b){
+ var legal=[],rows=[];
+ (b.rows||[]).forEach(function(r){
+   var joined=(r||[]).map(function(x){return String(x||'')}).join(' | ').trim();
+   if(isLegalText(joined))legal.push(joined);else rows.push(r);
+ });
+ return {legal:legal,rows:rows};
+}
+function structuredToDoc(raw){
+ var d=raw&&raw.document?raw.document:raw;
+ if(!d||!Array.isArray(d.blocks))throw new Error('Structured handbook source is unavailable.');
+ var out={prefaceBlocks:[],chapters:[]},current=null,clause=null;
+ d.blocks.forEach(function(b){
+   if(b.type==='heading1'){
+     current={code:chapterCode(b.text),title:b.text,clauses:[],prefaceBlocks:[]};
+     out.chapters.push(current);clause=null;return;
+   }
+   if(b.type==='clause_heading'){
+     if(!current){
+       current={code:chapterCode(b.chapter||'Document'),title:b.chapter||'Document',clauses:[],prefaceBlocks:[]};
+       out.chapters.push(current);
+     }
+     clause={id:b.clause_id,key:b.clause_number,title:b.text,contentBlocks:[],legalRefs:[]};
+     current.clauses.push(clause);return;
+   }
+   if(clause&&b.clause_id===clause.id){
+     if(isLegalBlock(b)){clause.legalRefs.push(String(b.text||''));return}
+     if(b.type==='table'){
+       var parts=splitTableLegalRows(b);
+       parts.legal.forEach(function(x){clause.legalRefs.push(x)});
+       if(parts.rows.length)clause.contentBlocks.push(Object.assign({},b,{rows:parts.rows}));
+       return;
+     }
+     clause.contentBlocks.push(b);
+     return;
+   }
+   clause=null;
+   if(current)current.prefaceBlocks.push(b);else out.prefaceBlocks.push(b);
+ });
+ return out;
+}
+function cellHtml(v){return esc(v).replace(/\n/g,'<br>')}
+function blockHtml(blocks){
+ var out='',listType=null,list=[];
+ function flush(){
+   if(!list.length)return;
+   var tag=listType==='numbered'?'ol':'ul';
+   out+='<'+tag+'>'+list.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</'+tag+'>';
+   list=[];listType=null;
+ }
+ (blocks||[]).forEach(function(b){
+   if(b.type==='bullet'||b.type==='numbered'){
+     if(listType&&listType!==b.type)flush();
+     listType=b.type;list.push(b.text||'');return;
+   }
+   flush();
+   if(b.type==='paragraph'){
+     var t=String(b.text||''),cls='';
+     if(/^COMPANY POLICY\s*\|/i.test(t))cls='policy';
+     else if(/^COMPANY BENEFIT\s*\|/i.test(t))cls='policy benefit';
+     else if(/^SAFEGUARDING REFERENCE\s*\|/i.test(t))cls='policy safeguard';
+     out+='<p'+(cls?' class="'+cls+'"':'')+'>'+esc(t).replace(/\n/g,'<br>')+'</p>';
+   }else if(b.type==='table'){
+     var rows=Array.isArray(b.rows)?b.rows:[];
+     out+='<div style="overflow:auto"><table class="doc-table">';
+     rows.forEach(function(row,ri){
+       out+='<tr>';
+       (row||[]).forEach(function(cell){
+         var tag=ri===0&&rows.length>1?'th':'td';
+         out+='<'+tag+'>'+cellHtml(cell)+'</'+tag+'>';
+       });
+       out+='</tr>';
+     });
+     out+='</table></div>';
+   }
+ });
+ flush();return out;
+}
+function plainClause(c){
+ var parts=[c.title].concat(c.legalRefs||[]);
+ (c.contentBlocks||[]).forEach(function(b){
+   if(b.type==='table'){
+     (b.rows||[]).forEach(function(r){parts.push((r||[]).join(' | '))});
+   }else if(b.text)parts.push(b.text);
+ });
+ return parts.join('\n');
+}
+function progressKey(ch,c){var k=c.id||c.key;return k==='C217'&&c.key==='E.3'?'C021':k}
+function legalLinks(ref){
+ var arr=[];
+ function add(label,url){if(!arr.some(function(x){return x.url===url}))arr.push({label:label,url:url})}
+ if(/Employment Act 1955|雇佣法令/i.test(ref))add('Employment Act 1955 · Government-hosted PDF (reference edition)','https://www.investmalaysia.gov.my/media/felj30g0/employment-act-1955.pdf');
+ if(/National Wages|Minimum Wages|最低工资/i.test(ref))add('MOHR · Minimum Wage Guidance','https://emasco.mohr.gov.my/intro?title=dasar-gaji-progresif');
+ if(/EPF|KWSP/i.test(ref))add('KWSP · EPF Act 1991','https://www.kwsp.gov.my/en/others/resource-centre/references/epf-act-1991');
+ if(/Child Act 2001.*27|儿童法令.*27/i.test(ref))add('KPWKM · Child Act information','https://manis.kpwkm.gov.my/public/information/kanak-kanak-informasi_49');
+ if(/Child Register|eDKK|儿童登记/i.test(ref))add('JKM · Child Register / eDKK (Sistem ANAK)','https://anakv1.jkm.gov.my/');
+ if(/Copyright Act|版权法/i.test(ref))add('MyIPO · Copyright Act','https://www.myipo.gov.my/copyright-act/');
+ if(/Computer Crimes|Penal Code|计算机犯罪|刑事法典/i.test(ref))add('AGC · Laws of Malaysia','https://depository.agc.gov.my/community-list');
+ if(/Industrial Relations|工会|结社/i.test(ref))add('Industrial Court · Industrial Relations Legislation','https://www.mp.gov.my/index.php?id=27&lang=en&option=com_sppagebuilder&view=page');
+ if(/Occupational Safety|职业安全/i.test(ref))add('DOSH · Occupational Safety and Health Act','https://dosh.gov.my/en/perundangan/akta/akta-2/');
+ if(/Minimum Retirement Age|退休年龄/i.test(ref))add('MOHR · Minimum Retirement Age Act 2012','https://eakta.mohr.gov.my/sosial');
+ return arr;
+}
+function indexDocs(){
+ CLAUSE_MAP={};ZH_MAP={};
+ DOC_EN.chapters.forEach(function(ch){ch.clauses.forEach(function(c){CLAUSE_MAP[progressKey(ch,c)]={chapter:ch,clause:c}})});
+ if(DOC_ZH&&DOC_ZH.chapters)DOC_ZH.chapters.forEach(function(ch){ch.clauses.forEach(function(c){ZH_MAP[progressKey(ch,c)]={chapter:ch,clause:c}})});
+}
+function specialNameMatches(){var n=document.getElementById('a3Name');return !!n&&n.value.trim().replace(/\\s+/g,' ').toLowerCase()===String(HB.employee.employee_name||'').trim().replace(/\\s+/g,' ').toLowerCase()}
+function syncA3Checkbox(){var cb=document.getElementById('a3Agree');if(cb)cb.disabled=!specialNameMatches()}
+async function submitA3(){
+ var cb=document.getElementById('a3Agree'),nm=document.getElementById('a3Name');
+ if(!cb||!cb.checked||!specialNameMatches()){alert('Type your registered full name and check the undertaking box.');return}
+ if(!confirm('Confirm your Child Safeguarding Undertaking? This will be locked after submission.'))return;
+ try{var v=await rpc('handbook_submit_special_ack',{p_kind:'A3',p_typed_name:nm.value.trim()});HB.assignment.safeguarding_typed_name=v.safeguarding_typed_name;HB.assignment.safeguarding_acknowledged_at=v.safeguarding_acknowledged_at;renderDoc();alert('A.3 undertaking acknowledged and locked.')}catch(e){alert(e.message)}
+}
+var APP_SIG={strokes:[],current:null,drawing:false};
+function initAppendixSignature(){
+ var cv=document.getElementById('appendixSignature');if(!cv)return;
+ APP_SIG={strokes:[],current:null,drawing:false};
+ var ctx=cv.getContext('2d');ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle='#111827';
+ function point(ev){var r=cv.getBoundingClientRect(),t=ev.touches?ev.touches[0]:ev;return {x:(t.clientX-r.left)*cv.width/r.width,y:(t.clientY-r.top)*cv.height/r.height}}
+ function start(ev){ev.preventDefault();APP_SIG.drawing=true;APP_SIG.current=[point(ev)];APP_SIG.strokes.push(APP_SIG.current);ctx.beginPath();ctx.moveTo(APP_SIG.current[0].x,APP_SIG.current[0].y)}
+ function move(ev){if(!APP_SIG.drawing)return;ev.preventDefault();var p=point(ev);APP_SIG.current.push(p);ctx.lineTo(p.x,p.y);ctx.stroke()}
+ function end(){APP_SIG.drawing=false;APP_SIG.current=null}
+ cv.onpointerdown=function(ev){cv.setPointerCapture(ev.pointerId);start(ev)};
+ cv.onpointermove=move;cv.onpointerup=end;cv.onpointercancel=end;
+}
+function clearAppendixSignature(){var c=document.getElementById('appendixSignature');if(c)c.getContext('2d').clearRect(0,0,c.width,c.height);APP_SIG.strokes=[]}
+async function submitAppendixSignature(){
+ var strokes=APP_SIG.strokes.filter(function(s){return s.length>1});
+ if(!strokes.length){alert('Draw your signature before submitting.');return}
+ if(!confirm('Submit and permanently lock your Appendix B signature?'))return;
+ try{var v=await rpc('handbook_submit_special_ack',{p_kind:'APPENDIX_B',p_signature:{version:1,canvas:{width:1000,height:280},strokes:strokes}});HB.assignment.appendix_b_signed_at=v.appendix_b_signed_at;renderDoc();alert('Appendix B signature recorded and locked.')}catch(e){alert(e.message)}
+}
+function specialSigningHtml(){
+ var a=HB&&HB.assignment||{},e=HB&&HB.employee||{};
+ if(!HB.assignment)return '';
+ var a3=a.safeguarding_acknowledged_at,ap=a.appendix_b_signed_at;
+ return '<div class="notice" style="padding:14px;margin:12px 0"><b>A.3 Child Safeguarding Undertaking — Typed-name acknowledgement</b>'+
+ (a3?'<p>Confirmed by '+esc(a.safeguarding_typed_name||e.employee_name)+' on '+esc(fmt(a3))+' · Locked</p>':
+ '<p>Type your full registered name to enable acknowledgement.</p><input id="a3Name" autocomplete="off" placeholder="'+esc(e.employee_name||'Full registered name')+'" oninput="syncA3Checkbox()" style="width:100%;padding:10px;margin-bottom:10px">'+
+ '<label><input type="checkbox" id="a3Agree" disabled> I acknowledge the A.3 Child Safeguarding Undertaking.</label><p><button onclick="submitA3()">Confirm A.3 Undertaking</button></p>')+'</div>'+
+ '<div class="notice" style="padding:14px;margin:12px 0"><b>Appendix B — Manual electronic signature</b>'+
+ (ap?'<p>Signed on '+esc(fmt(ap))+' · Signature locked and retained in the signing record.</p>':
+ '<p>Draw your signature in the wider area below. Submission is separate from the handbook receipt.</p>'+
+ '<div style="max-width:100%;overflow:hidden"><canvas id="appendixSignature" width="1000" height="280" style="width:100%;height:220px;touch-action:none;background:#fff;border:1px solid #94a3b8;border-radius:8px"></canvas></div>'+
+ '<p><button type="button" onclick="clearAppendixSignature()">Clear</button> <button type="button" onclick="submitAppendixSignature()">Submit Appendix B Signature</button></p>')+'</div>';
+}
+function undertakingDisplayBlocks(blocks){
+ var e=HB&&HB.employee||{},a=HB&&HB.assignment||{},n=0;
+ return (blocks||[]).map(function(b){
+   if(b.type!=='table')return b;
+   n++;if(n>2)return b;
+   var a3=!!a.safeguarding_acknowledged_at,ap=!!a.appendix_b_signed_at;
+   var rows=(b.rows||[]).map(function(r){
+     var cells=(r||[]).slice(),label=String(cells[0]||'').trim();
+     if(cells.length<2)return cells;
+     if(label==='Name'||label==='Employee Name')cells[1]=n===1&&!a3?{html:'<input id="a3Name" aria-label="Type full registered name" autocomplete="off" placeholder="'+esc(e.employee_name||'Full name')+'" oninput="syncA3Checkbox()" style="width:95%;padding:10px">'}:e.employee_name||'Not recorded';
+     else if(label==='Legal Employer')cells[1]=companyName(e.company_code);
+     else if(label==='NRIC/Employee ID'||label==='Employee ID / NRIC')cells[1]=e.employee_id||'Not recorded';
+     else if(label==='Job Title')cells[1]=e.job_title||'Not recorded';
+     else if(label==='Signature'){
+       if(n===1)cells[1]=a3?'Typed-name acknowledgement confirmed and locked':{html:'<label><input id="a3Agree" type="checkbox" disabled> I acknowledge the A.3 Undertaking.</label><p><button type="button" onclick="submitA3()">Confirm A.3 Undertaking</button></p>'};
+       else cells[1]=ap?{html:'<canvas id="appendixSignedCanvas" width="1000" height="280" style="width:100%;height:180px;background:white;border:1px solid #cbd5e1" aria-label="Recorded signed signature"></canvas><p>Signature recorded and locked</p>'}:{html:'<canvas id="appendixSignature" width="1000" height="280" style="width:100%;height:230px;touch-action:none;background:#fff;border:1px solid #94a3b8;border-radius:8px" aria-label="Sign Appendix B here"></canvas><p><button type="button" onclick="clearAppendixSignature()">Clear</button> <button type="button" onclick="submitAppendixSignature()">Submit Appendix B Signature</button></p>'};
+     }else if(label==='Date')cells[1]=n===1?(a3?fmt(a.safeguarding_acknowledged_at):'Pending confirmation'):(ap?fmt(a.appendix_b_signed_at):'Pending signature');
+     return cells;
+   });
+   return Object.assign({},b,{rows:rows});
+ });
+}
+function signingTableBlocksHtml(blocks){
+ var out='';
+ (blocks||[]).forEach(function(b){
+   if(b.type!=='table'){out+=blockHtml([b]);return}
+   out+='<div style="overflow:auto"><table class="doc-table">';
+   (b.rows||[]).forEach(function(row,ri){
+     out+='<tr>';
+     (row||[]).forEach(function(cell){out+='<td>'+((cell&&typeof cell==='object'&&Object.prototype.hasOwnProperty.call(cell,'html'))?cell.html:cellHtml(cell))+'</td>'});
+     out+='</tr>';
+   });
+   out+='</table></div>';
+ });
+ return out;
+}
+function renderRecordedAppendixSignature(){
+ var canvas=document.getElementById('appendixSignedCanvas'),data=HB&&HB.assignment&&HB.assignment.appendix_b_signature_json;
+ if(!canvas||!data||!Array.isArray(data.strokes))return;
+ var ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle='#111827';
+ data.strokes.forEach(function(stroke){if(!Array.isArray(stroke)||stroke.length<2)return;ctx.beginPath();stroke.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y)});ctx.stroke()});
+}
+function horizontalSigningTableBlocks(blocks,kind){
+ var a=HB&&HB.assignment||{},e=HB&&HB.employee||{},ack=!!a.safeguarding_acknowledged_at,signed=!!a.appendix_b_signed_at;
+ return (blocks||[]).map(function(b){
+  if(b.type!=='table'||!Array.isArray(b.rows)||b.rows.length<2)return b;
+  var header=b.rows[0].map(function(x){return String(x||'').trim().toLowerCase()});
+  if(!header.includes('signature')||!header.includes('date')||!(header.includes('name')||header.includes('employee name')))return b;
+  var rows=b.rows.map(function(r){return r.slice()});
+  rows[1]=header.map(function(k,i){
+   if(k==='name'||k==='employee name')return kind==='A3'&&!ack?{html:'<input id="a3Name" autocomplete="off" aria-label="Type registered full name" oninput="syncA3Checkbox()" placeholder="'+esc(e.employee_name||'Full name')+'" style="width:100%;padding:8px">'}:e.employee_name||'Not recorded';
+   if(k.includes('employee id')||k.includes('nric'))return e.employee_id||'Not recorded';
+   if(k==='legal employer')return companyName(e.company_code);
+   if(k==='job title')return e.job_title||'Not recorded';
+   if(k==='signature'){
+    if(kind==='A3')return ack?'Typed-name acknowledgement confirmed and locked':{html:'<label><input type="checkbox" id="a3Agree" disabled> I acknowledge the A.3 Undertaking</label><p><button type="button" onclick="submitA3()">Confirm A.3</button></p>'};
+    return signed?{html:'<canvas id="appendixSignedCanvas" width="1000" height="280" style="width:100%;height:150px;background:#fff;border:1px solid #cbd5e1"></canvas><p>Signature recorded and locked</p>'}:{html:'<canvas id="appendixSignature" width="1000" height="280" style="width:100%;height:190px;touch-action:none;background:#fff;border:1px solid #94a3b8"></canvas><p><button type="button" onclick="clearAppendixSignature()">Clear</button> <button type="button" onclick="submitAppendixSignature()">Submit signature</button></p>'};
+   }
+   if(k==='date')return kind==='A3'?(ack?fmt(a.safeguarding_acknowledged_at):'Pending confirmation'):(signed?fmt(a.appendix_b_signed_at):'Pending signature');
+   return rows[1]&&rows[1][i]||'';
+  });
+  return Object.assign({},b,{rows:rows});
+ });
+}
+function containsAppendixSigningTable(blocks){
+ return (blocks||[]).some(function(b){return b.type==='table'&&Array.isArray(b.rows)&&b.rows[0]&&b.rows[0].some(function(x){return String(x).toLowerCase()==='signature'})&&b.rows[0].some(function(x){return String(x).toLowerCase()==='legal employer'})});
+}
+function handbookSigningStatusHtml(){
+ var e=HB&&HB.employee||{},a=HB&&HB.assignment||{},h=HB&&HB.handbook||{};
+ var receipt=!!a.receipt_acknowledged_at,finalDone=!!a.acknowledged_at||a.status==='acknowledged';
+ return '<div class="notice" style="margin:14px 0;padding:12px">'+
+ '<b>Digital signing record (separate from the original printed form)</b>'+
+ '<div class="meta-row"><b>Employee:</b> '+esc(e.employee_name||'Not linked')+'</div>'+
+ '<div class="meta-row"><b>Employee ID:</b> '+esc(e.employee_id||'Not recorded')+'</div>'+
+ '<div class="meta-row"><b>Legal employer:</b> '+esc(companyName(e.company_code))+'</div>'+
+ '<div class="meta-row"><b>Job title:</b> '+esc(e.job_title||'Not recorded')+'</div>'+
+ '<div class="meta-row"><b>Handbook:</b> '+esc(h.version||'—')+'</div>'+
+ '<div class="meta-row"><b>Receipt signature:</b> '+(receipt?'Recorded on '+esc(fmt(a.receipt_acknowledged_at)):'Not signed')+'</div>'+
+ '<div class="meta-row"><b>Final handbook acknowledgement:</b> '+(finalDone?'Completed':'Pending')+'</div>'+
+ '<p>Receipt signing confirms receipt only. It does not substitute for the final handbook acknowledgement or the separately required Child Safeguarding Code of Conduct & Undertaking signature.</p>'+
+ '</div>';
+}
+function renderDoc(){
+ var e=HB.employee||{},h=HB.handbook;
+ var brand=entityBrand(activeEntityCode());
+ var out='<div class="doc-cover">'+(brand.logo?'<img src="'+esc(brand.logo)+'" alt="Entity logo">':'')+'<div><h1>'+esc(brand.name)+'</h1><p>'+esc(h.title||'Employee Handbook')+' · '+esc(h.version)+' · Governing English edition · Source: '+esc(h.source_page_count||'—')+' pages</p></div></div>';
+ if(DOC_EN.prefaceBlocks&&DOC_EN.prefaceBlocks.length)out+='<div class="preface">'+blockHtml(DOC_EN.prefaceBlocks)+'</div>';
+ DOC_EN.chapters.forEach(function(ch){
+   out+='<h2 class="chapter" id="chapter-'+esc(ch.code)+'">'+esc(ch.title)+'</h2>';
+   if(ch.prefaceBlocks&&ch.prefaceBlocks.length)out+='<div class="preface">'+(HB.assignment&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'&&containsAppendixSigningTable(ch.prefaceBlocks)?signingTableBlocksHtml(horizontalSigningTableBlocks(ch.prefaceBlocks,'APPENDIX_B')):blockHtml(ch.prefaceBlocks))+'</div>';
+   ch.clauses.forEach(function(c){
+     var pk=progressKey(ch,c),done=CHECKED.has(pk),zh=ZH_MAP[pk],hasRef=c.legalRefs&&c.legalRefs.length;
+     out+='<section class="clause'+(done?' done':'')+'" id="clause-'+cssKey(pk)+'" data-key="'+esc(pk)+'">'+
+       '<div class="clause-head">'+
+       ((pk==='C211'||(c.key==='A.3'&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'))?'<span class="meta-row">Typed-name undertaking</span>':'<input type="checkbox" '+(done?'checked disabled':'')+' aria-label="Confirm clause '+esc(c.key)+'" onchange="confirmClause(this,\''+jsq(pk)+'\')">')+
+       '<div class="clause-title">'+esc(c.title)+'</div><div class="tools">'+
+       (hasRef?'<button class="iconbtn" title="Legal reference" onclick="showLegal(\''+jsq(pk)+'\')">⚖ Legal</button>':'')+
+       (zh?'<button class="iconbtn" title="Authorised Chinese reference" onclick="showChinese(\''+jsq(pk)+'\')">中文</button>':'')+
+       '</div></div><div class="clause-body">'+(pk==='C211'?signingTableBlocksHtml(undertakingDisplayBlocks(c.contentBlocks||[])):(c.key==='A.3'&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'?signingTableBlocksHtml(horizontalSigningTableBlocks(c.contentBlocks||[],'A3')):blockHtml(c.contentBlocks||[])))+'</div>'+'</section>';
+   });
+ });
+ document.getElementById('doc').innerHTML=out;
+ HandbookMalay.decorate();
+ initAppendixSignature();
+ renderRecordedAppendixSignature();
+ renderNav();
+}
+function cssKey(k){return String(k).replace(/[^A-Za-z0-9_-]/g,'-')}
+function jsq(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function renderNav(){
+ var out='';
+ DOC_EN.chapters.forEach(function(ch){
+   var total=ch.clauses.length,done=ch.clauses.filter(function(c){return CHECKED.has(progressKey(ch,c))}).length;
+   out+='<div class="nav-chapter"><a href="#chapter-'+esc(ch.code)+'" style="color:inherit;text-decoration:none">'+esc(ch.title)+'</a><small>'+done+'/'+total+'</small></div>';
+   ch.clauses.forEach(function(c){
+     var pk=progressKey(ch,c),d=CHECKED.has(pk);
+     out+='<a class="nav-item'+(d?' done':'')+'" href="#clause-'+cssKey(pk)+'"><span class="nav-dot">'+(d?'✓':'○')+'</span><span>'+esc(c.title)+'</span></a>';
+   });
+ });
+ document.getElementById('toc').innerHTML=out;
+}
+function renderMeta(){
+ var e=HB.employee,h=HB.handbook,a=HB.assignment;
+ applyEntityBranding();
+ var html='<div class="meta-title">'+esc(h.title||'Employee Handbook')+' <span style="color:#0f766e">'+esc(h.version)+'</span></div>'+
+  '<div class="meta-row"><b>Effective:</b> '+esc(h.effective_date||'—')+'</div>'+
+  '<div class="meta-row"><b>Source:</b> '+esc(h.source_page_count||43)+' pages</div>'+
+  '<div class="meta-row"><b>Status:</b> '+esc(h.status)+'</div>';
+ if(e)html+='<hr style="border:0;border-top:1px solid #e2e8f0;margin:8px 0">'+
+  '<div class="meta-row"><b>Employee:</b> '+esc(e.employee_name)+'</div>'+
+  '<div class="meta-row"><b>Employee ID:</b> '+esc(e.employee_id||'—')+'</div>'+
+  '<div class="meta-row"><b>Legal Employer:</b> '+esc(companyName(e.company_code))+'</div>'+
+  '<div class="meta-row"><b>Job Title:</b> '+esc(e.job_title||'—')+'</div>'+
+  '<div class="meta-row"><b>Department:</b> '+esc(e.department||'—')+'</div>'+
+  '<div class="meta-row"><b>Assignment:</b> <span class="status s-'+esc(a.status)+'">'+esc(a.status)+'</span></div>';
+ else html+='<div class="notice">Admin preview mode.</div>';
+ document.getElementById('employeeCard').innerHTML=html;
+}
+function renderDeadlineStatus(){
+ var el=document.getElementById('deadlinePanel');if(!el||!HB)return;
+ var h=HB.handbook||{},a=HB.assignment;
+ if(!a){el.classList.add('hidden');return}
+ el.classList.remove('hidden');
+ if(h.deadline_enabled===false||!a.due_at){
+   el.innerHTML='<b>Reading Deadline:</b> Disabled<br><span class="meta-row">No expiry countdown applies to this assignment.</span>';
+   if(DEADLINE_TIMER){clearInterval(DEADLINE_TIMER);DEADLINE_TIMER=null}
+   return;
+ }
+ var due=new Date(a.due_at),assigned=a.assigned_at?new Date(a.assigned_at):null,now=new Date(),ms=due-now;
+ var overdue=ms<=0;
+ var abs=Math.max(0,ms),days=Math.floor(abs/86400000),hours=Math.floor((abs%86400000)/3600000),mins=Math.floor((abs%3600000)/60000);
+ var remain=overdue?'Deadline Passed':(days+' day'+(days===1?'':'s')+' '+hours+' hr '+mins+' min remaining');
+ var deemed=[];
+ if(a.deemed_received_at)deemed.push('Deemed Received: '+fmt(a.deemed_received_at));
+ if(a.deemed_read_at)deemed.push('Deemed Read: '+fmt(a.deemed_read_at));
+ el.innerHTML='<b>Assigned (Day 0):</b> '+(assigned?fmt(assigned):'—')+'<br>'+
+   '<b>Deadline:</b> '+fmt(a.due_at)+'<br>'+
+   '<b style="color:'+(overdue?'#b42318':'#0f766e')+'">'+remain+'</b>'+
+   (deemed.length?'<br><span class="meta-row">'+deemed.join('<br>')+'</span>':'');
+ if(!DEADLINE_TIMER)DEADLINE_TIMER=setInterval(renderDeadlineStatus,60000);
+}
+function renderProgress(){
+ var total=Number(PROGRESS.required_clause_count||HB.handbook.required_clause_count||217),count=Number(PROGRESS.checked_count||0),pct=Number(PROGRESS.progress_percent||0),threshold=Number(PROGRESS.effective_threshold_percent||(HB.assignment&&HB.assignment.effective_read_threshold_percent)||HB.handbook.default_read_threshold_percent||90),need=Math.ceil(total*threshold/100);
+ document.getElementById('progressPct').textContent=pct.toFixed(1)+'%';
+ document.getElementById('progressFill').style.width=Math.min(100,pct)+'%';
+ document.getElementById('progressText').innerHTML='<b>'+count+'</b> of <b>'+total+'</b> clauses individually confirmed.<br>Minimum for Mark as Read: <b>'+need+'</b> clauses ('+threshold.toFixed(0)+'%).';
+ renderDeadlineStatus();
+ var btn=document.getElementById('markReadBtn'),a=HB.assignment,ack=document.getElementById('ackPanel');
+ if(!a){btn.classList.add('hidden');ack.classList.add('hidden');return}
+
+ if(a.status==='acknowledged'){
+   btn.disabled=true;btn.textContent='Handbook Read ✓';
+   ack.classList.remove('hidden');
+   ack.innerHTML='<b>✓ Signed handbook acknowledgement completed</b><div class="meta-row">'+fmt(a.receipt_acknowledged_at||a.acknowledged_at)+'</div>';
+   return;
+ }
+
+ var receiptDone=!!a.receipt_acknowledged_at;
+ var thresholdDone=count>=need || !!a.deemed_read_at;
+ if(a.read_at||a.deemed_read_at){btn.disabled=true;btn.textContent='Handbook Read ✓'}
+ else{
+   btn.disabled=!(receiptDone&&thresholdDone);
+   if(!receiptDone)btn.textContent='Sign Receipt Before Mark as Read';
+   else if(!thresholdDone)btn.textContent='Confirm '+Math.max(0,need-count)+' more clauses';
+   else btn.textContent='Mark Handbook as Read';
+ }
+
+ ack.classList.remove('hidden');
+ if(!receiptDone){
+   ack.innerHTML='<b>Step 1 — Signed Handbook Receipt</b>'+
+     '<div class="meta-row">Sign to confirm receipt of this assigned handbook. This signature does not itself mean you have completed reading or final acknowledgement.</div>'+
+     '<input type="text" id="receiptName" placeholder="'+esc(HB.employee.employee_name||'')+'" autocomplete="off">'+
+     '<div class="sig-pad"><canvas id="signatureCanvas" width="800" height="220" aria-label="Draw signature"></canvas></div>'+
+     '<div class="sig-tools"><button type="button" onclick="clearSignature()">Clear Signature</button><span id="sigState">Draw your signature above.</span></div>'+
+     '<button onclick="signReceipt()">Sign Receipt</button>';
+   setTimeout(initSignaturePad,0);
+   return;
+ }
+
+ if(!a.read_at&&!a.deemed_read_at){
+   ack.innerHTML='<b>✓ Step 1 completed — Receipt signed</b><div class="meta-row">'+fmt(a.receipt_acknowledged_at)+'</div>'+
+     '<div class="notice" style="margin-top:8px">Complete the required clause confirmations, then use <b>Mark Handbook as Read</b>.</div>';
+   return;
+ }
+
+ ack.innerHTML='<b>Step 3 — Employee Handbook Acknowledgement & Undertaking</b>'+
+   '<textarea readonly>'+esc(HB.handbook.acknowledgement_text||'')+'</textarea>'+
+   '<label><input type="checkbox" id="ackCheck"> I have read and understand the acknowledgement above.</label>'+
+   '<input type="text" id="typedName" placeholder="'+esc(HB.employee.employee_name||'')+'" autocomplete="off">'+
+   '<div class="meta-row">Your previously captured drawn signature will remain linked to this handbook receipt and authenticated account.</div>'+
+   '<button onclick="acknowledge()">Finalise Acknowledgement '+esc(HB.handbook.version)+'</button>';
+}
+async function confirmClause(el,key){
+ if(!el.checked)return;
+ el.disabled=true;
+ try{
+   var res;
+   try{
+     res=await rpc('handbook_set_clause_progress',{p_clause_key:key,p_checked:true});
+   }catch(firstError){
+     if(!String(firstError.message||'').includes('No handbook assignment is linked')||!SESSION||!SESSION.refresh_token)throw firstError;
+     var expected=HB&&HB.assignment&&HB.assignment.id;
+     if(!expected)throw firstError;
+     await refreshSession();
+     var verified=await rpc('handbook_my_assignment',{});
+     if(!verified||!verified.assignment||verified.assignment.id!==expected)throw new Error('The active sign-in no longer matches the handbook assignment loaded on this page. Please sign out and sign in with the assigned employee account. No reading progress was changed.');
+     res=await rpc('handbook_set_clause_progress',{p_clause_key:key,p_checked:true});
+   }
+   CHECKED.add(key);PROGRESS=res||PROGRESS;
+   var sec=document.querySelector('[data-key="'+CSS.escape(key)+'"]');if(sec)sec.classList.add('done');
+   renderProgress();renderNav();
+ }catch(e){
+   el.checked=false;el.disabled=false;
+   alert(e.message||'Clause confirmation failed. No progress was recorded.');
+ }
+}
+async function markRead(){
+ try{HB=await rpc('handbook_mark_event',{p_action:'read'});renderMeta();renderProgress();alert('✅ Handbook marked as read. You may now complete the acknowledgement.')}catch(e){alert(e.message)}
+}
+var SIGNATURE={strokes:[],drawing:false,current:null};
+function initSignaturePad(){
+ var cv=document.getElementById('signatureCanvas');if(!cv)return;
+ SIGNATURE={strokes:[],drawing:false,current:null};
+ var ctx=cv.getContext('2d');ctx.lineWidth=2;ctx.lineCap='round';ctx.strokeStyle='#111827';
+ function pt(e){
+  var r=cv.getBoundingClientRect(),src=e.touches?e.touches[0]:e;
+  return {x:(src.clientX-r.left)*(cv.width/r.width),y:(src.clientY-r.top)*(cv.height/r.height),t:Date.now()};
+ }
+ function start(e){e.preventDefault();SIGNATURE.drawing=true;SIGNATURE.current=[];SIGNATURE.strokes.push(SIGNATURE.current);var p=pt(e);SIGNATURE.current.push(p);ctx.beginPath();ctx.moveTo(p.x,p.y)}
+ function move(e){if(!SIGNATURE.drawing)return;e.preventDefault();var p=pt(e);SIGNATURE.current.push(p);ctx.lineTo(p.x,p.y);ctx.stroke()}
+ function end(e){if(!SIGNATURE.drawing)return;if(e)e.preventDefault();SIGNATURE.drawing=false;SIGNATURE.current=null;var s=document.getElementById('sigState');if(s)s.textContent=SIGNATURE.strokes.some(function(x){return x.length>1})?'Signature captured.':'Draw your signature above.'}
+ cv.onmousedown=start;cv.onmousemove=move;window.addEventListener('mouseup',end);
+ cv.ontouchstart=start;cv.ontouchmove=move;cv.ontouchend=end;
+}
+function clearSignature(){
+ var cv=document.getElementById('signatureCanvas');if(cv)cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+ SIGNATURE={strokes:[],drawing:false,current:null};
+ var s=document.getElementById('sigState');if(s)s.textContent='Draw your signature above.';
+}
+function signaturePayload(){
+ return {version:1,canvas:{width:800,height:220},strokes:SIGNATURE.strokes.filter(function(x){return x.length>1})};
+}
+async function signReceipt(){
+ var nm=document.getElementById('receiptName');
+ if(!nm||!nm.value.trim()){alert('Please type your full name exactly as shown in your employee record.');return}
+ var sig=signaturePayload();
+ if(!sig.strokes.length){alert('Please draw your signature before submitting.');return}
+ if(!confirm('Submit your signed handbook receipt?'))return;
+ try{
+   HB=await rpc('handbook_acknowledge_receipt',{p_typed_name:nm.value.trim(),p_signature:sig});
+   renderMeta();renderProgress();
+   alert('✅ Handbook receipt signed successfully. Continue the required clause confirmations.');
+ }catch(e){alert(e.message)}
+}
+async function acknowledge(){
+ var cb=document.getElementById('ackCheck'),nm=document.getElementById('typedName');
+ if(!cb||!cb.checked){alert('Please confirm the acknowledgement statement.');return}
+ if(!nm||!nm.value.trim()){alert('Please type your full name exactly as shown in your employee record.');return}
+ if(!confirm('Finalise your acknowledgement for '+(HB.handbook.title||'Employee Handbook')+' '+HB.handbook.version+'?'))return;
+ try{
+   HB=await rpc('handbook_acknowledge',{p_typed_name:nm.value.trim()});
+   renderMeta();renderProgress();
+   alert('✅ Handbook acknowledgement completed successfully.');
+ }catch(e){alert(e.message)}
+}
+function showLegal(key){
+ var c=CLAUSE_MAP[key]&&CLAUSE_MAP[key].clause;if(!c)return;
+ var html='';
+ (c.legalRefs||[]).forEach(function(r){
+   html+='<div class="refbox">'+esc(r)+'</div>';
+   var links=legalLinks(r);if(links.length)html+='<div class="official-links">'+links.map(function(x){return '<a target="_blank" rel="noopener" href="'+esc(x.url)+'">'+esc(x.label)+' ↗</a>'}).join('')+'</div>';
+ });
+ openDialog('Legal Reference · '+c.title,html||'<div class="notice">No separate legal reference is attached to this clause.</div>');
+}
+function showChinese(key){
+ var en=CLAUSE_MAP[key]&&CLAUSE_MAP[key].clause,zh=ZH_MAP[key]&&ZH_MAP[key].clause;if(!en||!zh)return;
+ var english='<div class="refbox"><b>English Version — Governing / Legal Reference</b><br><br>'+esc(plainClause(en))+'</div>';
+ var z='<h4>授权华文参考 · Authorised Chinese Reference</h4><div class="zhbox">'+esc(plainClause(zh))+'</div>'+
+   '<div class="notice" style="margin-top:12px">The English '+esc(HB.handbook.title||'Employee Handbook')+' '+esc(HB.handbook.version||'')+' remains the governing reference. 华文内容仅作为授权参考；如有歧义，以英文正式版本为准.</div>';
+ openDialog('中文参考 · '+en.title,english+z);
+}
+function openClauseSearch(){
+ if(!DOC_EN||!Array.isArray(DOC_EN.chapters)){alert('Handbook is still loading. Please try again.');return}
+ var html='<div style="display:flex;gap:8px;margin-bottom:10px">'+
+   '<input id="clauseSearchInput" type="search" placeholder="Search clause number or title" '+
+   'style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px" '+
+   'oninput="runClauseSearch(this.value)">'+
+   '</div><div id="clauseSearchResults" class="meta-row">Type a clause number, keyword or title.</div>';
+ openDialog('Search Clauses',html);
+ setTimeout(function(){var i=document.getElementById('clauseSearchInput');if(i)i.focus()},0);
+}
+function runClauseSearch(q){
+ var box=document.getElementById('clauseSearchResults');if(!box)return;
+ q=String(q||'').trim().toLowerCase();
+ if(!q){box.innerHTML='Type a clause number, keyword or title.';return}
+ var results=[];
+ DOC_EN.chapters.forEach(function(ch){
+   ch.clauses.forEach(function(cl){
+     var hay=(String(cl.id||'')+' '+String(cl.key||'')+' '+String(cl.title||'')+' '+plainClause(cl)).toLowerCase();
+     if(hay.indexOf(q)>=0)results.push({ch:ch,cl:cl});
+   });
+ });
+ if(!results.length){box.innerHTML='<div class="notice">No matching clauses found.</div>';return}
+ box.innerHTML=results.slice(0,50).map(function(x){
+   var pk=progressKey(x.ch,x.cl);
+   return '<button type="button" onclick="jumpToClause(\''+jsq(pk)+'\')" '+
+     'style="display:block;width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:8px 9px;margin:5px 0;cursor:pointer;font-weight:400">'+
+     '<b style="font-weight:600">'+esc(x.cl.id||x.cl.key||'')+'</b> · '+esc(x.cl.title||'')+'</button>';
+ }).join('');
+}
+function jumpToClause(key){
+ closeDialog();
+ var el=document.getElementById('clause-'+cssKey(key));
+ if(!el)return;
+ el.scrollIntoView({behavior:'smooth',block:'start'});
+ el.style.outline='2px solid #2563eb';
+ setTimeout(function(){el.style.outline=''},1600);
+}
+function openDialog(title,html){document.getElementById('dialogTitle').textContent=title;document.getElementById('dialogBody').innerHTML=html;document.getElementById('dialog').classList.add('open')}
+function closeDialog(){document.getElementById('dialog').classList.remove('open')}
+function openChineseReference(){
+ if(!DOC_ZH){alert('No authorised Chinese reference is issued for this handbook.');return}
+ var raw=sessionStorage.getItem(SESSION_KEY);
+ var w=window.open('about:blank','_blank');
+ if(!w){alert('Please allow pop-ups for this site to open the authorised Chinese reference.');return}
+ try{
+   if(raw)w.sessionStorage.setItem(SESSION_KEY,raw);
+   var code=HB&&HB.handbook&&HB.handbook.handbook_code||'';
+   var version=HB&&HB.handbook&&HB.handbook.version||'';
+   var entity=activeEntityCode();
+   var versionId=HB&&HB.handbook&&HB.handbook.id||'';
+   var qs='?code='+encodeURIComponent(code)+'&version='+encodeURIComponent(version)+'&entity='+encodeURIComponent(entity)+'&version_id='+encodeURIComponent(versionId);
+   w.location.replace('handbook-zh.html'+qs);
+   try{w.opener=null}catch(e){}
+ }catch(e){
+   try{w.close()}catch(_){}
+   alert('Unable to open the Chinese reference with your current login session. Please try again.');
+ }
+}
+async function loadStaticChineseFallback(handbookCode){
+ var map={
+   'ABORNE-EMPLOYEE-HANDBOOK':'handbook-data/aborne-v1.0-zh-authorised.json',
+   'HAPPY-DINO-EMPLOYEE-HANDBOOK':'handbook-data/happy-dino-v1.0-zh-authorised.json'
+ };
+ var path=map[String(handbookCode||'')];
+ if(!path)return null;
+ var r=await fetch(path+'?v=20260930-1555',{cache:'no-store'});
+ if(!r.ok)throw new Error('Authorised Chinese handbook resource could not be loaded.');
+ return await r.json();
+}
+async function loadAdminHandbook(selection){
+ if(!HB||!HB.is_admin||HB.assignment||!selection)return;
+ var parts=String(selection).split('|'),versionId=parts[0],entityCode=parts[1]||'MEG';
+ HB.preview_entity_code=entityCode;
+ try{
+   var en=await rpc('handbook_admin_get_document',{p_handbook_version_id:versionId,p_language:'en'});
+   var zh=await rpc('handbook_admin_get_document',{p_handbook_version_id:versionId,p_language:'zh'});
+   if(!en||!en.document)throw new Error('English structured handbook content is unavailable.');
+   if(!zh||!zh.document){
+     var staticZh=await loadStaticChineseFallback(en.handbook_code);
+     if(staticZh)zh={document:staticZh};
+   }
+   HB.handbook={
+     id:en.handbook_version_id,
+     handbook_code:en.handbook_code,
+     title:en.handbook_title,
+     version:en.handbook_version,
+     issue_date:en.issue_date,
+     effective_date:en.effective_date,
+     status:en.status,
+     acknowledgement_text:en.acknowledgement_text,
+     source_page_count:en.page_count,
+     required_clause_count:en.clause_count,
+     deadline_enabled:en.deadline_enabled!==false,
+     default_deadline_days:en.default_deadline_days,
+     default_read_threshold_percent:en.default_read_threshold_percent,
+     auto_deem_enabled:en.auto_deem_enabled
+   };
+   DOC_EN=structuredToDoc(en.document);
+   DOC_ZH=(zh&&zh.document)?structuredToDoc(zh.document):null;
+   indexDocs();CHECKED=new Set();
+   await HandbookMalay.load(HB.handbook,DOC_EN,CLAUSE_MAP);
+   PROGRESS={checked_count:0,required_clause_count:en.clause_count||0,progress_percent:0,effective_threshold_percent:en.default_read_threshold_percent||90};
+   var zhBtn=document.getElementById('chineseTopBtn');if(zhBtn)zhBtn.classList.toggle('hidden',!DOC_ZH);
+   document.title=(HB.handbook.title||'Employee Handbook')+' '+(HB.handbook.version||'');
+   renderMeta();renderDoc();renderProgress();applyEntityBranding();
+  if(HB&&HB.is_admin&&!HB.assignment)await setupAdminHandbookSelector();
+ }catch(e){alert(e.message)}
+}
+async function setupAdminHandbookSelector(){
+ if(!HB||!HB.is_admin||HB.assignment)return;
+ var sel=document.getElementById('adminHandbookSelect');if(!sel)return;
+ var rows=await rpc('handbook_admin_versions',{});
+ var opts=[];
+ (rows||[]).forEach(function(x){
+   if(x.handbook_code==='MYEDEN-EMPLOYEE-HANDBOOK'){
+     opts.push({value:x.handbook_version_id+'|MEG',label:'MyEden Group Sdn. Bhd. · '+x.version});
+     opts.push({value:x.handbook_version_id+'|MEH',label:'MyEden Edu Hub Sdn. Bhd. · '+x.version});
+   }else if(x.handbook_code==='HAPPY-DINO-EMPLOYEE-HANDBOOK'){
+     opts.push({value:x.handbook_version_id+'|HDS',label:'Happy Dino Sdn. Bhd. · '+x.version});
+   }else if(x.handbook_code==='ABORNE-EMPLOYEE-HANDBOOK'){
+     opts.push({value:x.handbook_version_id+'|ABP',label:'Aborne Project Sdn. Bhd. · '+x.version});
+   }
+ });
+ sel.innerHTML=opts.map(function(o){return '<option value="'+esc(o.value)+'">'+esc(o.label)+'</option>'}).join('');
+ if(HB.handbook&&HB.handbook.id)sel.value=HB.handbook.id+'|'+activeEntityCode();
+}
+async function signOut(){location.href=CMS_BACK}
+
+async function init(){
+ SESSION=readSession();if(!SESSION||!SESSION.access_token){location.href=CMS_BACK;return}
+ if(SESSION.expires_at&&SESSION.expires_at*1000<Date.now()+30000){try{await refreshSession()}catch(e){location.href=CMS_BACK;return}}
+ try{
+  HB=await rpc('handbook_my_assignment',{});
+  if(HB&&HB.assignment)HB=await rpc('handbook_apply_my_due_rule',{});
+  if(HB&&HB.is_admin)document.getElementById('topbar').classList.add('is-admin');
+  var adminSel=document.getElementById('adminHandbookSelect');if(adminSel)adminSel.classList.toggle('hidden',!(HB&&HB.is_admin&&!HB.assignment));
+  if(!HB||!HB.handbook){throw new Error('No handbook is assigned to you yet. HR assigns the handbook when you join.')}
+  if(HB.assignment)HB=await rpc('handbook_mark_event',{p_action:'view'});
+  var en=await rpc('handbook_get_document',{p_language:'en'});
+  var zh=await rpc('handbook_get_document',{p_language:'zh'});
+  if(!en||!en.document)throw new Error('English structured handbook content is unavailable.');
+  if(!zh||!zh.document){
+    var staticZh=await loadStaticChineseFallback(HB&&HB.handbook&&HB.handbook.handbook_code);
+    if(staticZh)zh={document:staticZh};
+  }
+  DOC_EN=structuredToDoc(en.document);
+  DOC_ZH=(zh&&zh.document)?structuredToDoc(zh.document):null;
+  indexDocs();
+  await HandbookMalay.load(HB.handbook,DOC_EN,CLAUSE_MAP);
+  var zhBtn=document.getElementById('chineseTopBtn');if(zhBtn)zhBtn.classList.toggle('hidden',!DOC_ZH);
+  document.title=(HB.handbook.title||'Employee Handbook')+' '+(HB.handbook.version||'');
+  var progRows=HB.assignment?await rpc('handbook_get_clause_progress',{}):[];
+  CHECKED=new Set((progRows||[]).map(function(x){return x.clause_key}));
+  PROGRESS=HB.assignment?await rpc('handbook_my_progress',{}):{checked_count:0,required_clause_count:HB.handbook.required_clause_count||217,progress_percent:0};
+  renderMeta();renderDoc();renderProgress();applyEntityBranding();
+  if(HB&&HB.is_admin&&!HB.assignment)await setupAdminHandbookSelector();
+ }catch(e){document.getElementById('doc').innerHTML='<div class="preface" style="color:#b42318">'+esc(e.message)+'</div>'}
+}
+init();
+</script>
+</body>
+</html>

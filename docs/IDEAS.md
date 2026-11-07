@@ -227,6 +227,10 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   — same `eaf_loec_records` row, same guard trigger, same storage bucket (folder uses the reference with "/" written as "-").
   Upgrade: uploading the signed copy moves the application to Offer accepted. **Posts open for applications** (button on Applications) opens /
   closes general job titles on the public form, as in the JD Manual. Applicants still apply on the MEG-EAF V2 form; photos and IC images stay there.
+- **Handbook reader built (v2026.11.07-17:20):** the MEG-EAF V2 handbook page is now part of the CMS (`handbook/index.html` with `handbook-data`,
+  `handbook-malay.js`, `handbook-entity-branding.js`), signed in with the CMS session (no MEG-EAF V2 login or app-access check), same
+  `handbook_*` records; "Back to the CMS" returns to My Handbook; phone layout fixed. MEG-EAF V2's handbook page still works (side by side).
+- **Still in MEG-EAF V2 before it can be retired:** handbook admin (assign, versions, reading status page), the public application form.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

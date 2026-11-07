@@ -146,6 +146,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.07-17:20** — **Handbook reader in the CMS** (PRI-010, MEG-EAF V2 part): My Handbook › Read and acknowledge opens the handbook inside the CMS (`handbook/`) with the CMS sign-in — no MEG-EAF V2 login. Same handbook records and steps as MEG-EAF V2 (sections read, receipt signature, safeguarding and Appendix B where needed, final acknowledgement; English, Bahasa Malaysia and Chinese), so HR's reading status is unchanged. Works on phones.
 - **v2026.11.07 (database only)** — The **Staff** role no longer opens office pages (group dashboard, everyone's claims, leave requests, handbook admin): staff see My Home, their switched-on self-service parts and Employment Act & Calculators.
 - **v2026.11.07-16:45** — PRI-019 **Invite to the CMS**: invite one person (profile or Self-service Access), the selected ones, or everyone without a login. They get an email to choose a password; their login is linked to their record with the Staff role and the default self-service parts (Super Admin sets the defaults).
 - **v2026.11.07-16:30** — PRI-010 E1: the application window now does the MEG-EAF V2 HR work — move the stage, Interview & Office Use (with interview date, place and notes), and for an issued offer letter the signed copy upload, HR verification, stamp duty and stamp certificate. New **Posts open for applications** button on Applications.

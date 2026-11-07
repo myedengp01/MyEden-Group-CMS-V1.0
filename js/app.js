@@ -3702,8 +3702,8 @@
     $('#mh-body', el).innerHTML = a ? `<section class="card"><div class="card-head"><h3>Employee Handbook ${esc(a.version || '')}</h3>
         ${a.acknowledged_at ? '<span class="tag ok">Acknowledged</span>' : a.due_at ? `<span class="tag ${daysTo(a.due_at) < 0 ? 'bad' : 'warn'}">Due ${dShort(a.due_at)}</span>` : ''}</div>
         <ol class="timeline">${steps.map(([l, d]) => `<li class="${d ? 'done' : ''}"><b>${l}</b> · ${d ? dShort(d) : '<span class="muted">not yet</span>'}</li>`).join('')}</ol>
-        <div class="btn-row"><a class="btn primary" href="${esc(EAF + 'handbook.html')}" target="_blank" rel="noopener">${icon('shield')}${a.acknowledged_at ? 'Open the handbook' : 'Read and acknowledge'}</a></div>
-        <p class="muted small">The handbook opens in MEG-EAF V2 with the same sign-in. Your reading and acknowledgement are saved there and show here.</p></section>`
+        <div class="btn-row"><a class="btn primary" href="${esc(asset('handbook/'))}">${icon('shield')}${a.acknowledged_at ? 'Open the handbook' : 'Read and acknowledge'}</a></div>
+        <p class="muted small">The handbook opens here in the CMS with your sign-in. Tick each section as you read it; your progress is saved, so you can stop and continue later. “Back to the CMS” at the top brings you back.</p></section>`
       : '<section class="card"><div class="empty small"><p>No handbook assigned to you yet</p><span>HR assigns the handbook when you join.</span></div></section>';
   }
 
