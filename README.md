@@ -135,11 +135,11 @@ assets/logos/       MyEden mark (3D logo) and company logos
 ```
 
 ## Known issues
-- **Claim emails only reach myeden.group@gmail.com (found 17 Oct 2026).** The MEG-FORMS email functions (otcf-notify,
-  mtcf-notify, tec-notify, …) send through Resend from `onboarding@resend.dev`, which is Resend's test mode: it refuses every
-  other recipient (`403 · You can only send testing emails to your own email address`). Affects the form apps and the CMS
-  alike; the decision itself is always saved. **Fix:** verify a company domain at resend.com/domains (add its DNS records),
-  then change `FROM_EMAIL` in each notify function to `MEG-FORMS <noreply@that-domain>`. Alternative: Gmail with an app password.
+- ~~**Claim emails only reach myeden.group@gmail.com (found 17 Oct 2026).**~~ **Fixed 7 Nov 2026:** the domain
+  `mail.myeden.group` is verified in Resend (DNS at Squarespace: DKIM TXT `resend._domainkey.mail`, CNAMEs `rsend.mail` and
+  `send.mail`, DMARC `_dmarc.mail` p=none). otcf-notify, mtcf-notify, tec-notify and tec-v2-notify now send from
+  `MyEden Group <noreply@mail.myeden.group>` with replies to `claims@myeden.group`. Supabase sign-in emails (invites, password
+  resets) also go through Resend SMTP from the same address (Authentication › Emails › SMTP; the key is entered in Supabase only).
 
 ## Change log
 - **v2026.11.07-16:30** — PRI-010 E1: the application window now does the MEG-EAF V2 HR work — move the stage, Interview & Office Use (with interview date, place and notes), and for an issued offer letter the signed copy upload, HR verification, stamp duty and stamp certificate. New **Posts open for applications** button on Applications.
