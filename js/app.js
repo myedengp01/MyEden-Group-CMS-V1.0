@@ -1803,6 +1803,8 @@
   const lxDaysOf = (txt) => { const s = String(txt || '').toLowerCase(); if (/mon\w*\s*(to|-|–)\s*sat/.test(s)) return 6; if (/mon\w*\s*(to|-|–)\s*fri/.test(s)) return 5; const n = parseFloat(s); return n > 0 && n <= 7 ? n : 5; };
   const lxOn = (v) => v === true || v === 'true' || v === 'on' || v === 1;
   // the job title on the letter is the approved JD position (MEG-EAF V2 "Resolved Position (for letter)"), not the general position family (v2026.11.06)
+  // optional clauses (CLC 7 Nov 2026): included unless HR untick them
+  const lxClause = (v) => v === true || v === 'true' || v === 1 || v === '1';   // letters saved before 7 Nov 2026 have no choice saved: not included
   const loecTitle = (T) => String(T.v2ResolvedJobTitle || '').trim() || String(T.approvedJobTitle || '').trim();
   const loecLevel = (v) => { const t = String(v || '').trim(); if (!t || t.startsWith('jd:')) return ''; return t.split('|')[0].trim(); };
   // the centre decides the company the letter is issued under (CLC 5 Nov 2026)
@@ -1842,7 +1844,8 @@
       fixedAllowance: fa, otherAllowance: oa, fixedAllowanceFmt: lxMoney(fa), otherAllowanceFmt: lxMoney(oa), totalFixedFmt: lxMoney(base + fa + oa),
       jdReference: esc(T.v2JdReference || ''), jdLevel: esc(loecLevel(T.jobTitleLevel)),
       workingDays: esc(T.v2WorkingDays || ''), workingScheduleNote: esc(T.v2WorkingScheduleNote || ''), workingHoursText: parts.join(' and '),
-      weeklyHours: T.cmsWeeklyHours ? esc(T.cmsWeeklyHours) : '', appendix1: T.appendix1Text || '', appendices: Array.isArray(T.v2Appendices) ? T.v2Appendices : [],
+      weeklyHours: T.cmsWeeklyHours ? esc(T.cmsWeeklyHours) : '',
+      clauses: { ot: lxClause(T.cmsClauseOt), alProrate: lxClause(T.cmsClauseAlProrate), alExcess: lxClause(T.cmsClauseAlExcess) }, appendix1: T.appendix1Text || '', appendices: Array.isArray(T.v2Appendices) ? T.v2Appendices : [],
     };
   }
 
@@ -1900,6 +1903,7 @@
     else if (code === 'abn') add('5.3', 'Where required by an authorised event or project, operational scheduling may involve early call times, evenings, nights, weekends, public holidays, venue inspections, rehearsals, setup, live-event execution, dismantling, pack-down or authorised travel. Any mandatory time that qualifies as working time under Malaysian law shall be treated accordingly.');
     else add('5.3', 'Any authorised change to the normal schedule will be communicated through the applicable roster, instruction or written arrangement and administered according to Malaysian law and the Employee’s written terms.');
     add('5.4', `The Employee’s statutory overtime / additional-work treatment is based on the applicable legal category and written terms. HR classification: ${d.otCategory || 'to be determined in the HR record'}. Employees outside statutory payment coverage receive only such allowance, time-off or other arrangement as is expressly provided by their written terms or Company policy.`);
+    if (d.clauses.ot) add('5.5', 'Overtime is work beyond the normal hours of work that has been authorised in advance by the Employer and claimed through the Company’s overtime claim procedure. Where the Employee is covered by the overtime provisions of the Employment Act 1955, overtime is paid at not less than 1.5 times the hourly rate of pay on a normal working day, 2 times on a rest day and 3 times on a public holiday, subject to the statutory monthly limit. The hourly rate is the ordinary rate of pay divided by the normal hours of work, counted up to 8 hours a day.');
     H('6. WAGES, ALLOWANCES AND STATUTORY CONTRIBUTIONS');
     add('6.1', d.payBasis === 'hourly' ? `The Employee is paid a basic hourly rate of ${d.basicSalaryFmt} per hour (${d.salaryWords}). Wages are calculated from authorised recorded working time and paid within the statutory deadline through an approved financial institution, less lawful deductions. Fixed contractual allowances, if any, are monthly amounts stated in the salient terms.`
       : `The Employee is paid a basic salary of ${d.basicSalaryFmt} (${d.salaryWords}) per month. Fixed contractual allowance(s), if any, are stated in the salient terms. Wages are paid within the statutory deadline through an approved financial institution, less lawful deductions.`);
@@ -1913,6 +1917,7 @@
     add('7.2', 'Paid sick leave is 14 days for less than 2 years of service, 18 days for 2 years to less than 5 years, and 22 days for 5 years or more, plus 60 days paid hospitalisation leave where hospitalisation is necessary, subject to the Employment Act 1955 and valid certification requirements.');
     tbl('Table B — Statutory Sick / Hospitalisation Leave', '<tr><th>Continuous Service</th><th>Paid Sick Leave</th><th>Paid Hospitalisation Leave</th></tr><tr><td>&lt; 2 years</td><td>14 days</td><td>60 days</td></tr><tr><td>2 years to &lt; 5 years</td><td>18 days</td><td>60 days</td></tr><tr><td>5 years and above</td><td>22 days</td><td>60 days</td></tr>');
     add('7.3', 'The Employee is entitled to paid public holidays, maternity leave, paternity leave and other statutory leave in accordance with applicable Malaysian law. Any additional Company benefit is governed by the applicable Employee Handbook or written benefit policy.');
+    if (d.clauses.alProrate) add('7.4', 'Annual leave for an incomplete year of service, including the year in which employment begins or ends, is pro-rated by the number of completed months of service in that year, in accordance with Section 60E(1A) of the Employment Act 1955. A fraction of a day of one-half or more counts as one day.');
     H('8. FLEXIBLE WORKING ARRANGEMENT');
     if (code === 'hds') add('8.1', 'An employee may apply in writing for a flexible working arrangement in accordance with the Employment Act 1955. School-facing, child-facing and programme-delivery roles may have limited practical flexibility where physical presence, supervision, programme timing or safe delivery is an essential duty.');
     else if (code === 'abn') add('8.1', 'An employee may apply in writing for a flexible working arrangement in accordance with the Employment Act 1955. Client-facing, venue-facing and live-event roles may have limited practical flexibility where physical presence, call time, rehearsal, setup or project execution is an essential duty.');
@@ -1972,6 +1977,7 @@
     if (code === 'hds') add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return programme files, attendance or incident records, school/parent communications held for work, Company equipment, materials, documents, keys, devices and access credentials.');
     else if (code === 'abn') add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return project files, run sheets, client correspondence, venue passes, credentials, Company equipment, documents, devices, keys and system access.');
     else add('15.3', 'Serious misconduct may result in disciplinary action up to dismissal after due inquiry where required. On termination the Employee must complete reasonable handover and return Company property, records and access.');
+    if (d.clauses.alExcess) add('15.4', 'If, when employment ends, the Employee has taken more paid annual leave than earned up to the last day of employment, the excess days shall be treated as unpaid leave in the final month and deducted from the final wages at the unpaid-leave daily rate (monthly basic salary ÷ number of calendar days in the final month).');
     H('16. DISCIPLINE, GRIEVANCE AND GOOD-FAITH REPORTING');
     add('16.1', 'Disciplinary action is evidence-based and proportionate. The Employee will be informed of material allegations and given a reasonable opportunity to respond. The Company may use precautionary measures that are protective and do not themselves establish guilt.');
     add('16.2', 'The Employee may raise grievances and good-faith reports through the applicable Company process without prohibited retaliation.');
@@ -2044,6 +2050,7 @@
     if (editable) {
       if (!T.letterDate) T.letterDate = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
       if (!T.v2EmploymentType) T.v2EmploymentType = 'Permanent Full-Time';
+      if (!rec) ['cmsClauseOt', 'cmsClauseAlProrate', 'cmsClauseAlExcess'].forEach((k) => { if (T[k] === undefined) T[k] = true; });   // ticked by default on a new letter
       if (!T.v2ProbationMonths) T.v2ProbationMonths = '3';
       if (!T.v2ProbationNotice) T.v2ProbationNotice = '4';
       if (!T.v2ProbationNoticeUnit) T.v2ProbationNoticeUnit = 'weeks';
@@ -2118,6 +2125,10 @@
         <label class="fld"><span>Reporting to (title)</span><input data-k="reportingTitle" value="${v('reportingTitle')}"></label>
         <label class="fld"><span>OT / additional work category</span><select data-k="v2OtCategory">${o([['', 'HR determination required…'], ...LOEC_OT], T.v2OtCategory)}</select></label>
         <label class="fld"><span>Handbook</span><input data-k="v2Handbook" value="${v('v2Handbook')}"></label>
+        <fieldset class="fld fld-2"><legend>Optional clauses <small class="muted">— ticked by default on a new letter</small></legend>
+          <label class="chk"><input type="checkbox" data-k="cmsClauseOt" ${lxClause(T.cmsClauseOt) ? 'checked' : ''}> 5.5 Overtime rule (authorised in advance, 1.5× / 2× / 3×, hourly rate on up to 8 hours a day)</label>
+          <label class="chk"><input type="checkbox" data-k="cmsClauseAlProrate" ${lxClause(T.cmsClauseAlProrate) ? 'checked' : ''}> 7.4 Annual leave pro-rated in the joining / leaving year</label>
+          <label class="chk"><input type="checkbox" data-k="cmsClauseAlExcess" ${lxClause(T.cmsClauseAlExcess) ? 'checked' : ''}> 15.4 Leave taken beyond what was earned, on leaving, is unpaid leave</label></fieldset>
         <label class="fld fld-2"><span>Appendix 1 — Job Description <small class="muted">— filled from the JD; “Title: description” lines become the responsibilities list</small></span><textarea data-k="appendix1Text" rows="6">${v('appendix1Text')}</textarea></label>
       </div>`;
     };
@@ -2190,6 +2201,7 @@
       err('');
       if (submit) { const m = missing(); if (m.length) { err(`Fill in before sending for approval: ${m.join(', ')}.`); return false; } }
       const terms = { ...T, cmsSigningCompany: co };
+      ['cmsClauseOt', 'cmsClauseAlProrate', 'cmsClauseAlExcess'].forEach((k) => { terms[k] = lxClause(T[k]); });
       if (!terms.cmsWeeklyHours) { const w = weeklyDefault(); if (w) terms.cmsWeeklyHours = String(w); }
       if (lxOn(terms.v2Session2Enabled)) { let h = lxSpan(terms.finalFrom, terms.finalTo) + lxSpan(terms.v2Session2From, terms.v2Session2To); terms.v2DailyHours = h.toFixed(2); }
       else terms.v2DailyHours = lxSpan(terms.finalFrom, terms.finalTo).toFixed(2);
@@ -2302,6 +2314,19 @@
   }
 
   // ---------------------------------------------------------------- 3.3 + 3.4 offers & onboarding, hire
+  // Super Admin: where offer letters (LOEC) are made (PRI-017, v2026.11.07)
+  async function loecModeBox(box) {
+    if (!box || !isSuper()) return;
+    let v; try { v = (await API.rpc('cms_setting_get', { p_key: 'loec_builder' })) || {}; } catch (e) { return; }
+    const cmsOnly = v.mode === 'cms';
+    box.innerHTML = `<p class="small ${cmsOnly ? 'muted' : 'warn-box'}">${icon('lock')}Offer letters are made <b>${cmsOnly ? 'in the CMS only' : 'in the CMS and in MEG-EAF V2'}</b>. ${cmsOnly ? 'MEG-EAF V2 shows a notice and a link here, and cannot create new offer letters.' : ''}
+      <button type="button" class="btn sm ghost" data-lm>${cmsOnly ? 'Allow MEG-EAF V2 again' : 'CMS only'}</button></p>`;
+    $('[data-lm]', box).onclick = async () => {
+      if (!(await confirmBox('Where offer letters are made', cmsOnly ? 'MEG-EAF V2 will be able to create and issue offer letters again.' : 'Only the CMS will create and issue offer letters; MEG-EAF V2 shows a link here.', 'Change', false,
+        async () => { await API.rpc('cms_setting_set', { p_key: 'loec_builder', p_value: { ...v, mode: cmsOnly ? 'both' : 'cms' } }); }))) return;
+      loecModeBox(box);
+    };
+  }
   async function onboardingPage(item, el) {
     el.innerHTML = `${pageHead(item, eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost'))}<div id="on-body">${loading()}</div>`;
     let o;
@@ -2337,7 +2362,8 @@
             <td class="nowrap">${dShort(x.start)}</td><td><span class="st st-${esc(x.status)}">${esc(x.status)}</span></td><td class="nowrap">${hireBtn(`data-hire-p="${esc(x.person_id)}"`).replace('Hire…', 'Add to payroll…')}${o.can_hire && x.status === 'onboarding' ? ` <button type="button" class="btn sm ghost" data-nojoin="${esc(x.person_id)}" data-name="${esc(x.name)}">Did not join…</button>` : ''}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>Everyone is in payroll</p><span>Nothing to add.</span></div>'}
       </section>
-      <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Prepared and issued in the CMS (from the application) or in MEG-EAF V2; signed copy and stamp duty in MEG-EAF V2.</span></div>
+      <section class="card"><div class="card-head"><h3>Offer letters (LOEC)</h3><span class="muted small">Draft → Issued → Signed copy uploaded → Verified → Stamp → Completed. Prepared, approved and issued in the CMS (Applications › Prepare offer letter); signed copy, verification and stamp duty in MEG-EAF V2.</span></div>
+        <div id="on-loecmode"></div>
         ${o.offers.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Document</th><th>Status</th><th>Issued</th><th>Signed</th><th>Stamp duty</th><th>Original</th></tr></thead><tbody>
           ${o.offers.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td class="nowrap"><code>${esc(x.document_id || '—')}</code><small class="sub">rev ${esc(x.revision)}${x.jd_reference ? ` · ${esc(x.jd_reference)}` : ''}</small></td>
             <td>${esc(LOEC[x.status] || x.status)}</td><td class="nowrap">${dShort(x.issued_at)}</td>
@@ -2345,6 +2371,7 @@
             <td class="nowrap">${stampCell(x)}</td><td>${x.original_received ? '<span class="tag ok xs">Received</span>' : '<span class="muted">—</span>'}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty small"><p>No offer letters yet</p><span>Offer letters issued in MEG-EAF V2 are tracked here, with stamp-duty due dates.</span></div>'}
       </section>`;
+    loecModeBox($('#on-loecmode', el));
     const reload = () => { state.onb = null; loadRecruitSummary(); onboardingPage(item, el); };
     $$('[data-hire-h]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ handoff: b.dataset.hireH })) reload(); }));
     $$('[data-hire-p]', el).forEach((b) => b.addEventListener('click', async () => { if (await hireWindow({ person: b.dataset.hireP })) reload(); }));

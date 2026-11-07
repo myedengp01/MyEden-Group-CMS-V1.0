@@ -359,7 +359,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   On hire, the issued letter's working days, weekly hours, part-time marking, probation end, reporting line and allowances are applied (HR ticks each).
   Minimum wage warning and a check of the terms the letter needs before it can be sent for approval. Part-time sick leave the same as full time
   from 2026; part-time annual leave "same as full time" switched on from 2026. Old payroll companies ECC, TGED, WFE switched off.
-  Still open: clauses for AL pro-rating in the joining year, leave beyond what was earned on leaving, the OT rule (letter kept as it is for now).
+  Optional clauses (v2026.11.07, CLC 7 Nov 2026): 5.5 overtime rule, 7.4 annual leave pro-rated in the joining / leaving year (EA s.60E(1A)),
+  15.4 leave taken beyond what was earned is unpaid leave on leaving — tick boxes in Offer terms, ticked by default on a new letter (letters saved
+  before have none). MEG-EAF V2 switched off for offer letters: setting `loec_builder = cms` (Super Admin can change it on Offers & Onboarding);
+  MEG-EAF V2's HR page shows a notice and "Open offer letter in the CMS", hides Create / Mark Issued / New Revision, and the database refuses
+  new offer letter records made outside the CMS. Signed copy, verification and stamp duty stay in MEG-EAF V2 until PRI-010 E1.
 - **Idea (CLC):** prepare the combined Letter of Offer & Contract of Employment (LOEC) for a new applicant directly from the CMS application window.
 - **Today:** the LOEC is built in MEG-EAF V2 (`v2-hr-extension.js`, "Combined Letter of Offer & Employment Contract, Version 2.0"); the CMS only tracks
   it (Offers & Onboarding: Draft → Issued → Signed copy → Verified → Stamp → Completed). `eaf_loec_records` holds **no records**: the system LOEC
@@ -416,3 +420,10 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   - Optional: a draft / final copy tied to the payroll month's approval (DRAFT watermark until finalised), and signed-off names as in the payroll report.
 - **Decisions needed when built:** which columns (above is a starting list), whether salary figures appear (who may see it), one report per
   company or one for all, and whether it is attached to the monthly payroll report pack.
+
+## PRI-019 · Invite to the CMS — recorded 2026-11-07
+- **Idea (agreed with CLC):** HR invites a person to the CMS from their profile or Self-service Access, or "Invite all without a login" in bulk;
+  the person gets an email to set a password. On first sign-in the login is linked to their own record, gets the Staff role for their own
+  company and the default self-service parts, and their approver comes from "reports to". Higher roles stay granted by hand.
+- **Defaults setting:** which self-service parts new staff get, chosen once by CLC.
+- **Why:** staff will make claims in the CMS (PRI-010 F1); today a login can only be made in the forms portal and starts with no access.
