@@ -241,6 +241,12 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   claim received (claimant) + new claim (SCF processors from Claim permissions: process / mark paid / Form Admin) on submit; paid (claimant) when
   marked paid in the CMS. Office users with SCF create (Admin, Super Admin or granted) use "New staff claim for someone" in the Action Center.
   **F2** (side by side) starts now; then OTCF, MTCF, PRFAF, TEC the same way; **F3** form apps read-only.
+- **F1 OTCF built (v2026.11.07-18:50):** My Claims › New Overtime (`#/me/claims/otcf`). Entry list (phone-friendly) instead of the 31-row month grid:
+  each entry = day, from, to, meal break, claim type (Auto: Sat Off Day, Sun Rest Day, public holiday from Payroll › Holidays — the list is empty
+  today, so staff tick PH themselves until HR fills it — else Normal), PH, remarks; several entries a day. The server builds the OTCF app's month
+  sheet (one row per day, extra times as `slot` rows, same field names and number formats), refuses overlapping times on a day and a meal break
+  longer than the time, and warns on > 12 h a day (with working hours on a Normal day) and > 104 h a month. Same serial format, `person_id` set,
+  approval unchanged (Action Center / OTCF app; no self-approval; approver / admin claims need another admin); approvers emailed via `otcf-notify`.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

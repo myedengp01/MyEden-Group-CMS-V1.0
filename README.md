@@ -97,6 +97,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 69. `20261107_cms_staff_role_selfservice_only.sql` — Staff role keeps only Employment Act & Calculators; staff use My Home and their self-service parts
 70. `20261107_cms_scf_new.sql` — F1: `cms_scf_context / get / save / discard / settings_set`, `cms_scf_notify_info` (service role), setting `scf_settings`, self-service part `claims_co`; edge function `scf-notify` (source in `supabase/functions/scf-notify`)
 71. `20261107_cms_my_claims_no_approval_labels.sql`, `20261107_cms_claim_settings_scf.sql` — My Claims labels for forms without approval; receipts setting in Claim settings
+72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
 
@@ -148,6 +149,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.07-18:50** — PRI-010 F1: **staff make Overtime claims (OTCF) in the CMS** (My Claims › New Overtime): one entry per overtime time (day, from, to, meal break, claim type auto from the day, public holiday from the payroll holiday list, remarks; several a day), hours worked out, overlapping times refused, Employment Act reminders (12 h a day, 104 h a month), saved as you go, submit → approval in the Action Center / OTCF app with the same rules and emails. “New claim for someone” in the Action Center now offers SCF or OTCF.
 - **v2026.11.07-18:10** — PRI-010 **F1: staff make SCF claims in the CMS** (My Claims › New Staff Claim): claimant and preparer from the login, own company (others with the self-service part “Claims: other companies”), period, Online Transfer to the bank on their payroll record or Cash, lines with receipt photos (camera on phones), saved as they go, submit → P/AC processing in the Action Center, printable copy with receipts, returned claims edited and sent again. Same SCF table, serials and receipt storage as the SCF app. Emails: claim received (claimant), new claim (SCF processors), paid (claimant). Admins: receipts required on/off (Claim settings) and “New staff claim for someone”.
 - **v2026.11.07-17:20** — **Handbook reader in the CMS** (PRI-010, MEG-EAF V2 part): My Handbook › Read and acknowledge opens the handbook inside the CMS (`handbook/`) with the CMS sign-in — no MEG-EAF V2 login. Same handbook records and steps as MEG-EAF V2 (sections read, receipt signature, safeguarding and Appendix B where needed, final acknowledgement; English, Bahasa Malaysia and Chinese), so HR's reading status is unchanged. Works on phones.
 - **v2026.11.07 (database only)** — The **Staff** role no longer opens office pages (group dashboard, everyone's claims, leave requests, handbook admin): staff see My Home, their switched-on self-service parts and Employment Act & Calculators.

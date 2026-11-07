@@ -1293,15 +1293,17 @@
   async function approvalsPage(item, el) {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const f = { tab: q.get('tab') || 'action', form: q.get('form') || 'all', co: 'all', stage: 'all', pay: 'all', from: '', to: '', sort: 'new', q: '' };
-    el.innerHTML = `${pageHead(item, can('scf', 'C') ? `<button type="button" class="btn" id="ac-behalf">${icon('plus')}New staff claim for someone</button>` : '')}<div id="ac-tiles"></div>
+    const behalfForms = [['scf', 'scf', 'Staff claim (SCF)'], ['otcf', 'overtime', 'Overtime (OTCF)']].filter(([, m]) => can(m, 'C'));
+    el.innerHTML = `${pageHead(item, behalfForms.length ? `<button type="button" class="btn" id="ac-behalf">${icon('plus')}New claim for someone</button>` : '')}<div id="ac-tiles"></div>
       <div class="tabs" role="tablist" id="ac-tabs"></div><div id="ac-body">${loading()}</div><div id="ac-set"></div>`;
     let rows = [];
     $('#ac-behalf', el)?.addEventListener('click', async () => {
       let ppl = []; try { ppl = (await loadPeople()).filter((p) => p.status !== 'former'); } catch (e) { toast(e.message, 'err'); return; }
-      await modal({ title: 'New staff claim (SCF) for someone', ok: 'Start the claim',
-        body: `<label class="fld"><span>Who is claiming</span><select name="p" required><option value="">— choose —</option>${ppl.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employee_id ? ` · ${esc(p.employee_id)}` : ''}</option>`).join('')}</select></label>
+      await modal({ title: 'New claim for someone', ok: 'Start the claim',
+        body: `<label class="fld"><span>Form</span><select name="f">${behalfForms.map(([k, , l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Who is claiming</span><select name="p" required><option value="">— choose —</option>${ppl.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employee_id ? ` · ${esc(p.employee_id)}` : ''}</option>`).join('')}</select></label>
           <p class="muted small">You prepare it and attach the receipts; it is filed under their name, and they see it in My Claims.</p>`,
-        onOk: (f) => { if (!f.p.value) throw new Error('Choose the person.'); location.hash = `#/me/claims/scf?for=${f.p.value}`; } });
+        onOk: (f) => { if (!f.p.value) throw new Error('Choose the person.'); location.hash = `#/me/claims/${f.f.value}?for=${f.p.value}`; } });
     });
     const sup = isSuper();
     const tabs = [['action', 'Action required'], ['all', 'All claims'], ['proc', 'P/AC processing'], ['mine', 'My claims'], ['other', 'Other tasks']];
@@ -3858,6 +3860,148 @@
   }
   const private_scfCode = (c) => ({ HD: 'HDS', ABP: 'ABN' }[String(c || '').toUpperCase()] || String(c || '').toUpperCase());
 
+  // ================================================================ PRI-010 F1 · new Overtime claim (OTCF) made in the CMS (v2026.11.07)
+  // One entry per overtime time (several a day allowed); the server builds the OTCF month sheet (one row a day, extra times as slots),
+  // works out the hours and warns on the Employment Act limits. Approval as before (Action Center or the OTCF app).
+  const OT_TYPES = ['Normal', 'Off Day', 'Rest Day', 'Public Holiday'];
+  const otMin = (t) => { const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return m ? +m[1] * 60 + +m[2] : null; };
+  const otHrs = (e) => { const a = otMin(e.from), b = otMin(e.to); if (a === null || b === null || a === b) return 0; return Math.max(0, ((b - a + 1440) % 1440) / 60 - (parseFloat(e.meal) || 0)); };
+  async function meOtcfPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    let id = q.get('id') || null; const forPerson = q.get('for') || null;
+    el.innerHTML = `${pageHead(item)}<div id="ot-body">${loading()}</div>`;
+    let C; let row = null;
+    try {
+      if (id) row = await API.rpc('cms_otcf_get', { p_id: id });
+      C = await API.rpc('cms_otcf_context', { p_person: row?.person && row.person !== state.access?.person?.id ? row.person : forPerson });
+    } catch (e) { $('#ot-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    if (row && !row.editable) { otcfPrint(el, row, () => { location.hash = '#/me/claims'; }); return; }
+    const now = new Date(Date.now() + 8 * 36e5);
+    const prevM = now.getUTCDate() <= 10 ? (now.getUTCMonth() + 11) % 12 : now.getUTCMonth();   // early in the month: last month
+    const D = {
+      company: row ? ((C.companies.find((c) => c.otcf === row.company_code) || {}).code || C.company) : C.company,
+      month: row?.month || prevM + 1, year: row?.year || (prevM > now.getUTCMonth() ? now.getUTCFullYear() - 1 : now.getUTCFullYear()),
+      working_from: row?.working_hour_from || C.working_from, working_to: row?.working_hour_to || C.working_to,
+      department: row?.department || C.department || '', designation: row?.designation || C.designation || '',
+      entries: (row?.line_items || []).filter((x) => x.from || x.to || x.remarks).map((x) => ({ date: +x.date, from: x.from || '', to: x.to || '', meal: x.mealTime && +x.mealTime ? x.mealTime : '', claim_type: x.claimType || '', ph: !!x.ph, remarks: x.remarks || '' })),
+    };
+    const hol = new Map((C.holidays || []).map((h) => [String(h.date).slice(0, 10), h.name]));
+    const days = () => new Date(Date.UTC(D.year, D.month, 0)).getUTCDate();
+    const dateOf = (d) => `${D.year}-${String(D.month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const autoType = (d) => { const iso = dateOf(d); if (hol.has(iso)) return 'Public Holiday'; const w = new Date(`${iso}T00:00:00Z`).getUTCDay(); return w === 6 ? 'Off Day' : w === 0 ? 'Rest Day' : 'Normal'; };
+    let saving = null; let dirty = false; let timer = null; let warns = [];
+    const body = $('#ot-body', el);
+    const total = () => D.entries.reduce((s, e) => s + otHrs(e), 0);
+    const payload = () => ({ person_id: C.behalf ? C.id : null, company: D.company, month: D.month, year: D.year, working_from: D.working_from, working_to: D.working_to,
+      department: D.department, designation: D.designation, entries: D.entries.filter((e) => e.date).map((e) => ({ ...e, meal: e.meal || '0' })) });
+    const status = (t, tone) => { const s = $('#ot-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    const showWarn = () => { const w = $('#ot-warn', body); if (w) w.innerHTML = warns.length ? `<div class="warn-box small"><b>Please check (Employment Act limits):</b><ul>${warns.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>You can still submit; the approver sees this too.</div>` : ''; };
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => {
+        const r = await API.rpc('cms_otcf_save', { p_id: id, p: payload(), p_submit: submit });
+        if (!id) { id = r.id; history.replaceState(null, '', `#/me/claims/otcf?id=${id}`); }
+        dirty = false; warns = r.warnings || []; showWarn();
+        status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${r.serial_no}`); $('#ot-serial', body).textContent = r.serial_no;
+        return r;
+      })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`The claim could not be saved (${e.message}). Leave anyway?`); } } };
+    const dayOpts = (cur) => Array.from({ length: days() }, (_, i) => i + 1).map((d) => { const w = new Date(`${dateOf(d)}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
+      return `<option value="${d}" ${+cur === d ? 'selected' : ''}>${d} ${w}${hol.has(dateOf(d)) ? ' · PH' : ''}</option>`; }).join('');
+    const entryHtml = (e, i) => `<div class="scf-line card ot-e" data-i="${i}">
+        <div class="scf-lh"><b>${e.date ? new Date(`${dateOf(e.date)}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' }) : `Entry ${i + 1}`}</b>
+          <span class="small"><b>${otHrs(e).toFixed(2)} h</b></span><button type="button" class="icon-btn sm" data-rm="${i}" aria-label="Remove entry ${i + 1}">${icon('x')}</button></div>
+        <div class="scf-g">
+          <label class="fld"><span>Day</span><select data-k="date"><option value="">— day —</option>${dayOpts(e.date)}</select></label>
+          <label class="fld"><span>Claim type</span><select data-k="claim_type">${['', ...OT_TYPES].map((t) => `<option value="${t}" ${(e.claim_type || '') === t ? 'selected' : ''}>${t || `Auto${e.date ? ` (${autoType(e.date)})` : ''}`}</option>`).join('')}</select></label>
+          <label class="fld"><span>From</span><input type="time" data-k="from" value="${esc(e.from)}"></label>
+          <label class="fld"><span>To</span><input type="time" data-k="to" value="${esc(e.to)}"></label>
+          <label class="fld"><span>Meal break (hours)</span><input type="number" inputmode="decimal" step="0.25" min="0" data-k="meal" value="${esc(e.meal || '')}" placeholder="0"></label>
+          <label class="fld chk-fld"><span>Public holiday</span><label class="chk"><input type="checkbox" data-k="ph" ${e.ph ? 'checked' : ''}> Yes</label></label>
+          <label class="fld wide"><span>Remarks <small class="muted">(what the overtime was for; or a note like AL for a day without overtime)</small></span><input type="text" data-k="remarks" value="${esc(e.remarks)}" maxlength="200"></label>
+        </div></div>`;
+    function draw() {
+      body.innerHTML = `<section class="card scf-head">
+          <div class="scf-who"><b>${esc(C.name)}</b><small class="sub">${esc(C.employee_id || '')}${C.behalf ? ` · prepared by ${esc(C.preparer)}` : ''}</small>${C.behalf ? '<span class="tag warn xs">On behalf</span>' : ''}</div>
+          <div class="scf-g">
+            ${C.companies.length > 1 ? `<label class="fld wide"><span>Company</span><select data-h="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === D.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`
+              : `<div class="fld wide"><span>Company</span><b>${esc(C.companies[0]?.name || C.company)}</b></div>`}
+            <label class="fld"><span>Month</span><select data-h="month">${MONTHS.map((m, i) => `<option value="${i + 1}" ${+D.month === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+            <label class="fld"><span>Year</span><input type="number" data-h="year" value="${esc(D.year)}" min="2024" max="2099"></label>
+            <label class="fld"><span>Working hours from</span><input type="time" data-h="working_from" value="${esc(D.working_from)}"></label>
+            <label class="fld"><span>to</span><input type="time" data-h="working_to" value="${esc(D.working_to)}"></label>
+            <label class="fld"><span>Department</span><input type="text" data-h="department" value="${esc(D.department)}" maxlength="120"></label>
+            <label class="fld"><span>Designation</span><input type="text" data-h="designation" value="${esc(D.designation)}" maxlength="120"></label>
+          </div>
+          <p class="small muted">Serial no. <code id="ot-serial">${esc(row?.serial_no || 'given when first saved')}</code> · <span id="ot-st">${id ? 'Saved' : 'Not saved yet'}</span></p></section>
+        <div id="ot-lines">${D.entries.map(entryHtml).join('') || '<p class="muted small">No overtime added yet.</p>'}</div>
+        <div class="btn-row"><button type="button" class="btn" data-add>${icon('plus')}Add overtime</button></div>
+        <div id="ot-warn"></div>
+        <section class="card scf-foot"><div class="scf-tot">Total overtime <b id="ot-total">${total().toFixed(2)} h</b></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-submit>${icon('check-circle')}Submit for approval</button><button type="button" class="btn" data-save>Save draft</button>
+            ${id && !row?.submitted_at ? '<button type="button" class="btn ghost danger-txt" data-discard>Discard draft</button>' : ''}</div>
+          <p class="muted small">Hours = From → To (past midnight is fine) less the meal break. Claim type “Auto” follows the day: Saturday Off Day, Sunday Rest Day, public holiday, otherwise Normal. After you submit, your approver decides it and you get an email.</p></section>`;
+      showWarn();
+    }
+    draw();
+    const sortEntries = () => D.entries.sort((a, b) => (a.date || 99) - (b.date || 99) || String(a.from).localeCompare(String(b.from)));
+    body.addEventListener('input', (e) => {
+      const i = e.target.closest('[data-i]'); const k = e.target.dataset.k; const h = e.target.dataset.h;
+      if (i && k) { const en = D.entries[+i.dataset.i]; en[k] = k === 'ph' ? e.target.checked : k === 'date' ? +e.target.value || '' : e.target.value;
+        $('.scf-lh .small b', i).textContent = `${otHrs(en).toFixed(2)} h`; $('#ot-total', body).textContent = `${total().toFixed(2)} h`; later(); }
+      else if (h) { D[h] = ['month', 'year'].includes(h) ? +e.target.value : e.target.value; later(); }
+    });
+    body.addEventListener('change', (e) => {
+      const k = e.target.dataset.k; const h = e.target.dataset.h;
+      if (k === 'date' || k === 'ph' || k === 'claim_type') { if (k === 'date') { const en = D.entries[+e.target.closest('[data-i]').dataset.i]; if (en.date && hol.has(dateOf(en.date))) en.ph = true; sortEntries(); } draw(); later(); }
+      if (h === 'month' || h === 'year') { const n = days(); D.entries = D.entries.filter((x) => !x.date || x.date <= n); draw(); later(); }
+    });
+    body.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-add]')) {
+        const last = D.entries[D.entries.length - 1];
+        D.entries.push({ date: '', from: last?.from || '', to: last?.to || '', meal: '', claim_type: '', ph: false, remarks: '' });
+        draw(); const els = $$('.ot-e', body); els[els.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); $('select[data-k="date"]', els[els.length - 1])?.focus(); return;
+      }
+      const rm = e.target.closest('[data-rm]');
+      if (rm) { D.entries.splice(+rm.dataset.rm, 1); draw(); later(); return; }
+      if (e.target.closest('[data-save]')) { clearTimeout(timer); try { await save(); toast('Draft saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (e.target.closest('[data-discard]')) {
+        if (!(await confirmBox('Discard this draft?', 'It is removed from My Claims.', 'Discard', true))) return;
+        clearTimeout(timer); dirty = false;
+        try { await API.rpc('cms_otcf_discard', { p_id: id }); toast('Draft discarded'); location.hash = '#/me/claims'; } catch (x) { toast(x.message, 'err'); }
+        return;
+      }
+      if (e.target.closest('[data-submit]')) {
+        if (D.entries.some((x) => !x.date)) { toast('Choose the day for every entry (or remove it).', 'err'); return; }
+        clearTimeout(timer);
+        try { await save(); } catch (x) { toast(x.message, 'err'); return; }
+        const ok = await confirmBox('Submit this claim for approval?', `<b>${esc(C.name)}</b> · ${esc(MONTHS[D.month - 1])} ${esc(D.year)} · <b>${total().toFixed(2)} hours</b>${warns.length ? `<br><span class="warn-txt small">${warns.length} Employment Act reminder${warns.length > 1 ? 's' : ''} (shown on the page); the approver sees them too.</span>` : ''}<br><small class="muted">After submitting you cannot change it.</small>`, 'Submit', false);
+        if (!ok) return;
+        try {
+          const r = await save(true);
+          API.sb().functions.invoke('otcf-notify', { body: { event: 'submitted', submission_id: r.id } }).catch(() => {});
+          window.CMS_LEAVE_GUARD = null; toast(`Claim ${r.serial_no} submitted for approval`);
+          otcfPrint(el, await API.rpc('cms_otcf_get', { p_id: r.id }), () => { location.hash = '#/me/claims'; });
+        } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    });
+  }
+  function otcfPrint(el, r, back) {
+    const items = (r.line_items || []).filter((x) => x.from || x.to || x.remarks || parseFloat(x.actualHrs) > 0);
+    const st = { draft: 'Draft (not submitted)', submitted: 'Waiting for approval', approved: `Approved${r.approved_by_name ? ` by ${r.approved_by_name}` : ''}`, disapproved: `Not approved${r.disapproval_reason ? `: ${r.disapproval_reason}` : ''}` }[r.status] || r.status;
+    const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>OVERTIME CLAIM FORM (OTCF)</h2><p>${esc(r.company_code)} · ${esc(MONTHS[(r.month || 1) - 1])} ${esc(r.year)}</p></div><div class="scf-sn"><code>${esc(r.serial_no)}</code><small>${esc(r.submission_date || '')}</small></div></div>
+        <dl class="scf-kv"><div><dt>Name</dt><dd>${esc(r.emp_name)}</dd></div><div><dt>Department / designation</dt><dd>${esc([r.department, r.designation].filter(Boolean).join(' · ') || '—')}</dd></div>
+          <div><dt>Working hours</dt><dd>${esc(r.working_hour_from || '')} – ${esc(r.working_hour_to || '')}</dd></div><div><dt>Status</dt><dd>${esc(st)}</dd></div></dl>
+        <table class="data scf-pt"><thead><tr><th>Date</th><th>Day</th><th>PH</th><th>Claim type</th><th>From</th><th>To</th><th class="num">Total</th><th class="num">Meal</th><th class="num">Actual</th><th>Remarks</th></tr></thead>
+          <tbody>${items.map((x) => `<tr><td>${x.slot ? '↳' : esc(x.date)}</td><td>${x.slot ? '' : esc(String(x.day || '').slice(0, 3))}</td><td>${x.ph && !x.slot ? '✓' : ''}</td><td>${x.slot ? '' : esc(x.claimType || '')}</td><td>${esc(x.from)}</td><td>${esc(x.to)}</td><td class="num">${esc(x.totalHrs || '')}</td><td class="num">${esc(x.mealTime || '')}</td><td class="num">${esc(x.actualHrs || '')}</td><td>${esc(x.remarks || '')}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="8"><b>TOTAL OVERTIME (HOURS)</b></td><td class="num"><b>${Number(r.total_hours || 0).toFixed(2)}</b></td><td></td></tr></tfoot></table>
+        <p class="small muted">Made in the MyEden Group CMS.${r.pdf_url ? ' The signed PDF is attached to the approval email.' : ''}</p></section>`;
+    docView(el, `OTCF ${r.serial_no}`, [sheet], back);
+  }
+
   const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'] };
   async function meClaimsPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="mc-body">${loading()}</div>`;
@@ -3868,18 +4012,18 @@
     const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
     const draw = () => {
       const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
-      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (k === 'scf' ? `<a class="btn primary" href="#/me/claims/scf">${icon('plus')}New ${esc(l)}</a>`
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (k === 'scf' || k === 'otcf' ? `<a class="btn primary" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
           : `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`)).join('')}</div>
         <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
-          ${list.map((r) => `<tr${r.form === 'scf' ? ` class="click" data-scf="${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${r.form === 'scf' && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/scf?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
+          ${list.map((r) => `<tr${['scf', 'otcf'].includes(r.form) ? ` class="click" data-scf="${esc(r.form)}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${['scf', 'otcf'].includes(r.form) && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(r.form)}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
             <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
             <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
               ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff claims (SCF) are made here in the CMS.</span></div>'}</section>
+          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF) and overtime (OTCF) claims are made here in the CMS.</span></div>'}</section>
         <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
-      $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (!e.target.closest('a')) location.hash = `#/me/claims/scf?id=${tr.dataset.scf}`; }));
+      $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.closest('a')) return; const [fm, cid] = tr.dataset.scf.split('|'); location.hash = `#/me/claims/${fm}?id=${cid}`; }));
     };
     draw();
   }
@@ -6701,7 +6845,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
