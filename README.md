@@ -99,6 +99,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 71. `20261107_cms_my_claims_no_approval_labels.sql`, `20261107_cms_claim_settings_scf.sql` — My Claims labels for forms without approval; receipts setting in Claim settings
 72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 73. `20261107_cms_mtcf_new.sql` — F1 MTCF: `cms_mtcf_context / get / save` (+ `_fix_year`)
+75. `20261108_cms_purchasing_r1.sql` — Purchasing & Petty Cash (new PRFAF) release 1: `pr_bank_accounts`, `pr_categories`, `pr_events`, `pr_requests`, `pr_items`, double-entry `pr_journal` / `pr_journal_lines` (locked after posting), modules `purchasing` / `purchasing.finance` / `purchasing.settings`, `cms_pr_*` functions, `pr-files` bucket (applied as parts a, b, c + `_available`)
 74. `20261107_cms_tec_tutors.sql` — F1 TEC V2 and tutors: `cms_tutors`, `cms_tutor_links`, Tutor role, `cms_tutors_list / tutor_save / tutor_invite_prepare / finish`, `cms_tec_context / get / mine / save / discard / template_save / settings_set` (+ `_save_fix_pages`, `_save_standards`)
 
 Payroll data copied from MyPayroll V2.0 (Phase 2) is described in `db/payroll/README.md`.
@@ -151,6 +152,16 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.08-15:00** — PRI-010 F1: **Purchasing & Petty Cash (the new PRFAF), release 1.** New menu group: Purchase Requests, Events &
+  Budgets, Books & Balances, Settings. A purchase request (company, department, event, category, items with photos, quotations, needed-by,
+  urgency; paid as advance, direct to supplier, or claim back) goes to **Finance** → approval by amount (≤ RM 1,000 Finance · above: a Director ·
+  above RM 5,000: both Directors; nobody approves their own; the approver may cut the amount) → **Finance releases** from a company account (last 4
+  digits only) with the transfer reference and slip → the purchaser confirms receipt. Each purchaser keeps a **petty-cash balance per company**;
+  a new request uses the free balance first (balance already committed to open requests is not reused). Every release is a balanced double-entry
+  posting (petty cash / expense vs bank) tagged with company, department and event, and cannot be edited. Events have budgets (staff propose,
+  Admin / Directors approve). Settings: limits, quotations (1 from RM 1,000 · 3 from RM 5,000), tolerance %, settle days, bank accounts, 22
+  expense categories, members (default: HQ staff; Admin adds, sets Finance). Emails via `pr-notify`. Settlement with receipts, statements,
+  reports and year-end closing: release 2. The old MEG-PRFAF app is unchanged for now.
 - **v2026.11.07-21:10** — PRI-010 F1: **tuition claims (TEC V2) in the CMS.** Staff teachers: My Claims › New Tuition (TEC). The MEG-TEC-V2 page
   layout is kept: a page per course (company MEG / MEH, month, course, standards, optional time), students with 10 class days and 10 replacement days
   (weekends marked) and the monthly fee; venue fee = Admin's % (Action Center › Claim settings, 5 % now), net pay = fee − venue. “More students, same

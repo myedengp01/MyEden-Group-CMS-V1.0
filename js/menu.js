@@ -75,6 +75,13 @@ window.CMS_MENU = [
       { route: 'forms/tec', label: 'Teacher Tuition Claims (TEC)', phase: 1, live: true, source: 'MEG-TEC-V2', desc: "Teachers' monthly tuition and enrichment class payment claims." },
       { route: 'forms/prfaf', label: 'Purchase & Funding (PRFAF)', phase: 1, live: true, source: 'MEG-PRFAF', desc: 'Purchase requests and funding applications with company and event ledgers.' },
     ] },
+    { group: 'Purchasing & Petty Cash', icon: 'box', items: [
+      { route: 'purchasing', label: 'Purchase Requests', phase: 4, live: true, desc: 'Purchase requests (new PRFAF): request a budget, Finance review, approval by amount, funds released from the company account, petty cash per purchaser.' },
+      { route: 'purchasing/pr', label: 'Purchase Request', phase: 4, live: true, hidden: true, desc: 'One purchase request: items, quotations, approval and release.' },
+      { route: 'purchasing/events', label: 'Events & Budgets', phase: 4, live: true, desc: 'Annual dinner, sports day, graduation and other occasions with a budget; requests linked to them count against it.' },
+      { route: 'purchasing/books', label: 'Books & Balances', phase: 4, live: true, desc: 'Double-entry books of purchasing: every release, petty-cash balances per purchaser and money paid out per bank account.' },
+      { route: 'purchasing/settings', label: 'Settings', phase: 4, live: true, desc: 'Approval limits, quotations, tolerance, company bank accounts, expense categories and purchasing members.' },
+    ] },
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
       { route: 'payroll', label: 'Monthly Payroll', phase: 6, live: true, desc: 'Each month\'s payroll: hours, overtime, allowances and deductions, EPF / SOCSO / EIS and PCB, then save, finalise and (with permission) reopen.' },
       { route: 'payroll/reports', label: 'Payslips & Reports', phase: 6, live: true, desc: 'From finalised months: payslips, monthly summary, payment list, EPF, SOCSO & EIS and PCB lists, year to date and EA forms. Print, save as PDF or download Excel.' },
@@ -136,7 +143,7 @@ window.CMS_SOURCES = {
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
   'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', 'people/tutors': 'tutors', tutor: 'tutor_self', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
-  'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf',
+  'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf', purchasing: 'purchasing', 'purchasing/pr': 'purchasing', 'purchasing/events': 'purchasing', 'purchasing/books': 'purchasing.finance', 'purchasing/settings': 'purchasing.settings',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
   'leave/al-calculator': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', 'leave/audit': 'leave', 'leave/kpi': 'leave', time: 'payroll', 'time/part-time': 'payroll', 'time/hours': 'people',

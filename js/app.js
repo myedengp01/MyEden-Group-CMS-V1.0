@@ -4385,6 +4385,419 @@
     draw();
   }
 
+  // ================================================================ Purchasing & Petty Cash (new PRFAF), release 1 (v2026.11.08)
+  // Purchase Request → Finance review → approval by amount (Finance ≤ limit · a Director · both Directors) → Finance releases from a company
+  // account (posted to the double-entry books) → purchaser confirms receipt → purchasing. Each purchaser keeps a petty-cash balance per company;
+  // a new request uses the free balance first. Settlement, statements, reports and year-end closing: release 2.
+  const prBucket = () => API.sb().storage.from('pr-files');
+  const PR_ST = { draft: ['Draft', ''], finance: ['With Finance', 'warn'], directors: ['With Director(s)', 'warn'], approved: ['Approved · to release', 'blue'],
+    released: ['Funds released', 'blue'], purchasing: ['Purchasing', 'blue'], settlement: ['Settlement sent', 'warn'], closed: ['Closed', 'ok'],
+    returned: ['Returned for changes', 'bad'], disapproved: ['Disapproved', 'bad'], cancelled: ['Cancelled', ''] };
+  const prTag = (s) => `<span class="tag ${PR_ST[s]?.[1] || ''} xs">${esc(PR_ST[s]?.[0] || s)}</span>`;
+  const PR_PAY = { advance: 'Advance to me (I buy)', supplier: 'Finance pays the supplier', reimburse: 'I already paid (claim back)' };
+  const PR_LEVEL = { finance: 'Finance', director: 'a Director', both: 'both Directors' };
+  const prLevel = (amt, S) => (amt <= Number(S.finance_limit) ? 'finance' : amt <= Number(S.dual_limit) ? 'director' : 'both');
+  const prNotify = (mail, id) => { if (mail) API.sb().functions.invoke('pr-notify', { body: { event: mail, request_id: id } }).catch(() => {}); };
+  const prThumbs = new Map();
+  async function prUrl(path) { if (prThumbs.has(path)) return prThumbs.get(path); const { data } = await prBucket().createSignedUrl(path, 3600); const u = data?.signedUrl || ''; prThumbs.set(path, u); return u; }
+  async function prUpload(id, file, kind) {
+    const isImg = /^image\//.test(file.type);
+    if (!isImg && file.type !== 'application/pdf') throw new Error('Use a photo or a PDF.');
+    if (file.size > 10 * 1024 * 1024) throw new Error('The file is over 10 MB.');
+    const body = isImg ? (await scfShrink(file)).blob : file;
+    const path = `${id}/${kind}-${Date.now()}${isImg ? '.jpg' : '.pdf'}`;
+    const { error } = await prBucket().upload(path, body, { contentType: isImg ? 'image/jpeg' : 'application/pdf', upsert: false });
+    if (error) throw new Error(`Upload failed: ${error.message}`);
+    return path;
+  }
+  const prOpenFile = async (path) => { const u = await prUrl(path); if (u) window.open(u, '_blank', 'noopener'); };
+  let PRC = null;   // purchasing context of this visit
+  const prCtx = async (fresh) => { if (!PRC || fresh) PRC = await API.rpc('cms_pr_context'); return PRC; };
+
+  async function prListPage(item, el) {
+    let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
+    const R = C.roles; const seesAll = R.books || R.director || R.settings;
+    const f = { v: R.finance || R.director ? 'queue' : 'mine', q: '' };
+    el.innerHTML = `${pageHead(item, R.member ? `<a class="btn primary" href="#/purchasing/pr">${icon('plus')}New purchase request</a>` : '')}
+      ${R.member ? `<div class="pr-bal">${C.companies.filter((c) => (C.floats || {})[c.code] !== undefined || Number((C.available || {})[c.code])).map((c) => `<span class="chip">Petty cash ${esc(c.code)}: <b>${money((C.available || {})[c.code])}</b> free${Number((C.floats || {})[c.code]) !== Number((C.available || {})[c.code]) ? ` <small>(${money((C.floats || {})[c.code])} held)</small>` : ''}</span>`).join('') || '<span class="muted small">No petty cash with you yet.</span>'}</div>` : ''}
+      <div id="prl-body">${loading()}</div>`;
+    const lists = {};
+    async function load(v) { if (!lists[v]) lists[v] = await API.rpc('cms_pr_list', { p_scope: v }); return lists[v]; }
+    async function draw() {
+      let rows; try { rows = await load(f.v); } catch (e) { $('#prl-body', el).innerHTML = errorCard(e.message); return; }
+      const ql = f.q.toLowerCase(); const list = rows.filter((r) => !ql || `${r.pr_no} ${r.purpose} ${r.requester} ${r.event || ''}`.toLowerCase().includes(ql));
+      const nQ = lists.queue ? lists.queue.length : null;
+      $('#prl-body', el).innerHTML = `<section class="card"><div class="toolbar"><div class="seg">
+          ${R.member ? `<button type="button" data-v="mine" class="${f.v === 'mine' ? 'on' : ''}">Mine</button>` : ''}
+          ${R.finance || R.director ? `<button type="button" data-v="queue" class="${f.v === 'queue' ? 'on' : ''}">Needs me${nQ ? ` <span>${nQ}</span>` : ''}</button>` : ''}
+          ${seesAll ? `<button type="button" data-v="all" class="${f.v === 'all' ? 'on' : ''}">All</button>` : ''}</div>
+          <input type="search" class="search" id="prl-q" placeholder="Search PR no., purpose, name or event" value="${esc(f.q)}" aria-label="Search requests"></div>
+        ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Request</th>${f.v === 'mine' ? '' : '<th>Purchaser</th>'}<th class="num">Amount (RM)</th><th>Status</th><th>Needed by</th></tr></thead><tbody>
+          ${list.map((r) => `<tr class="click" data-id="${esc(r.id)}" tabindex="0"><td><b>${esc(r.pr_no)}</b>${r.urgency === 'urgent' ? ' <span class="tag bad xs">Urgent</span>' : ''}<small class="sub">${esc(r.purpose || '—')}${r.event ? ` · ${esc(r.event)}` : ''}</small></td>
+            ${f.v === 'mine' ? '' : `<td>${esc(r.requester)}<small class="sub">${esc(r.company)}${r.department ? ` · ${esc(r.department)}` : ''}</small></td>`}
+            <td class="num nowrap">${m2(r.approved_amount ?? r.est_total)}${r.approved_amount !== null && Number(r.approved_amount) !== Number(r.est_total) ? `<small class="sub">asked ${m2(r.est_total)}</small>` : ''}</td>
+            <td>${prTag(r.status)}${r.status === 'directors' && r.level === 'both' ? `<small class="sub">${r.approvals} of 2 signed</small>` : ''}</td><td class="nowrap">${dShort(r.required_by)}</td></tr>`).join('')}</tbody></table></div>`
+          : `<div class="empty small"><p>${f.v === 'queue' ? 'Nothing waiting for you' : 'No requests here'}</p><span>${f.v === 'mine' && R.member ? 'Start one with “New purchase request”.' : ''}</span></div>`}</section>
+        <p class="muted small">Up to ${money(C.settings.finance_limit)}: Finance approves · above: a Director · above ${money(C.settings.dual_limit)}: both Directors. Quotations from ${money(C.settings.quote1)} (1) and ${money(C.settings.quote3)} (3).</p>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $('#prl-q', el).addEventListener('input', (e) => { f.q = e.target.value; const pos = e.target.selectionStart; draw().then(() => { const s = $('#prl-q', el); s.focus(); s.setSelectionRange(pos, pos); }); });
+      $$('tr[data-id]', el).forEach((tr) => { const go = () => { location.hash = `#/purchasing/pr?id=${tr.dataset.id}`; }; tr.addEventListener('click', go); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); }); });
+    }
+    if (R.finance || R.director) load('queue').then(() => draw()).catch(() => draw()); else draw();
+  }
+
+  async function prFormPage(item, el) {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    let id = q.get('id') || null;
+    el.innerHTML = `${pageHead(item)}<div id="pr-body">${loading()}</div>`;
+    let C; let row = null;
+    try { C = await prCtx(true); if (id) row = await API.rpc('cms_pr_get', { p_id: id }); } catch (e) { $('#pr-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    if (row && !row.can.edit) { prView(el, row, C); return; }
+    if (!C.roles.member) { $('#pr-body', el).innerHTML = errorCard('You are not a purchasing member. Ask Admin to add you.'); return; }
+    const S = C.settings;
+    const D = { company: row?.company_code || C.companies[0]?.code || 'MEG', department: row?.department || (C.departments.includes(String(C.my_department || '').toUpperCase()) ? String(C.my_department).toUpperCase() : 'HQ'),
+      event_id: row?.event_id || '', category_id: row?.category_id || '', purpose: row?.purpose || '', justification: row?.justification || '', required_by: row?.required_by || '',
+      urgency: row?.urgency || 'normal', pay_type: row?.pay_type || 'advance', supplier_name: row?.supplier_name || '', supplier_details: row?.supplier_details || '', quotes: row?.quotes || [],
+      items: (row?.items || []).map((i) => ({ description: i.description, supplier: i.supplier || '', qty: i.qty, est_unit: i.est_unit, link: i.link || '', photo_path: i.photo_path || '' })) };
+    if (!D.items.length) D.items.push({ description: '', supplier: '', qty: 1, est_unit: '', link: '', photo_path: '' });
+    const body = $('#pr-body', el); let saving = null; let dirty = false; let timer = null;
+    const total = () => D.items.reduce((s, i) => s + (parseFloat(i.qty) || 0) * (parseFloat(i.est_unit) || 0), 0);
+    const avail = () => Number((C.available || {})[D.company] || 0) + (row && row.status !== 'draft' ? 0 : 0);
+    const status = (t, tone) => { const s = $('#pr-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    const payload = () => ({ ...D, items: D.items.map((i) => ({ ...i, qty: Number(i.qty) || 0, est_unit: Number(i.est_unit) || 0 })) });
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => {
+        const r = await API.rpc('cms_pr_save', { p_id: id, p: payload(), p_submit: submit });
+        if (!id) { id = r.id; history.replaceState(null, '', `#/purchasing/pr?id=${id}`); }
+        dirty = false; status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${r.pr_no}`); return r;
+      })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`The request could not be saved (${e.message}). Leave anyway?`); } } };
+    const evs = () => C.events.filter((e) => e.company === D.company && (e.status === 'active' || e.status === 'proposed' || e.id === D.event_id));
+    function summary() {
+      const t = total(); const lv = prLevel(t, S); const nq = t >= S.quote3 ? 3 : t >= S.quote1 ? 1 : 0; const a = Math.max(0, avail());
+      const ev = C.events.find((e) => e.id === D.event_id);
+      const use = D.pay_type === 'advance' ? Math.min(a, t) : 0; const rel = D.pay_type === 'advance' ? Math.max(0, t - a) : D.pay_type === 'supplier' ? t : 0;
+      return `<div class="pr-sum"><div><span>Estimated total</span><b>${money(t)}</b></div><div><span>Approved by</span><b>${PR_LEVEL[lv]}</b></div>
+        <div><span>Quotations</span><b class="${D.quotes.length < nq ? 'bad-txt' : ''}">${D.quotes.length} of ${nq} needed</b></div>
+        ${D.pay_type === 'advance' ? `<div><span>Your free petty cash (${esc(D.company)})</span><b>${money(a)}</b></div><div><span>Use balance · to release</span><b>${money(use)} · ${money(rel)}</b></div>` : D.pay_type === 'supplier' ? `<div><span>Paid to the supplier</span><b>${money(rel)}</b></div>` : '<div><span>Claimed back after you record the receipts</span><b>(release 2)</b></div>'}
+        ${ev ? `<div><span>${esc(ev.name)} budget left</span><b class="${Number(ev.budget) - Number(ev.committed) - (row?.status === 'draft' || !row ? t : 0) < 0 ? 'bad-txt' : ''}">${money(Number(ev.budget) - Number(ev.committed) - (row && !['draft', 'returned'].includes(row.status) ? 0 : t))}</b></div>` : ''}</div>`;
+    }
+    const itemRow = (i, k) => `<tr data-i="${k}"><td class="num">${k + 1}</td>
+        <td><input data-ik="description" value="${esc(i.description)}" maxlength="300" placeholder="Item" aria-label="Item ${k + 1}"><input data-ik="supplier" value="${esc(i.supplier)}" maxlength="120" placeholder="Supplier (optional)" class="pr-sub" aria-label="Supplier ${k + 1}"></td>
+        <td data-l="Qty"><input data-ik="qty" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.qty)}" class="pr-n" aria-label="Quantity ${k + 1}"></td>
+        <td data-l="Est. price (RM)"><input data-ik="est_unit" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.est_unit)}" class="pr-n" aria-label="Estimated price ${k + 1}"></td>
+        <td class="num nowrap" data-l="Total" data-tot>${m2((parseFloat(i.qty) || 0) * (parseFloat(i.est_unit) || 0))}</td>
+        <td class="nowrap">${i.photo_path ? `<button type="button" class="btn xs ghost" data-ph-open="${k}">Photo</button><button type="button" class="icon-btn sm" data-ph-x="${k}" aria-label="Remove photo">${icon('x')}</button>` : `<label class="btn xs ghost">${icon('plus')}Photo<input type="file" accept="image/*" data-ph="${k}" hidden></label>`}
+          ${D.items.length > 1 ? `<button type="button" class="icon-btn sm" data-rm="${k}" aria-label="Remove item ${k + 1}">${icon('x')}</button>` : ''}</td></tr>`;
+    function draw() {
+      const cat = C.categories.find((c) => c.id === D.category_id);
+      body.innerHTML = `<section class="card scf-head"><div class="scf-who"><b>${esc(C.my_name)}</b><small class="sub">${row ? esc(row.pr_no) : 'New request'}${row?.status === 'returned' ? ' · returned for changes' : ''}</small></div>
+          ${row?.status === 'returned' && row.return_reason ? `<p class="note warn">Returned: ${esc(row.return_reason)}</p>` : ''}
+          <div class="scf-g"><label class="fld"><span>Company</span><select data-h="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === D.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+            <label class="fld"><span>Department</span><select data-h="department">${C.departments.map((d) => `<option ${d === D.department ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select></label>
+            <label class="fld"><span>Event / occasion <small class="muted">(optional)</small></span><select data-h="event_id"><option value="">— none —</option>${evs().map((e) => `<option value="${esc(e.id)}" ${e.id === D.event_id ? 'selected' : ''}>${esc(e.name)}${e.status === 'proposed' ? ' (proposed)' : ''}</option>`).join('')}</select></label>
+            <label class="fld"><span>Category</span><select data-h="category_id"><option value="">— choose —</option>${C.categories.filter((c) => c.active || c.id === D.category_id).map((c) => `<option value="${esc(c.id)}" ${c.id === D.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+            <label class="fld wide"><span>What is it for</span><input data-h="purpose" value="${esc(D.purpose)}" maxlength="300" placeholder="e.g. Decorations for the annual dinner"></label>
+            <label class="fld wide"><span>Remark / justification ${cat?.remark_required ? '<small class="bad-txt">(required for this category)</small>' : '<small class="muted">(optional)</small>'}</span><textarea data-h="justification" rows="2" maxlength="1000" class="ta">${esc(D.justification)}</textarea></label>
+            <label class="fld"><span>Needed by</span><input type="date" data-h="required_by" value="${esc(D.required_by)}"></label>
+            <label class="fld"><span>Urgency</span><select data-h="urgency"><option value="normal">Normal</option><option value="urgent" ${D.urgency === 'urgent' ? 'selected' : ''}>Urgent</option></select></label>
+            <div class="fld wide"><span>How it will be paid</span><span class="pr-pay">${Object.entries(PR_PAY).map(([k, l]) => `<label class="chk"><input type="radio" name="pr-pay" value="${k}" ${D.pay_type === k ? 'checked' : ''}> ${l}</label>`).join('')}</span></div>
+            ${D.pay_type === 'supplier' ? `<label class="fld"><span>Supplier to pay</span><input data-h="supplier_name" value="${esc(D.supplier_name)}" maxlength="160"></label><label class="fld"><span>Supplier bank / invoice details</span><input data-h="supplier_details" value="${esc(D.supplier_details)}" maxlength="300" placeholder="Bank, account no., invoice no."></label>` : ''}</div></section>
+        <section class="card"><h3 class="card-h">Items</h3><div class="table-wrap"><table class="data pr-items"><thead><tr><th>No.</th><th>Item / supplier</th><th class="num">Qty</th><th class="num">Est. price</th><th class="num">Total</th><th></th></tr></thead>
+          <tbody>${D.items.map(itemRow).join('')}</tbody></table></div>
+          <div class="btn-row"><button type="button" class="btn sm" data-add>${icon('plus')}Add item</button></div></section>
+        <section class="card"><h3 class="card-h">Quotations</h3>${D.quotes.length ? `<ul class="pr-files">${D.quotes.map((x, k) => `<li><button type="button" class="link" data-q-open="${k}">${esc(x.name || `Quotation ${k + 1}`)}</button><button type="button" class="icon-btn sm" data-q-x="${k}" aria-label="Remove quotation">${icon('x')}</button></li>`).join('')}</ul>` : '<p class="muted small">None attached.</p>'}
+          <label class="btn sm">${icon('plus')}Attach quotation (photo or PDF)<input type="file" accept="image/*,application/pdf" data-qup hidden></label></section>
+        <section class="card scf-foot"><div id="pr-sum">${summary()}</div>
+          <div class="btn-row"><button type="button" class="btn primary" data-submit>${icon('check-circle')}Submit to Finance</button><button type="button" class="btn" data-save>Save draft</button>
+            ${id && row?.status !== 'returned' ? '<button type="button" class="btn ghost danger" data-discard>Discard draft</button>' : ''}${row?.status === 'returned' ? '<button type="button" class="btn ghost danger" data-cancel>Cancel request</button>' : ''}</div>
+          <p class="small muted" id="pr-st">${id ? 'Saved' : 'Not saved yet'}</p></section>`;
+    }
+    draw();
+    const resum = () => { $('#pr-sum', body).innerHTML = summary(); };
+    body.addEventListener('input', (e) => {
+      const t = e.target;
+      if (t.dataset.h && t.tagName !== 'SELECT') { D[t.dataset.h] = t.value; later(); return; }
+      const tr = t.closest('tr[data-i]');
+      if (tr && t.dataset.ik) { const k = +tr.dataset.i; D.items[k][t.dataset.ik] = t.value; if (t.dataset.ik === 'qty' || t.dataset.ik === 'est_unit') { $('[data-tot]', tr).textContent = m2((parseFloat(D.items[k].qty) || 0) * (parseFloat(D.items[k].est_unit) || 0)); resum(); } later(); }
+    });
+    body.addEventListener('change', async (e) => {
+      const t = e.target;
+      if (t.dataset.h && t.tagName === 'SELECT') { D[t.dataset.h] = t.value; if (t.dataset.h === 'company') { if (!evs().some((x) => x.id === D.event_id)) D.event_id = ''; draw(); } else if (t.dataset.h === 'category_id') draw(); else resum(); later(); return; }
+      if (t.name === 'pr-pay') { D.pay_type = t.value; draw(); later(); return; }
+      if (t.dataset.ph !== undefined || t.dataset.qup !== undefined) {
+        const file = t.files[0]; if (!file) return;
+        try {
+          if (!id) { clearTimeout(timer); await save(); }
+          if (t.dataset.qup !== undefined) { const path = await prUpload(id, file, 'quote'); D.quotes.push({ path, name: file.name.slice(0, 80) }); }
+          else { D.items[+t.dataset.ph].photo_path = await prUpload(id, file, 'item'); }
+          draw(); clearTimeout(timer); await save(); toast('Attached');
+        } catch (x) { toast(x.message, 'err'); }
+      }
+    });
+    body.addEventListener('click', async (e) => {
+      const b = (s) => e.target.closest(s);
+      if (b('[data-add]')) { D.items.push({ description: '', supplier: '', qty: 1, est_unit: '', link: '', photo_path: '' }); draw(); $$('[data-ik=description]', body).pop()?.focus(); later(); return; }
+      if (b('[data-rm]')) { D.items.splice(+b('[data-rm]').dataset.rm, 1); draw(); later(); return; }
+      if (b('[data-ph-open]')) { prOpenFile(D.items[+b('[data-ph-open]').dataset.phOpen].photo_path); return; }
+      if (b('[data-ph-x]')) { D.items[+b('[data-ph-x]').dataset.phX].photo_path = ''; draw(); later(); return; }
+      if (b('[data-q-open]')) { prOpenFile(D.quotes[+b('[data-q-open]').dataset.qOpen].path); return; }
+      if (b('[data-q-x]')) { D.quotes.splice(+b('[data-q-x]').dataset.qX, 1); draw(); later(); return; }
+      if (b('[data-save]')) { clearTimeout(timer); try { await save(); toast('Draft saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (b('[data-discard]')) {
+        if (!(await confirmBox('Discard this draft?', 'The draft is removed. This cannot be undone.', 'Discard draft', true))) return;
+        clearTimeout(timer); try { await API.rpc('cms_pr_act', { p_id: id, p_action: 'discard', p: {} }); dirty = false; window.CMS_LEAVE_GUARD = null; location.hash = '#/purchasing'; } catch (x) { toast(x.message, 'err'); } return;
+      }
+      if (b('[data-cancel]')) {
+        if (!(await confirmBox('Cancel this request?', 'It will not go further. You can make a new request later.', 'Cancel request', true))) return;
+        clearTimeout(timer); try { await API.rpc('cms_pr_act', { p_id: id, p_action: 'cancel', p: {} }); dirty = false; window.CMS_LEAVE_GUARD = null; location.hash = '#/purchasing'; } catch (x) { toast(x.message, 'err'); } return;
+      }
+      if (b('[data-submit]')) {
+        const t = total(); const lv = prLevel(t, S);
+        const ok = await confirmBox('Submit to Finance?', `<b>${esc(D.purpose || 'Purchase request')}</b> · ${D.items.length} item${D.items.length === 1 ? '' : 's'} · <b>${money(t)}</b><br>Approved by ${PR_LEVEL[lv]}. You cannot change it after submitting unless it is returned to you.`, 'Submit', false);
+        if (!ok) return;
+        clearTimeout(timer);
+        try { const r = await save(true); prNotify('submitted', r.id); window.CMS_LEAVE_GUARD = null; toast(`${r.pr_no} submitted to Finance`); location.hash = `#/purchasing/pr?id=${r.id}`; }
+        catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    });
+  }
+
+  function prView(el, r, C) {
+    const can = r.can; const body = $('#pr-body', el) || el;
+    const act = async (action, p, okMsg) => {
+      const res = await API.rpc('cms_pr_act', { p_id: r.id, p_action: action, p: p || {} });
+      prNotify(res.mail, r.id); toast(okMsg); PRC = null;
+      const nr = await API.rpc('cms_pr_get', { p_id: r.id }); Object.assign(r, nr); draw();
+    };
+    const reasonBox = (title, action, okLabel, danger) => modal({ title, ok: okLabel, danger, body: `<label class="fld"><span>Reason (the purchaser sees this)</span><textarea name="reason" rows="3" maxlength="500" class="ta" required></textarea></label>`,
+      onOk: (f) => { if (!f.reason.value.trim()) throw new Error('Give the reason.'); return act(action, { reason: f.reason.value.trim() }, action === 'return' ? 'Returned to the purchaser' : 'Disapproved'); } });
+    function actions() {
+      const out = [];
+      if (can.review && r.level !== 'finance') out.push(`<button type="button" class="btn primary" data-a="forward">${icon('check-circle')}Reviewed: send to ${PR_LEVEL[r.level]}</button>`);
+      if (can.approve) out.push(`<button type="button" class="btn primary" data-a="approve">${icon('check-circle')}Approve</button>`);
+      if (can.review || (can.approve && r.status === 'directors')) out.push('<button type="button" class="btn" data-a="return">Return for changes</button><button type="button" class="btn ghost danger" data-a="disapprove">Disapprove</button>');
+      if (can.release) out.push(`<button type="button" class="btn primary" data-a="release">${icon('wallet')}Release ${money(r.release_amount)}</button>`);
+      if (can.acknowledge) out.push(`<button type="button" class="btn primary" data-a="ack">${icon('check-circle')}I have received ${money(r.released_amount)}</button>`);
+      if (can.edit) out.push(`<a class="btn" href="#/purchasing/pr?id=${esc(r.id)}">Edit</a>`);
+      if (can.cancel) out.push('<button type="button" class="btn ghost danger" data-a="cancel">Cancel request</button>');
+      return out.join('');
+    }
+    function draw() {
+      const ev = r.event; const items = r.items || [];
+      body.innerHTML = `<section class="card"><div class="pr-vh"><div><h2>${esc(r.pr_no)} ${prTag(r.status)}${r.urgency === 'urgent' ? ' <span class="tag bad xs">Urgent</span>' : ''}</h2>
+            <p class="muted">${esc(r.company_name || r.company_code)} · ${esc(r.department || '—')} · ${esc(r.category || '—')}${ev ? ` · ${esc(ev.name)}` : ''}</p></div>
+            <button type="button" class="btn sm ghost" data-print>${icon('download')}Print</button></div>
+          <dl class="kv pr-kv"><div><dt>Purchaser</dt><dd>${esc(r.requester_name)}</dd></div><div><dt>For</dt><dd>${esc(r.purpose)}</dd></div>
+            ${r.justification ? `<div><dt>Remark</dt><dd>${esc(r.justification)}</dd></div>` : ''}<div><dt>Needed by</dt><dd>${dShort(r.required_by)}</dd></div>
+            <div><dt>Payment</dt><dd>${esc(PR_PAY[r.pay_type])}${r.pay_type === 'supplier' ? ` · ${esc(r.supplier_name || '')}${r.supplier_details ? `<small class="sub">${esc(r.supplier_details)}</small>` : ''}` : ''}</dd></div>
+            <div><dt>Estimated</dt><dd><b>${money(r.est_total)}</b> · approval by ${PR_LEVEL[r.level] || '—'}</dd></div>
+            ${r.approved_amount !== null ? `<div><dt>Approved</dt><dd><b>${money(r.approved_amount)}</b>${r.pay_type === 'advance' ? ` · uses ${money(r.balance_used)} petty cash · release ${money(r.release_amount)}` : ''}</dd></div>` : ''}
+            ${r.released_amount !== null ? `<div><dt>Released</dt><dd><b>${money(r.released_amount)}</b> on ${dShort(r.release_date)} from ${esc(r.bank ? `${r.bank.bank || ''} ${r.bank.name}${r.bank.last4 ? ` ••${r.bank.last4}` : ''}` : '—')}${r.release_ref ? ` · ref ${esc(r.release_ref)}` : ''}${r.release_slip ? ' · <button type="button" class="link" data-slip>slip</button>' : ''}${r.acknowledged_at ? `<small class="sub">received, confirmed ${dShort(r.acknowledged_at)}</small>` : ''}</dd></div>` : ''}
+            ${r.settle_due ? `<div><dt>Settle by</dt><dd>${dShort(r.settle_due)} <small class="muted">(record the receipts: release 2)</small></dd></div>` : ''}
+            ${r.disapprove_reason && r.status === 'disapproved' ? `<div><dt>Not approved</dt><dd class="bad-txt">${esc(r.disapprove_reason)}</dd></div>` : ''}
+            ${ev ? `<div><dt>Event budget</dt><dd>${money(ev.budget)} · committed ${money(ev.committed)} · <b class="${Number(ev.budget) - Number(ev.committed) < 0 ? 'bad-txt' : ''}">left ${money(Number(ev.budget) - Number(ev.committed))}</b></dd></div>` : ''}
+            ${C.roles.finance || C.roles.director ? `<div><dt>Purchaser's petty cash</dt><dd>${money(r.balance_now)} held · ${money(r.available)} free</dd></div>` : ''}</dl>
+          ${actions() ? `<div class="btn-row pr-acts">${actions()}</div>` : ''}</section>
+        <section class="card"><h3 class="card-h">Items</h3><div class="table-wrap"><table class="data"><thead><tr><th>No.</th><th>Item</th><th class="num">Qty</th><th class="num">Est. price</th><th class="num">Total</th><th></th></tr></thead><tbody>
+          ${items.map((i, k) => `<tr><td>${k + 1}</td><td>${esc(i.description)}${i.supplier ? `<small class="sub">${esc(i.supplier)}</small>` : ''}</td><td class="num">${num(i.qty)}</td><td class="num">${m2(i.est_unit)}</td><td class="num">${m2(i.est_total)}</td>
+            <td>${i.photo_path ? `<button type="button" class="btn xs ghost" data-file="${esc(i.photo_path)}">Photo</button>` : ''}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="4"><b>Total</b></td><td class="num"><b>${m2(r.est_total)}</b></td><td></td></tr></tfoot></table></div>
+          ${(r.quotes || []).length ? `<p class="small">Quotations: ${r.quotes.map((x, k) => `<button type="button" class="link" data-file="${esc(x.path)}">${esc(x.name || `Quotation ${k + 1}`)}</button>`).join(' · ')}</p>` : ''}</section>
+        <section class="card"><h3 class="card-h">History</h3><ol class="pr-log">${(r.log || []).map((x) => `<li><b>${esc(x.what)}</b>${x.note ? ` — ${esc(x.note)}` : ''}<small class="sub">${new Date(x.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></li>`).join('') || '<li class="muted">Nothing yet</li>'}</ol></section>
+        <p><a href="#/purchasing" class="btn ghost sm">‹ Purchase Requests</a></p>`;
+    }
+    draw();
+    body.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-a],[data-file],[data-slip],[data-print]'); if (!b) return;
+      if (b.dataset.file) { prOpenFile(b.dataset.file); return; }
+      if (b.dataset.slip !== undefined) { prOpenFile(r.release_slip); return; }
+      if (b.dataset.print !== undefined) { prPrint(el, r); return; }
+      const a = b.dataset.a;
+      try {
+        if (a === 'forward') await modal({ title: `Send to ${PR_LEVEL[r.level]}`, ok: 'Send', body: `<p>${esc(r.pr_no)} · <b>${money(r.est_total)}</b> is above the Finance limit.</p><label class="fld"><span>Note for the Director(s) (optional)</span><textarea name="note" rows="2" class="ta" maxlength="500"></textarea></label>`, onOk: (f) => act('forward', { note: f.note.value }, `Sent to ${PR_LEVEL[r.level]}`) });
+        else if (a === 'approve') await modal({ title: `Approve ${r.pr_no}`, ok: 'Approve', body: `<label class="fld"><span>Approved amount (RM) — up to ${m2(r.est_total)}</span><input name="amount" type="number" step="0.01" min="0.01" max="${esc(r.est_total)}" value="${esc(r.approved_amount ?? r.est_total)}"></label>
+            ${r.level === 'both' ? `<p class="muted small">Needs both Directors: ${r.approvals.length ? 'one has signed.' : 'you are the first.'}</p>` : ''}<label class="fld"><span>Note (optional)</span><textarea name="note" rows="2" class="ta" maxlength="500"></textarea></label>`,
+          onOk: (f) => act('approve', { amount: f.amount.value, note: f.note.value }, 'Approved') });
+        else if (a === 'return') await reasonBox('Return for changes', 'return', 'Return', false);
+        else if (a === 'disapprove') await reasonBox('Disapprove this request', 'disapprove', 'Disapprove', true);
+        else if (a === 'cancel') await confirmBox('Cancel this request?', 'It will not go further.', 'Cancel request', true, () => act('cancel', {}, 'Cancelled'));
+        else if (a === 'ack') await confirmBox('Money received?', `Confirm you have received <b>${money(r.released_amount)}</b> for ${esc(r.pr_no)}. It is added to your petty cash (${esc(r.company_code)}).`, 'Yes, received', false, () => act('acknowledge', {}, 'Thank you — go ahead with the purchase'));
+        else if (a === 'release') {
+          const banks = (C.banks || []).filter((x) => x.active && x.company === r.company_code);
+          if (!banks.length) { toast(`Add a bank account for ${r.company_code} first (Purchasing › Settings).`, 'err'); return; }
+          const rb = r.requester_bank; const to = r.pay_type === 'supplier' ? `${r.supplier_name || ''}${r.supplier_details ? ` · ${r.supplier_details}` : ''}` : rb ? `${rb.holder} · ${rb.bank} ${rb.acct}` : r.requester_name;
+          let slip = '';
+          await modal({ title: `Release funds · ${r.pr_no}`, ok: 'Release', body: `<p>Pay <b>${esc(to)}</b>${!rb && r.pay_type !== 'supplier' ? ' <small class="bad-txt">(no bank account on the payroll record)</small>' : ''}.</p>
+              <label class="fld"><span>From account</span><select name="bank">${banks.map((x) => `<option value="${esc(x.id)}">${esc(`${x.bank || ''} ${x.name}${x.last4 ? ` ••${x.last4}` : ''}`)}</option>`).join('')}</select></label>
+              <div class="scf-g"><label class="fld"><span>Amount (RM)</span><input name="amount" type="number" step="0.01" min="0.01" max="${esc(r.approved_amount)}" value="${esc(r.release_amount)}"></label>
+              <label class="fld"><span>Date</span><input name="date" type="date" value="${new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10)}"></label></div>
+              <label class="fld"><span>Transfer reference</span><input name="ref" maxlength="80" placeholder="e.g. IBG / DuitNow reference"></label>
+              <label class="fld"><span>Transfer slip (optional)</span><input name="slip" type="file" accept="image/*,application/pdf"></label>
+              <p class="muted small">Posted to the books: petty cash of ${esc(r.requester_name)} up, ${esc(r.company_code)} bank down${r.pay_type === 'supplier' ? ' (supplier: straight to the expense)' : ''}. It cannot be edited afterwards.</p>`,
+            onOk: async (f) => {
+              if (f.slip.files[0] && !slip) slip = await prUpload(r.id, f.slip.files[0], 'slip');
+              await act('release', { bank_id: f.bank.value, amount: f.amount.value, date: f.date.value, ref: f.ref.value, to, slip }, 'Funds released and posted');
+            } });
+        }
+      } catch (x) { toast(x.message, 'err'); }
+    });
+  }
+  function prPrint(el, r) {
+    const items = r.items || [];
+    const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>PURCHASE REQUEST</h2><p>${esc(r.company_name || r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.pr_no)}</code><small>${esc(PR_ST[r.status]?.[0] || r.status)}</small></div></div>
+      <dl class="scf-kv"><div><dt>Purchaser</dt><dd>${esc(r.requester_name)}</dd></div><div><dt>Department</dt><dd>${esc(r.department || '—')}</dd></div><div><dt>Category</dt><dd>${esc(r.category || '—')}</dd></div>
+        <div><dt>Event</dt><dd>${esc(r.event?.name || '—')}</dd></div><div><dt>Needed by</dt><dd>${dShort(r.required_by)}</dd></div><div><dt>Payment</dt><dd>${esc(PR_PAY[r.pay_type])}</dd></div></dl>
+      <p><b>Purpose:</b> ${esc(r.purpose)}${r.justification ? `<br><b>Remark:</b> ${esc(r.justification)}` : ''}</p>
+      <table class="data scf-pt"><thead><tr><th>No.</th><th>Item</th><th>Supplier</th><th class="num">Qty</th><th class="num">Est. price</th><th class="num">Total (RM)</th></tr></thead>
+        <tbody>${items.map((i, k) => `<tr><td>${k + 1}</td><td>${esc(i.description)}</td><td>${esc(i.supplier || '')}</td><td class="num">${num(i.qty)}</td><td class="num">${m2(i.est_unit)}</td><td class="num">${m2(i.est_total)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="5"><b>ESTIMATED TOTAL</b></td><td class="num"><b>${m2(r.est_total)}</b></td></tr>${r.approved_amount !== null ? `<tr><td colspan="5"><b>APPROVED</b></td><td class="num"><b>${m2(r.approved_amount)}</b></td></tr>` : ''}</tfoot></table>
+      <table class="data scf-pt"><thead><tr><th>Step</th><th>By</th><th>When</th><th>Note</th></tr></thead><tbody>${(r.log || []).map((x) => `<tr><td>${esc(x.what)}</td><td>${esc(x.by || '')}</td><td class="nowrap">${dShort(x.at)}</td><td>${esc(x.note || '')}</td></tr>`).join('')}</tbody></table>
+      <p class="small muted">Made in the MyEden Group CMS · Purchasing &amp; Petty Cash</p></section>`;
+    docView(el, `Purchase request ${r.pr_no}`, [sheet], () => { location.hash = `#/purchasing/pr?id=${r.id}&v=${Date.now()}`; });
+  }
+
+  async function prEventsPage(item, el) {
+    let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
+    const boss = C.roles.settings || C.roles.director;
+    const f = { v: 'active' };
+    function edit(ev) {
+      const x = ev || { company: C.companies[0].code, budget: '', status: boss ? 'active' : 'proposed' };
+      return modal({ title: ev ? `Event · ${ev.name}` : boss ? 'Add an event' : 'Propose an event', ok: ev ? 'Save' : boss ? 'Add event' : 'Send for approval',
+        body: `<div class="scf-g"><label class="fld"><span>Company</span><select name="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === x.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Budget (RM)</span><input name="budget" type="number" step="0.01" min="0" value="${esc(x.budget)}" required></label></div>
+          <label class="fld"><span>Event / occasion</span><input name="name" maxlength="120" value="${esc(x.name || '')}" required placeholder="e.g. Annual Dinner 2026"></label>
+          <div class="scf-g"><label class="fld"><span>From</span><input name="date_from" type="date" value="${esc(x.date_from || '')}"></label><label class="fld"><span>To</span><input name="date_to" type="date" value="${esc(x.date_to || '')}"></label></div>
+          ${boss && ev ? `<label class="fld"><span>Status</span><select name="status">${['proposed', 'active', 'closed', 'rejected'].map((s) => `<option value="${s}" ${s === x.status ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></label>` : ''}
+          ${!boss ? '<p class="muted small">Admin or a Director approves the event and its budget. You can already link requests to it.</p>' : ''}`,
+        onOk: async (fm) => { await API.rpc('cms_pr_event_save', { p_id: ev ? ev.id : null, p: { company: fm.company.value, name: fm.name.value, budget: fm.budget.value, date_from: fm.date_from.value, date_to: fm.date_to.value, ...(fm.status ? { status: fm.status.value } : {}) } });
+          toast('Event saved'); C = await prCtx(true); draw(); } });
+    }
+    function draw() {
+      const list = C.events.filter((e) => (f.v === 'active' ? e.status !== 'closed' : e.status === 'closed'));
+      el.innerHTML = `${pageHead(item, C.roles.member || boss ? `<button type="button" class="btn primary" data-add>${icon('plus')}${boss ? 'Add event' : 'Propose an event'}</button>` : '')}
+        <section class="card"><div class="toolbar"><div class="seg"><button type="button" data-v="active" class="${f.v === 'active' ? 'on' : ''}">Open</button><button type="button" data-v="closed" class="${f.v === 'closed' ? 'on' : ''}">Closed</button></div></div>
+        ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Event</th><th>Company</th><th>Dates</th><th class="num">Budget</th><th class="num">Committed</th><th class="num">Left</th><th>Status</th><th></th></tr></thead><tbody>
+          ${list.map((e) => { const left = Number(e.budget) - Number(e.committed); return `<tr data-id="${esc(e.id)}"><td><b>${esc(e.name)}</b></td><td>${esc(e.company)}</td><td class="nowrap">${e.date_from ? dShort(e.date_from) : ''}${e.date_to ? ` – ${dShort(e.date_to)}` : ''}</td>
+            <td class="num">${m2(e.budget)}</td><td class="num">${m2(e.committed)}</td><td class="num ${left < 0 ? 'bad-txt' : ''}"><b>${m2(left)}</b></td>
+            <td><span class="tag ${e.status === 'active' ? 'ok' : e.status === 'proposed' ? 'warn' : ''} xs">${esc(e.status)}</span></td>
+            <td class="row-acts nowrap">${boss && e.status === 'proposed' ? '<button type="button" class="btn xs" data-ok>Approve</button>' : ''}${boss ? '<button type="button" class="btn xs ghost" data-edit>Edit</button>' : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+          : '<div class="empty small"><p>No events here</p><span>Events (annual dinner, sports day, graduation…) get a budget; requests linked to them count against it.</span></div>'}</section>
+        <p class="muted small">Committed = approved amounts of requests linked to the event (or the asked amount while waiting for approval). Spending from receipts comes with release 2.</p>`;
+      $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
+      $('[data-add]', el)?.addEventListener('click', () => edit(null));
+      $$('tr[data-id]', el).forEach((tr) => { const ev = C.events.find((x) => x.id === tr.dataset.id);
+        $('[data-edit]', tr)?.addEventListener('click', () => edit(ev));
+        $('[data-ok]', tr)?.addEventListener('click', () => confirmBox(`Approve ${ev.name}?`, `Budget <b>${money(ev.budget)}</b> for ${esc(ev.company)}.`, 'Approve event', false, async () => {
+          await API.rpc('cms_pr_event_save', { p_id: ev.id, p: { company: ev.company, name: ev.name, budget: ev.budget, date_from: ev.date_from, date_to: ev.date_to, status: 'active' } }); toast('Event approved'); C = await prCtx(true); draw(); })); });
+    }
+    draw();
+  }
+
+  async function prBooksPage(item, el) {
+    let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const f = { co: '', from: `${today.slice(0, 4)}-01-01`, to: today, tab: 'entries' };
+    el.innerHTML = `${pageHead(item)}<section class="card"><div class="toolbar">
+        <label class="fld inline"><span>Company</span><select id="bk-co"><option value="">All</option>${C.companies.map((c) => `<option value="${esc(c.code)}">${esc(c.code)}</option>`).join('')}</select></label>
+        <label class="fld inline"><span>From</span><input type="date" id="bk-from" value="${f.from}"></label><label class="fld inline"><span>To</span><input type="date" id="bk-to" value="${f.to}"></label>
+        <div class="seg"><button type="button" data-t="entries" class="on">Entries</button><button type="button" data-t="floats">Petty cash</button><button type="button" data-t="banks">Bank accounts</button></div></div>
+      <div id="bk-body">${loading()}</div></section>
+      <p class="muted small">Every movement is two equal lines (debit = credit). Posted entries cannot be edited; corrections are reversal entries. Statements, reports and Excel export come with release 2.</p>`;
+    let B = null;
+    async function load() { try { B = await API.rpc('cms_pr_books', { p_company: f.co || null, p_from: f.from || null, p_to: f.to || null }); draw(); } catch (e) { $('#bk-body', el).innerHTML = errorCard(e.message); } }
+    function draw() {
+      const box = $('#bk-body', el);
+      if (f.tab === 'entries') box.innerHTML = B.entries.length ? `<div class="table-wrap"><table class="data bk-t"><thead><tr><th>Entry</th><th>Account</th><th>Dept · event</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>
+          ${B.entries.map((j) => j.lines.map((l, k) => `<tr class="${k === 0 ? 'bk-first' : ''}">${k === 0 ? `<td rowspan="${j.lines.length}"><b>${esc(j.no)}</b><small class="sub">${dShort(j.date)} · ${esc(j.kind)}${j.pr_no ? ` · <a href="#/purchasing/pr?id=${esc(j.request_id)}">${esc(j.pr_no)}</a>` : ''}</small><small class="sub">${esc(j.memo || '')}</small></td>` : ''}
+            <td>${esc(l.account || '')}<small class="sub">${esc(l.company)}${l.memo ? ` · ${esc(l.memo)}` : ''}</small></td><td>${esc(l.department || '')}${l.event ? ` · ${esc(l.event)}` : ''}</td>
+            <td class="num">${Number(l.debit) ? m2(l.debit) : ''}</td><td class="num">${Number(l.credit) ? m2(l.credit) : ''}</td></tr>`).join('')).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>No entries in this period</p></div>';
+      else if (f.tab === 'floats') box.innerHTML = B.floats.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Purchaser</th><th>Company</th><th class="num">Petty cash held (RM)</th></tr></thead><tbody>
+          ${B.floats.map((x) => `<tr><td>${esc(x.holder)}</td><td>${esc(x.company)}</td><td class="num ${Number(x.balance) < 0 ? 'bad-txt' : ''}"><b>${m2(x.balance)}</b>${Number(x.balance) < 0 ? '<small class="sub">company owes the purchaser</small>' : ''}</td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>No petty cash out yet</p></div>';
+      else box.innerHTML = B.banks.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Account</th><th>Company</th><th class="num">Paid out through Purchasing (RM)</th></tr></thead><tbody>
+          ${B.banks.map((x) => `<tr><td>${esc(x.account)}${x.active ? '' : ' <span class="tag xs">off</span>'}</td><td>${esc(x.company)}</td><td class="num"><b>${m2(x.paid_out)}</b></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>No bank accounts yet</p><span>Admin adds them in Purchasing › Settings.</span></div>';
+    }
+    $('#bk-co', el).addEventListener('change', (e) => { f.co = e.target.value; load(); });
+    $('#bk-from', el).addEventListener('change', (e) => { f.from = e.target.value; load(); });
+    $('#bk-to', el).addEventListener('change', (e) => { f.to = e.target.value; load(); });
+    $$('[data-t]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.t; $$('[data-t]', el).forEach((x) => x.classList.toggle('on', x === b)); if (B) draw(); }));
+    load();
+  }
+
+  async function prSettingsPage(item, el) {
+    let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
+    const f = { tab: 'limits' }; let M = null;
+    el.innerHTML = `${pageHead(item)}<div class="seg pr-tabs">${[['limits', 'Limits'], ['banks', 'Bank accounts'], ['categories', 'Categories'], ['members', 'Members']].map(([k, l]) => `<button type="button" data-t="${k}" class="${k === f.tab ? 'on' : ''}">${l}</button>`).join('')}</div><div id="ps-body"></div>`;
+    const box = () => $('#ps-body', el);
+    const S = () => C.settings;
+    const coName = (c) => (C.companies.find((x) => x.code === c) || {}).name || c;
+    function bankEdit(b) {
+      const x = b || { company: C.companies[0].code, kind: 'bank', active: true };
+      return modal({ title: b ? 'Bank account' : 'Add a bank account', ok: 'Save', body: `<div class="scf-g"><label class="fld"><span>Company</span><select name="company">${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === x.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Type</span><select name="kind"><option value="bank">Bank account</option><option value="cash" ${x.kind === 'cash' ? 'selected' : ''}>Cash (office cash box)</option></select></label></div>
+          <div class="scf-g"><label class="fld"><span>Bank</span><input name="bank" maxlength="60" value="${esc(x.bank || '')}" placeholder="e.g. Maybank"></label><label class="fld"><span>Last 4 digits</span><input name="last4" maxlength="4" inputmode="numeric" value="${esc(x.last4 || '')}" placeholder="1234"></label></div>
+          <label class="fld"><span>Account name</span><input name="name" maxlength="120" value="${esc(x.name || '')}" required placeholder="e.g. MEG Current Account"></label>
+          <label class="fld"><span>Notes</span><input name="notes" maxlength="200" value="${esc(x.notes || '')}"></label>
+          ${b ? `<label class="chk"><input type="checkbox" name="active" ${x.active ? 'checked' : ''}> In use</label>` : ''}<p class="muted small">Only the last 4 digits are kept, never the full account number.</p>`,
+        onOk: async (fm) => { await API.rpc('cms_pr_bank_save', { p_id: b ? b.id : null, p: { company: fm.company.value, kind: fm.kind.value, bank: fm.bank.value, last4: fm.last4.value.trim(), name: fm.name.value, notes: fm.notes.value, ...(b ? { active: fm.active.checked } : {}) } });
+          toast('Saved'); C = await prCtx(true); draw(); } });
+    }
+    function catEdit(c) {
+      const x = c || { active: true };
+      return modal({ title: c ? 'Category' : 'Add a category', ok: 'Save', body: `<label class="fld"><span>Name</span><input name="name" maxlength="80" value="${esc(x.name || '')}" required></label>
+          <label class="chk"><input type="checkbox" name="asset" ${x.is_asset ? 'checked' : ''}> Fixed asset (flag for the asset register)</label>
+          <label class="chk"><input type="checkbox" name="remark" ${x.remark_required ? 'checked' : ''}> Remark required</label>${c ? `<label class="chk"><input type="checkbox" name="active" ${x.active ? 'checked' : ''}> In use</label>` : ''}`,
+        onOk: async (fm) => { await API.rpc('cms_pr_category_save', { p_id: c ? c.id : null, p: { name: fm.name.value, is_asset: fm.asset.checked, remark_required: fm.remark.checked, ...(c ? { active: fm.active.checked } : {}) } }); toast('Saved'); C = await prCtx(true); draw(); } });
+    }
+    async function draw() {
+      $$('[data-t]', el).forEach((b) => b.classList.toggle('on', b.dataset.t === f.tab));
+      const ro = !C.roles.settings;
+      if (f.tab === 'limits') {
+        box().innerHTML = `<section class="card"><form id="ps-lim" class="scf-g">
+            ${[['finance_limit', 'Finance approves up to (RM)'], ['dual_limit', 'Both Directors above (RM)'], ['quote1', '1 quotation from (RM)'], ['quote3', '3 quotations from (RM)'], ['tolerance_pct', 'Overspend tolerance (%)'], ['settle_days', 'Days to settle after purchase / event']].map(([k, l]) => `<label class="fld"><span>${l}</span><input name="${k}" type="number" step="0.01" min="0" value="${esc(S()[k])}" ${ro ? 'disabled' : ''}></label>`).join('')}
+            ${ro ? '' : '<div class="btn-row wide"><button type="submit" class="btn primary">Save limits</button></div>'}</form>
+          <p class="muted small">Between the two limits, one Director approves (Directors: ${esc((C.directors || []).join(', ') || '—')}). Nobody approves their own request. The tolerance applies when receipts are recorded (release 2).</p></section>`;
+        $('#ps-lim', el)?.addEventListener('submit', async (e) => { e.preventDefault(); const fm = e.target; const p = {}; ['finance_limit', 'dual_limit', 'quote1', 'quote3', 'tolerance_pct', 'settle_days'].forEach((k) => { p[k] = fm[k].value; });
+          try { C.settings = await API.rpc('cms_pr_settings_set', { p }); toast('Limits saved'); } catch (x) { toast(x.message, 'err'); } });
+      } else if (f.tab === 'banks') {
+        const list = C.banks || [];
+        box().innerHTML = `<section class="card"><div class="toolbar">${ro ? '' : `<button type="button" class="btn primary" data-add>${icon('plus')}Add bank account</button>`}</div>
+          ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Account</th><th>Company</th><th>Type</th><th></th></tr></thead><tbody>${list.map((b) => `<tr data-id="${esc(b.id)}"><td><b>${esc(b.name)}</b><small class="sub">${esc(b.bank || '')}${b.last4 ? ` ••${esc(b.last4)}` : ''}${b.notes ? ` · ${esc(b.notes)}` : ''}</small></td><td>${esc(coName(b.company))}</td><td>${b.kind === 'cash' ? 'Cash' : 'Bank'}${b.active ? '' : ' <span class="tag xs">off</span>'}</td><td>${ro ? '' : '<button type="button" class="btn xs" data-edit>Edit</button>'}</td></tr>`).join('')}</tbody></table></div>`
+            : '<div class="empty small"><p>No bank accounts yet</p><span>Add each company account that Finance pays purchases from.</span></div>'}</section>`;
+        $('[data-add]', el)?.addEventListener('click', () => bankEdit(null));
+        $$('tr[data-id] [data-edit]', el).forEach((b) => b.addEventListener('click', () => bankEdit(list.find((x) => x.id === b.closest('tr').dataset.id))));
+      } else if (f.tab === 'categories') {
+        box().innerHTML = `<section class="card"><div class="toolbar">${ro ? '' : `<button type="button" class="btn primary" data-add>${icon('plus')}Add category</button>`}</div><div class="table-wrap"><table class="data"><thead><tr><th>Category</th><th></th><th></th></tr></thead><tbody>
+          ${C.categories.map((c) => `<tr data-id="${esc(c.id)}"><td>${esc(c.name)}${c.active ? '' : ' <span class="tag xs">off</span>'}</td><td>${c.is_asset ? '<span class="tag blue xs">Fixed asset</span>' : ''}${c.remark_required ? ' <span class="tag xs">Remark required</span>' : ''}</td><td>${ro ? '' : '<button type="button" class="btn xs" data-edit>Edit</button>'}</td></tr>`).join('')}</tbody></table></div></section>`;
+        $('[data-add]', el)?.addEventListener('click', () => catEdit(null));
+        $$('tr[data-id] [data-edit]', el).forEach((b) => b.addEventListener('click', () => catEdit(C.categories.find((x) => x.id === b.closest('tr').dataset.id))));
+      } else {
+        box().innerHTML = loading();
+        try { M = await API.rpc('cms_pr_members'); } catch (x) { box().innerHTML = errorCard(x.message); return; }
+        const inList = new Set(M.members.map((m) => m.uid));
+        box().innerHTML = `<section class="card"><div class="toolbar"><label class="fld inline"><span>Add</span><select id="pm-add"><option value="">— choose a staff member —</option>${M.people.filter((p) => !inList.has(p.uid)).map((p) => `<option value="${esc(p.uid)}">${esc(p.name)}${p.department ? ` · ${esc(p.department)}` : ''}</option>`).join('')}</select></label>
+            <select id="pm-role" aria-label="Role"><option value="member">Member (makes requests)</option><option value="finance">Finance (reviews, releases)</option></select><button type="button" class="btn primary" id="pm-go">Add</button></div>
+          <div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Department</th><th>Role</th><th></th></tr></thead><tbody>
+          ${M.members.map((m) => `<tr data-uid="${esc(m.uid)}"><td><b>${esc(m.name)}</b><small class="sub">${esc(m.email || '')}</small></td><td>${esc(m.department || '')}</td>
+            <td>${m.director ? '<span class="tag blue xs">Director</span> ' : ''}${m.finance ? '<span class="tag ok xs">Finance</span>' : m.member ? '<span class="tag xs">Member</span>' : ''}</td>
+            <td class="row-acts nowrap">${m.via_role ? '<small class="muted">by role</small>' : `<select data-role aria-label="Role of ${esc(m.name)}"><option value="member" ${m.member && !m.finance ? 'selected' : ''}>Member</option><option value="finance" ${m.finance ? 'selected' : ''}>Finance</option><option value="none">Remove</option></select>`}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Members make purchase requests. Finance reviews, approves up to ${money(S().finance_limit)} and releases funds. Directors approve above that (from their Director role). “By role” comes from the CMS roles (Roles &amp; Permissions).</p></section>`;
+        $('#pm-go', el).addEventListener('click', async () => { const u = $('#pm-add', el).value; if (!u) { toast('Choose a staff member.', 'err'); return; }
+          try { await API.rpc('cms_pr_member_set', { p_user: u, p_role: $('#pm-role', el).value }); toast('Added'); draw(); } catch (x) { toast(x.message, 'err'); } });
+        $$('[data-role]', el).forEach((s) => s.addEventListener('change', async () => { try { await API.rpc('cms_pr_member_set', { p_user: s.closest('tr').dataset.uid, p_role: s.value }); toast(s.value === 'none' ? 'Removed' : 'Saved'); draw(); } catch (x) { toast(x.message, 'err'); } }));
+      }
+    }
+    $$('[data-t]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.t; draw(); }));
+    draw();
+  }
+
   const CLAIM_APPS = { scf: ['MEG-SCF', 'Staff Claim (SCF)'], otcf: ['MEG-OTCF', 'Overtime (OTCF)'], mtcf: ['MEG-MTCF', 'Mileage (MTCF)'], tec: ['MEG-TEC-V2', 'Tuition (TEC)'] };
   const CLAIM_ROUTE = { scf: 'scf', otcf: 'otcf', mtcf: 'mtcf', 'tec-v2': 'tec' };
   async function meClaimsPage(item, el) {
@@ -7229,7 +7642,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

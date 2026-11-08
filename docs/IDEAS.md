@@ -257,6 +257,14 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   net and refuses a page without course, standard, students, names or fees on submit; serial and grouping as MEG-TEC-V2. Tutors are a separate
   `cms_tutors` list (not the Employee Master, not payroll); Admin creates them and invites them (`cms-invite` `{tutor_id}`), Tutor role = module
   `tutor_self` only; staff names are refused as tutors. The PIC still checks claims in MEG-TEC-V2 / the Action Center. Next: PRFAF (plan first).
+- **F1 PRFAF redesigned as Purchasing & Petty Cash (plan agreed with CLC 8 Nov 2026).** Request → Finance review → approval by amount
+  (≤ RM 1,000 Finance, above a Director, above RM 5,000 both) → release from a company bank account → purchaser acknowledges → purchase →
+  settlement with receipts (tolerance 10 %, Admin setting) → verified → closed. No returns: unspent money stays as the purchaser's petty cash per
+  company and the next request uses it; year-end: bring forward or settle. Double-entry books (bank, petty cash, expense; company / department /
+  event on every line; no edits, reversals only). Reports daily / monthly / yearly / by event, statements, Excel. Members: Admin department by
+  default. **Release 1 built (v2026.11.08-15:00):** settings, members, bank accounts, categories, events and budgets, requests through review,
+  approval, release and acknowledgement, books (entries, petty cash, paid out per account), emails. **Release 2 next:** settlement and receipts,
+  verification, tolerance and reimbursement, statements, reports, Excel, year-end closing, monthly lock; then MEG-PRFAF read-only.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call
