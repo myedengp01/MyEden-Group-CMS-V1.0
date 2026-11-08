@@ -265,6 +265,8 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   default. **Release 1 built (v2026.11.08-15:00):** settings, members, bank accounts, categories, events and budgets, requests through review,
   approval, release and acknowledgement, books (entries, petty cash, paid out per account), emails. **Release 2 next:** settlement and receipts,
   verification, tolerance and reimbursement, statements, reports, Excel, year-end closing, monthly lock; then MEG-PRFAF read-only.
+  **Release 2 built (v2026.11.08-19:30)**: all of the above; extra lines removed at settlement are kept marked "removed" (not deleted) for the
+  audit trail; reminders for late settlements are sent from Reports (no automatic daily email yet). MEG-PRFAF closed for new requests.
 
 ## PRI-011 · Employee profile — everything about a person on one page — built in v2026.10.25-23:20
 - **How it was built:** route `#/person?id=…`, opened from a name in View People or the Employee Directory. One server call

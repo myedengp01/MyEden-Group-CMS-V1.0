@@ -99,6 +99,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 71. `20261107_cms_my_claims_no_approval_labels.sql`, `20261107_cms_claim_settings_scf.sql` — My Claims labels for forms without approval; receipts setting in Claim settings
 72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 73. `20261107_cms_mtcf_new.sql` — F1 MTCF: `cms_mtcf_context / get / save` (+ `_fix_year`)
+77. `20261108_prfaf_old_read_only.sql` — the old MEG-PRFAF tables stop taking new entries (the app shows "moved to the CMS")
+76. `20261108_cms_purchasing_r2.sql` — Purchasing release 2: settlement columns, `pr_year_closings`, month lock in `pr_post`, `cms_pr_settle_save / verify / float_move / reverse / lock / year_end / year_decide / report / statement` (applied as parts a1, a2, a3, b)
 75. `20261108_cms_purchasing_r1.sql` — Purchasing & Petty Cash (new PRFAF) release 1: `pr_bank_accounts`, `pr_categories`, `pr_events`, `pr_requests`, `pr_items`, double-entry `pr_journal` / `pr_journal_lines` (locked after posting), modules `purchasing` / `purchasing.finance` / `purchasing.settings`, `cms_pr_*` functions, `pr-files` bucket (applied as parts a, b, c + `_available`)
 74. `20261107_cms_tec_tutors.sql` — F1 TEC V2 and tutors: `cms_tutors`, `cms_tutor_links`, Tutor role, `cms_tutors_list / tutor_save / tutor_invite_prepare / finish`, `cms_tec_context / get / mine / save / discard / template_save / settings_set` (+ `_save_fix_pages`, `_save_standards`)
 
@@ -152,6 +154,16 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.08-19:30** — Purchasing & Petty Cash **release 2**: the purchaser **records the purchase** (actual qty / price / supplier /
+  receipt no. and photo per line, extra lines, "no receipt" with a reason; nothing bought = 0) and sends it to Finance. Over the tolerance (10 %,
+  Admin setting) the overspend needs approval (Finance up to the Finance limit, else a Director). Finance **accepts or queries each line**, sends
+  it back with questions, or **verifies & closes**: the purchase is posted as expense by category (department, event) against the purchaser's
+  petty cash. Below zero = the company owes the purchaser: **Reimburse** (or it is added to the next release); **Money returned** records a
+  return. **Reversal** entries (a reversed release / purchase reopens the request). **Close the month** (Finance; only Admin reopens).
+  **Year-end**: per purchaser and company, bring forward or settle. New **Reports** page: spending by company / category / department /
+  month, day by day and per bank account, events budget vs spent vs committed, petty cash, late settlements (email reminder), receipt issues;
+  **statements** (bank account, purchaser's petty cash, event) with running balance, print and Excel; full report to Excel. New emails
+  (purchase to verify, questions, closed, reminder). The old **MEG-PRFAF** app now shows "moved to the CMS" and no longer takes new requests.
 - **v2026.11.08-15:00** — PRI-010 F1: **Purchasing & Petty Cash (the new PRFAF), release 1.** New menu group: Purchase Requests, Events &
   Budgets, Books & Balances, Settings. A purchase request (company, department, event, category, items with photos, quotations, needed-by,
   urgency; paid as advance, direct to supplier, or claim back) goes to **Finance** → approval by amount (≤ RM 1,000 Finance · above: a Director ·

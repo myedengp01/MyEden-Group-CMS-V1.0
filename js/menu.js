@@ -80,6 +80,7 @@ window.CMS_MENU = [
       { route: 'purchasing/pr', label: 'Purchase Request', phase: 4, live: true, hidden: true, desc: 'One purchase request: items, quotations, approval and release.' },
       { route: 'purchasing/events', label: 'Events & Budgets', phase: 4, live: true, desc: 'Annual dinner, sports day, graduation and other occasions with a budget; requests linked to them count against it.' },
       { route: 'purchasing/books', label: 'Books & Balances', phase: 4, live: true, desc: 'Double-entry books of purchasing: every release, petty-cash balances per purchaser and money paid out per bank account.' },
+      { route: 'purchasing/reports', label: 'Reports', phase: 4, live: true, desc: 'Spending by company, category, department, event, month and day; bank movements; petty cash with reimburse / return; late settlements; receipt issues; statements; Excel.' },
       { route: 'purchasing/settings', label: 'Settings', phase: 4, live: true, desc: 'Approval limits, quotations, tolerance, company bank accounts, expense categories and purchasing members.' },
     ] },
     { group: 'Payroll', icon: 'wallet', badge: 'V2.0', items: [
@@ -143,7 +144,7 @@ window.CMS_SOURCES = {
 // Menu route → permission module (cms_modules.code). Routes not listed use their own name.
 window.CMS_MODULE_OF = {
   'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', 'people/tutors': 'tutors', tutor: 'tutor_self', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
-  'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf', purchasing: 'purchasing', 'purchasing/pr': 'purchasing', 'purchasing/events': 'purchasing', 'purchasing/books': 'purchasing.finance', 'purchasing/settings': 'purchasing.settings',
+  'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf', purchasing: 'purchasing', 'purchasing/pr': 'purchasing', 'purchasing/events': 'purchasing', 'purchasing/books': 'purchasing.finance', 'purchasing/reports': 'purchasing.finance', 'purchasing/settings': 'purchasing.settings',
   'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/ids': 'people', 'people/import': 'people',
   'leave/al-calculator': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', 'leave/audit': 'leave', 'leave/kpi': 'leave', time: 'payroll', 'time/part-time': 'payroll', 'time/hours': 'people',

@@ -4583,6 +4583,9 @@
       if (can.review || (can.approve && r.status === 'directors')) out.push('<button type="button" class="btn" data-a="return">Return for changes</button><button type="button" class="btn ghost danger" data-a="disapprove">Disapprove</button>');
       if (can.release) out.push(`<button type="button" class="btn primary" data-a="release">${icon('wallet')}Release ${money(r.release_amount)}</button>`);
       if (can.acknowledge) out.push(`<button type="button" class="btn primary" data-a="ack">${icon('check-circle')}I have received ${money(r.released_amount)}</button>`);
+      if (can.settle) out.push(`<button type="button" class="btn primary" data-a="settle">${icon('file-check')}${r.actual_total !== null ? 'Continue recording the purchase' : 'Record the purchase (receipts)'}</button>`);
+      if (can.excess) out.push(`<button type="button" class="btn primary" data-a="excess">${icon('check-circle')}Approve overspend (${money(r.actual_total)})</button>`);
+      if (can.verify) out.push(`<button type="button" class="btn primary" data-a="vclose">${icon('check-circle')}Verify &amp; close</button><button type="button" class="btn" data-a="vquery">Send back with questions</button>`);
       if (can.edit) out.push(`<a class="btn" href="#/purchasing/pr?id=${esc(r.id)}">Edit</a>`);
       if (can.cancel) out.push('<button type="button" class="btn ghost danger" data-a="cancel">Cancel request</button>');
       return out.join('');
@@ -4598,22 +4601,38 @@
             <div><dt>Estimated</dt><dd><b>${money(r.est_total)}</b> · approval by ${PR_LEVEL[r.level] || '—'}</dd></div>
             ${r.approved_amount !== null ? `<div><dt>Approved</dt><dd><b>${money(r.approved_amount)}</b>${r.pay_type === 'advance' ? ` · uses ${money(r.balance_used)} petty cash · release ${money(r.release_amount)}` : ''}</dd></div>` : ''}
             ${r.released_amount !== null ? `<div><dt>Released</dt><dd><b>${money(r.released_amount)}</b> on ${dShort(r.release_date)} from ${esc(r.bank ? `${r.bank.bank || ''} ${r.bank.name}${r.bank.last4 ? ` ••${r.bank.last4}` : ''}` : '—')}${r.release_ref ? ` · ref ${esc(r.release_ref)}` : ''}${r.release_slip ? ' · <button type="button" class="link" data-slip>slip</button>' : ''}${r.acknowledged_at ? `<small class="sub">received, confirmed ${dShort(r.acknowledged_at)}</small>` : ''}</dd></div>` : ''}
-            ${r.settle_due ? `<div><dt>Settle by</dt><dd>${dShort(r.settle_due)} <small class="muted">(record the receipts: release 2)</small></dd></div>` : ''}
+            ${r.settle_due && !['closed', 'settlement'].includes(r.status) ? `<div><dt>Settle by</dt><dd class="${r.settle_due < new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10) ? 'bad-txt' : ''}">${dShort(r.settle_due)}</dd></div>` : ''}
+            ${r.actual_total !== null ? `<div><dt>Spent (receipts)</dt><dd><b>${money(r.actual_total)}</b>${r.approved_amount !== null ? ` against ${money(r.approved_amount)} approved` : ''}${r.excess_needed ? (r.excess_by_name ? `<small class="sub">overspend approved by ${esc(r.excess_by_name)}</small>` : `<small class="sub bad-txt">over the ${num(r.tolerance_pct)} % tolerance: needs approval</small>`) : ''}${r.verified_by_name ? `<small class="sub">verified by ${esc(r.verified_by_name)} ${dShort(r.verified_at)}</small>` : ''}</dd></div>` : ''}
+            ${r.query_note && r.status === 'purchasing' ? `<div><dt>Finance asks</dt><dd class="bad-txt">${esc(r.query_note)}</dd></div>` : ''}
             ${r.disapprove_reason && r.status === 'disapproved' ? `<div><dt>Not approved</dt><dd class="bad-txt">${esc(r.disapprove_reason)}</dd></div>` : ''}
             ${ev ? `<div><dt>Event budget</dt><dd>${money(ev.budget)} · committed ${money(ev.committed)} · <b class="${Number(ev.budget) - Number(ev.committed) < 0 ? 'bad-txt' : ''}">left ${money(Number(ev.budget) - Number(ev.committed))}</b></dd></div>` : ''}
             ${C.roles.finance || C.roles.director ? `<div><dt>Purchaser's petty cash</dt><dd>${money(r.balance_now)} held · ${money(r.available)} free</dd></div>` : ''}</dl>
           ${actions() ? `<div class="btn-row pr-acts">${actions()}</div>` : ''}</section>
-        <section class="card"><h3 class="card-h">Items</h3><div class="table-wrap"><table class="data"><thead><tr><th>No.</th><th>Item</th><th class="num">Qty</th><th class="num">Est. price</th><th class="num">Total</th><th></th></tr></thead><tbody>
+        <section class="card"><h3 class="card-h">Items</h3>${r.actual_total !== null ? prActualTable(r, items, C) : `<div class="table-wrap"><table class="data"><thead><tr><th>No.</th><th>Item</th><th class="num">Qty</th><th class="num">Est. price</th><th class="num">Total</th><th></th></tr></thead><tbody>
           ${items.map((i, k) => `<tr><td>${k + 1}</td><td>${esc(i.description)}${i.supplier ? `<small class="sub">${esc(i.supplier)}</small>` : ''}</td><td class="num">${num(i.qty)}</td><td class="num">${m2(i.est_unit)}</td><td class="num">${m2(i.est_total)}</td>
             <td>${i.photo_path ? `<button type="button" class="btn xs ghost" data-file="${esc(i.photo_path)}">Photo</button>` : ''}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><td colspan="4"><b>Total</b></td><td class="num"><b>${m2(r.est_total)}</b></td><td></td></tr></tfoot></table></div>
+          <tfoot><tr><td colspan="4"><b>Total</b></td><td class="num"><b>${m2(r.est_total)}</b></td><td></td></tr></tfoot></table></div>`}
+          ${r.settle_note ? `<p class="small"><b>Purchaser's note:</b> ${esc(r.settle_note)}</p>` : ''}
           ${(r.quotes || []).length ? `<p class="small">Quotations: ${r.quotes.map((x, k) => `<button type="button" class="link" data-file="${esc(x.path)}">${esc(x.name || `Quotation ${k + 1}`)}</button>`).join(' · ')}</p>` : ''}</section>
+        ${(r.entries || []).length ? `<section class="card"><h3 class="card-h">In the books</h3><ul class="pr-files">${r.entries.map((j) => `<li><b>${esc(j.no)}</b> <span class="muted small">${dShort(j.date)} · ${esc(j.kind)} · ${esc(j.memo || '')}</span>${j.reversed ? ' <span class="tag xs">reversed</span>' : ''}${can.reverse && !j.reversed && j.kind !== 'reversal' ? ` <button type="button" class="btn xs ghost danger" data-rev="${esc(j.id)}" data-no="${esc(j.no)}">Reverse</button>` : ''}</li>`).join('')}</ul></section>` : ''}
         <section class="card"><h3 class="card-h">History</h3><ol class="pr-log">${(r.log || []).map((x) => `<li><b>${esc(x.what)}</b>${x.note ? ` — ${esc(x.note)}` : ''}<small class="sub">${new Date(x.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small></li>`).join('') || '<li class="muted">Nothing yet</li>'}</ol></section>
         <p><a href="#/purchasing" class="btn ghost sm">‹ Purchase Requests</a></p>`;
     }
     draw();
     body.addEventListener('click', async (e) => {
-      const b = e.target.closest('[data-a],[data-file],[data-slip],[data-print]'); if (!b) return;
+      const b = e.target.closest('[data-a],[data-file],[data-slip],[data-print],[data-vl],[data-rev]'); if (!b) return;
+      const vr = async (action, p, okMsg) => { const res = await API.rpc('cms_pr_verify', { p_id: r.id, p_action: action, p: p || {} }); prNotify(res.mail, r.id); if (okMsg) toast(okMsg); PRC = null; Object.assign(r, await API.rpc('cms_pr_get', { p_id: r.id })); draw(); };
+      if (b.dataset.vl) {
+        const [iid, st] = b.dataset.vl.split('|');
+        try { if (st === 'queried') await modal({ title: 'Query this line', ok: 'Query', body: '<label class="fld"><span>What is wrong (the purchaser sees this)</span><textarea name="note" rows="2" class="ta" maxlength="300" required></textarea></label>', onOk: (f) => { if (!f.note.value.trim()) throw new Error('Say what is wrong.'); return vr('line', { item_id: iid, status: 'queried', note: f.note.value }); } });
+          else await vr('line', { item_id: iid, status: 'accepted' }); } catch (x) { toast(x.message, 'err'); }
+        return;
+      }
+      if (b.dataset.rev) {
+        await modal({ title: `Reverse ${b.dataset.no}?`, ok: 'Post reversal', danger: true, body: '<p>A reversal entry with the opposite amounts is posted today. The original stays in the books. A reversed release puts the request back to “Approved · to release”; a reversed purchase back to “Settlement sent”.</p><label class="fld"><span>Reason</span><textarea name="reason" rows="2" class="ta" maxlength="300" required></textarea></label>',
+          onOk: async (f) => { await API.rpc('cms_pr_reverse', { p_entry: b.dataset.rev, p_reason: f.reason.value }); toast('Reversal posted'); PRC = null; Object.assign(r, await API.rpc('cms_pr_get', { p_id: r.id })); draw(); } });
+        return;
+      }
       if (b.dataset.file) { prOpenFile(b.dataset.file); return; }
       if (b.dataset.slip !== undefined) { prOpenFile(r.release_slip); return; }
       if (b.dataset.print !== undefined) { prPrint(el, r); return; }
@@ -4625,6 +4644,13 @@
           onOk: (f) => act('approve', { amount: f.amount.value, note: f.note.value }, 'Approved') });
         else if (a === 'return') await reasonBox('Return for changes', 'return', 'Return', false);
         else if (a === 'disapprove') await reasonBox('Disapprove this request', 'disapprove', 'Disapprove', true);
+        else if (a === 'settle') prSettle(body, r, C, async () => { Object.assign(r, await API.rpc('cms_pr_get', { p_id: r.id })); draw(); });
+        else if (a === 'excess') await confirmBox('Approve the overspend?', `Spent <b>${money(r.actual_total)}</b> against <b>${money(r.approved_amount)}</b> approved (tolerance ${num(r.tolerance_pct)} %).`, 'Approve overspend', false, () => vr('excess', {}, 'Overspend approved'));
+        else if (a === 'vquery') await modal({ title: 'Send back with questions', ok: 'Send back', body: `<p class="muted small">Queried lines: ${(r.items || []).filter((i) => i.verify_status === 'queried').length}.</p><label class="fld"><span>Message to the purchaser</span><textarea name="note" rows="3" class="ta" maxlength="500"></textarea></label>`, onOk: (f) => vr('query', { note: f.note.value }, 'Sent back to the purchaser') });
+        else if (a === 'vclose') {
+          const after = Number(r.balance_now) - Number(r.actual_total || 0);
+          await confirmBox('Verify and close?', `Posts <b>${money(r.actual_total)}</b> as spending (${esc(r.company_code)}${r.event ? `, ${esc(r.event.name)}` : ''}).${r.pay_type !== 'supplier' ? ` ${esc(r.requester_name)}'s petty cash becomes <b>${money(after)}</b>${after < 0 ? ' (the company owes them: reimburse in Reports › Petty cash)' : ''}.` : ''}`, 'Verify & close', false, () => vr('close', {}, 'Verified, closed and posted'));
+        }
         else if (a === 'cancel') await confirmBox('Cancel this request?', 'It will not go further.', 'Cancel request', true, () => act('cancel', {}, 'Cancelled'));
         else if (a === 'ack') await confirmBox('Money received?', `Confirm you have received <b>${money(r.released_amount)}</b> for ${esc(r.pr_no)}. It is added to your petty cash (${esc(r.company_code)}).`, 'Yes, received', false, () => act('acknowledge', {}, 'Thank you — go ahead with the purchase'));
         else if (a === 'release') {
@@ -4647,6 +4673,193 @@
       } catch (x) { toast(x.message, 'err'); }
     });
   }
+
+  // ---- release 2: what was bought, settlement editor, reports, statements
+  function prActualTable(r, items, C) {
+    const verifying = r.can.verify; const catName = (id) => (C.categories.find((c) => c.id === id) || {}).name;
+    return `<div class="table-wrap"><table class="data pr-act"><thead><tr><th>No.</th><th>Item</th><th class="num">Est.</th><th class="num">Qty × price</th><th class="num">Spent</th><th>Receipt</th><th>Check</th></tr></thead><tbody>
+      ${items.map((i, k) => `<tr><td>${k + 1}</td><td>${esc(i.description)}${i.is_extra ? ' <span class="tag warn xs">extra</span>' : ''}<small class="sub">${esc(i.supplier || '')}${i.category_id && i.category_id !== r.category_id ? ` · ${esc(catName(i.category_id) || '')}` : ''}</small></td>
+        <td class="num">${Number(i.est_total) ? m2(i.est_total) : '—'}</td><td class="num nowrap">${i.act_qty !== null ? `${num(i.act_qty)} × ${m2(i.act_unit)}` : ''}</td><td class="num"><b>${i.act_total !== null ? m2(i.act_total) : ''}</b></td>
+        <td>${i.receipt_path ? `<button type="button" class="btn xs ghost" data-file="${esc(i.receipt_path)}">Receipt${i.receipt_no ? ` ${esc(i.receipt_no)}` : ''}</button>` : i.no_receipt_reason ? `<small class="warn-txt">No receipt: ${esc(i.no_receipt_reason)}</small>` : Number(i.act_total) ? '<small class="bad-txt">missing</small>' : '<small class="muted">not bought</small>'}</td>
+        <td class="nowrap">${i.verify_status === 'accepted' ? '<span class="tag ok xs">OK</span>' : i.verify_status === 'queried' ? `<span class="tag bad xs">Queried</span><small class="sub">${esc(i.verify_note || '')}</small>` : ''}
+          ${verifying && Number(i.act_total) ? `${i.verify_status !== 'accepted' ? `<button type="button" class="btn xs" data-vl="${esc(i.id)}|accepted">Accept</button>` : ''}${i.verify_status !== 'queried' ? `<button type="button" class="btn xs ghost" data-vl="${esc(i.id)}|queried">Query</button>` : ''}` : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="2"><b>Total</b></td><td class="num">${m2(r.est_total)}</td><td></td><td class="num"><b>${m2(r.actual_total)}</b></td><td colspan="2"></td></tr></tfoot></table></div>`;
+  }
+  function prSettle(body, r, C, done) {
+    const tol = Number(r.tolerance_pct || 10); const appr = Number(r.approved_amount ?? r.est_total);
+    const L = (r.items || []).map((i) => ({ id: i.id, extra: i.is_extra, description: i.description, est: `${num(i.qty)} × ${m2(i.est_unit)}`, supplier: i.supplier || '',
+      act_qty: i.act_qty ?? i.qty, act_unit: i.act_unit ?? i.est_unit, receipt_no: i.receipt_no || '', receipt_path: i.receipt_path || '', no_receipt_reason: i.no_receipt_reason || '',
+      nr: !!i.no_receipt_reason, category_id: i.category_id || '', query: i.verify_status === 'queried' ? i.verify_note : '' }));
+    const D = { note: r.settle_note || '' }; let saving = null; let dirty = false; let timer = null;
+    const tot = () => L.reduce((s, x) => s + (parseFloat(x.act_qty) || 0) * (parseFloat(x.act_unit) || 0), 0);
+    const payload = () => ({ note: D.note, lines: L.map((x) => ({ id: x.id || null, description: x.description, supplier: x.supplier, act_qty: Number(x.act_qty) || 0, act_unit: Number(x.act_unit) || 0,
+      receipt_no: x.receipt_no, receipt_path: x.receipt_path, no_receipt_reason: x.nr ? x.no_receipt_reason : '', category_id: x.category_id })) });
+    const status = (t, tone) => { const s = $('#ps-st', body); if (s) { s.textContent = t; s.className = `small ${tone || 'muted'}`; } };
+    async function save(submit = false) {
+      if (saving) await saving;
+      saving = (async () => { const res = await API.rpc('cms_pr_settle_save', { p_id: r.id, p: payload(), p_submit: submit }); dirty = false; status(`Saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`); return res; })();
+      try { return await saving; } finally { saving = null; }
+    }
+    const later = () => { dirty = true; status('Not saved yet…'); clearTimeout(timer); timer = setTimeout(() => save().then(async () => { const nr = await API.rpc('cms_pr_get', { p_id: r.id }); (nr.items || []).forEach((it, k) => { if (L[k] && !L[k].id) L[k].id = it.id; }); }).catch((e) => status(e.message, 'bad-txt')), 1500); };
+    window.CMS_LEAVE_GUARD = { check: async () => { if (!dirty) return true; try { clearTimeout(timer); await save(); return true; } catch (e) { return confirm(`Not saved (${e.message}). Leave anyway?`); } } };
+    const sum = () => { const t = tot(); const lim = appr * (1 + tol / 100); const after = Number(r.balance_now) - t;
+      return `<div class="pr-sum"><div><span>Approved</span><b>${money(appr)}</b></div><div><span>Spent</span><b class="${t > lim ? 'bad-txt' : ''}">${money(t)}</b></div>
+        <div><span>Within ${num(tol)} % tolerance up to</span><b>${money(lim)}</b></div>${r.pay_type !== 'supplier' ? `<div><span>Your petty cash (${esc(r.company_code)}) after</span><b class="${after < 0 ? 'warn-txt' : ''}">${money(after)}</b></div>` : ''}</div>
+        ${t > lim ? '<p class="note warn">This is over the tolerance: the overspend will need approval before Finance can close it.</p>' : ''}
+        ${r.pay_type !== 'supplier' && after < 0 ? '<p class="muted small">Below zero means the company owes you: Finance reimburses you, or it is added to your next release.</p>' : ''}`; };
+    const line = (x, k) => `<div class="pr-sl" data-k="${k}">
+        <div class="pr-sl-h"><b>${k + 1}. </b>${x.extra ? `<input data-sk="description" value="${esc(x.description)}" maxlength="300" placeholder="Extra item" aria-label="Extra item">` : `<b>${esc(x.description)}</b> <small class="muted">planned ${x.est}</small>`}
+          ${x.extra ? `<button type="button" class="icon-btn sm" data-rmx="${k}" aria-label="Remove line">${icon('x')}</button>` : ''}</div>
+        ${x.query ? `<p class="note warn">Finance: ${esc(x.query)}</p>` : ''}
+        <div class="pr-sl-g"><label class="fld"><span>Qty bought</span><input data-sk="act_qty" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(x.act_qty)}"></label>
+          <label class="fld"><span>Price (RM)</span><input data-sk="act_unit" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(x.act_unit)}"></label>
+          <div class="fld"><span>Total</span><b class="pr-sl-t" data-t>${m2((parseFloat(x.act_qty) || 0) * (parseFloat(x.act_unit) || 0))}</b></div>
+          <label class="fld"><span>Supplier</span><input data-sk="supplier" value="${esc(x.supplier)}" maxlength="120"></label>
+          <label class="fld"><span>Receipt / invoice no.</span><input data-sk="receipt_no" value="${esc(x.receipt_no)}" maxlength="60"></label>
+          <label class="fld"><span>Category</span><select data-sk="category_id"><option value="">${esc(r.category || 'Same as the request')}</option>${C.categories.filter((c) => c.active || c.id === x.category_id).map((c) => `<option value="${esc(c.id)}" ${c.id === x.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></div>
+        <div class="btn-row">${x.receipt_path ? `<button type="button" class="btn sm ghost" data-rv="${k}">View receipt</button><button type="button" class="btn sm ghost" data-rx="${k}">Replace</button>` : `<label class="btn sm ${x.nr ? 'ghost' : ''}">${icon('plus')}Receipt photo<input type="file" accept="image/*,application/pdf" data-rup="${k}" hidden></label>`}
+          <label class="chk"><input type="checkbox" data-nr="${k}" ${x.nr ? 'checked' : ''}> No receipt</label></div>
+        ${x.nr ? `<label class="fld"><span>Why there is no receipt</span><input data-sk="no_receipt_reason" value="${esc(x.no_receipt_reason)}" maxlength="300" placeholder="e.g. market stall, no receipt given"></label>` : ''}</div>`;
+    function draw() {
+      body.innerHTML = `<section class="card"><div class="pr-vh"><div><h2>${esc(r.pr_no)} · record the purchase</h2><p class="muted">${esc(r.purpose)}${r.query_note ? ` · <span class="bad-txt">Finance asks: ${esc(r.query_note)}</span>` : ''}</p></div>
+          <button type="button" class="btn sm ghost" data-back>‹ Back</button></div>
+          <p class="muted small">For each item: what you actually bought, the price and the receipt photo. Set the quantity to 0 for anything you did not buy. Add lines for anything extra.</p>
+          <div id="ps-lines">${L.map(line).join('')}</div>
+          <div class="btn-row"><button type="button" class="btn sm" data-addx>${icon('plus')}Add an extra item</button></div>
+          <label class="fld"><span>Note for Finance (optional)</span><textarea data-note rows="2" class="ta" maxlength="1000">${esc(D.note)}</textarea></label></section>
+        <section class="card scf-foot"><div id="ps-sum">${sum()}</div><div class="btn-row"><button type="button" class="btn primary" data-send>${icon('check-circle')}Send to Finance</button><button type="button" class="btn" data-save>Save</button></div>
+          <p class="small muted" id="ps-st">${r.actual_total !== null ? 'Saved' : 'Not saved yet'}</p></section>`;
+    }
+    draw();
+    const ctl = new AbortController();
+    const finish = async () => { ctl.abort(); window.CMS_LEAVE_GUARD = null; await done(); };
+    body.addEventListener('input', (e) => {
+      const t = e.target; if (t.dataset.note !== undefined) { D.note = t.value; later(); return; }
+      const box = t.closest('[data-k]'); if (!box || !t.dataset.sk) return; const x = L[+box.dataset.k]; x[t.dataset.sk] = t.value;
+      if (t.dataset.sk === 'act_qty' || t.dataset.sk === 'act_unit') { $('[data-t]', box).textContent = m2((parseFloat(x.act_qty) || 0) * (parseFloat(x.act_unit) || 0)); $('#ps-sum', body).innerHTML = sum(); }
+      later();
+    }, { signal: ctl.signal });
+    body.addEventListener('change', async (e) => {
+      const t = e.target;
+      if (t.dataset.sk === 'category_id') { L[+t.closest('[data-k]').dataset.k].category_id = t.value; later(); return; }
+      if (t.dataset.nr !== undefined) { L[+t.dataset.nr].nr = t.checked; draw(); later(); return; }
+      if (t.dataset.rup !== undefined && t.files[0]) {
+        try { L[+t.dataset.rup].receipt_path = await prUpload(r.id, t.files[0], 'receipt'); L[+t.dataset.rup].nr = false; draw(); clearTimeout(timer); await save(); toast('Receipt attached'); }
+        catch (x) { toast(x.message, 'err'); }
+      }
+    }, { signal: ctl.signal });
+    body.addEventListener('click', async (e) => {
+      const b = (sel) => e.target.closest(sel);
+      if (b('[data-back]')) { clearTimeout(timer); if (dirty) { try { await save(); } catch (x) { toast(x.message, 'err'); return; } } finish(); return; }
+      if (b('[data-addx]')) { L.push({ id: null, extra: true, description: '', est: '', supplier: '', act_qty: 1, act_unit: '', receipt_no: '', receipt_path: '', no_receipt_reason: '', nr: false, category_id: '', query: '' }); draw(); later(); return; }
+      if (b('[data-rmx]')) { L.splice(+b('[data-rmx]').dataset.rmx, 1); draw(); later(); return; }
+      if (b('[data-rv]')) { prOpenFile(L[+b('[data-rv]').dataset.rv].receipt_path); return; }
+      if (b('[data-rx]')) { L[+b('[data-rx]').dataset.rx].receipt_path = ''; draw(); later(); return; }
+      if (b('[data-save]')) { clearTimeout(timer); try { await save(); toast('Saved'); } catch (x) { toast(x.message, 'err'); } return; }
+      if (b('[data-send]')) {
+        const miss = L.findIndex((x) => (parseFloat(x.act_qty) || 0) * (parseFloat(x.act_unit) || 0) > 0 && !x.receipt_path && !(x.nr && x.no_receipt_reason.trim()));
+        if (miss >= 0) { toast(`Line ${miss + 1}: attach the receipt or say why there is none.`, 'err'); $$('[data-k]', body)[miss]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        if (!(await confirmBox('Send to Finance?', `Spent <b>${money(tot())}</b> on ${esc(r.pr_no)}. Finance checks the receipts and closes it.`, 'Send', false))) return;
+        clearTimeout(timer);
+        try { const res = await save(true); prNotify(res.mail, r.id); toast('Sent to Finance'); finish(); } catch (x) { toast(x.message, 'err'); status(x.message, 'bad-txt'); }
+      }
+    }, { signal: ctl.signal });
+  }
+
+  const prXlsx = async (name, sheets) => {
+    if (!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    const X = window.XLSX; const wb = X.utils.book_new();
+    sheets.forEach(([title, rows]) => { const ws = X.utils.aoa_to_sheet(rows.length ? rows : [['(nothing)']]); ws['!cols'] = (rows[0] || []).map(() => ({ wch: 18 })); X.utils.book_append_sheet(wb, ws, title.slice(0, 31)); });
+    X.writeFile(wb, name, { compression: true });
+  };
+  async function prStatement(el, kind, ref, company, from, to, back) {
+    let S; try { S = await API.rpc('cms_pr_statement', { p_kind: kind, p_ref: ref, p_company: company, p_from: from, p_to: to }); } catch (e) { toast(e.message, 'err'); return; }
+    const head = kind === 'event' ? ['Spent', 'Refund'] : ['Debit (in)', 'Credit (out)'];
+    const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>STATEMENT OF ACCOUNT</h2><p>${esc(S.title)}</p></div><div class="scf-sn"><code>${dShort(S.from)} – ${dShort(S.to)}</code><small>Purchasing &amp; Petty Cash</small></div></div>
+      <table class="data scf-pt"><thead><tr><th>Date</th><th>Entry</th><th>Description</th><th class="num">${head[0]}</th><th class="num">${head[1]}</th><th class="num">Balance</th></tr></thead><tbody>
+        <tr><td colspan="5"><b>Opening balance</b></td><td class="num"><b>${m2(S.opening)}</b></td></tr>
+        ${S.lines.map((l) => `<tr><td class="nowrap">${dShort(l.date)}</td><td>${esc(l.no)}${l.pr_no ? `<small class="sub">${esc(l.pr_no)}</small>` : ''}</td><td>${esc(l.memo || '')}</td><td class="num pr-dr">${Number(l.debit) ? m2(l.debit) : ''}</td><td class="num pr-cr">${Number(l.credit) ? m2(l.credit) : ''}</td><td class="num ${Number(l.balance) < 0 ? 'bad-txt' : 'ok-txt'}">${m2(l.balance)}</td></tr>`).join('')}
+        <tr><td colspan="5"><b>Closing balance</b></td><td class="num"><b>${m2(S.closing)}</b></td></tr></tbody></table>
+      <p class="small muted">${kind === 'bank' ? 'Only money moved through Purchasing (releases, reimbursements, returns): not the full bank statement. Negative = paid out.' : kind === 'float' ? 'Positive = petty cash the purchaser holds · negative = the company owes the purchaser.' : 'Spending posted to this event.'} Printed from the MyEden Group CMS.</p></section>`;
+    docView(el, `Statement · ${S.title}`, [sheet], back);
+    const bar = $('.print-bar', el);
+    const xb = document.createElement('button'); xb.type = 'button'; xb.className = 'btn sm'; xb.innerHTML = `${icon('download')}Excel`;
+    xb.addEventListener('click', () => prXlsx(`Statement ${S.title.replace(/[^\w ()-]+/g, '')} ${S.from}_${S.to}.xlsx`, [['Statement', [['Statement of account', S.title], ['Period', S.from, S.to], [], ['Date', 'Entry', 'Request', 'Description', head[0], head[1], 'Balance'],
+      ['', '', '', 'Opening balance', '', '', Number(S.opening)], ...S.lines.map((l) => [l.date, l.no, l.pr_no || '', l.memo || '', Number(l.debit) || '', Number(l.credit) || '', Number(l.balance)]), ['', '', '', 'Closing balance', '', '', Number(S.closing)]]]]));
+    if (bar) bar.insertBefore(xb, $('[data-print]', bar));
+  }
+
+  async function prReportsPage(item, el) {
+    let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const f = { co: '', from: `${today.slice(0, 7)}-01`, to: today, tab: 'summary', preset: 'month' };
+    let R = null; const fin = C.roles.finance;
+    const presets = { today: () => [today, today], month: () => [`${today.slice(0, 7)}-01`, today], lastmonth: () => { const d = new Date(`${today.slice(0, 7)}-01T00:00:00Z`); d.setUTCDate(0); return [`${d.toISOString().slice(0, 7)}-01`, d.toISOString().slice(0, 10)]; }, year: () => [`${today.slice(0, 4)}-01-01`, today] };
+    const back = () => { location.hash = `#/purchasing/reports?t=${Date.now()}`; };
+    function shell() {
+      el.innerHTML = `${pageHead(item, `<button type="button" class="btn" data-xls>${icon('download')}Excel</button>`)}<section class="card"><div class="toolbar">
+          <div class="seg">${[['today', 'Today'], ['month', 'This month'], ['lastmonth', 'Last month'], ['year', 'This year']].map(([k, l]) => `<button type="button" data-p="${k}" class="${f.preset === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <label class="fld inline"><span>From</span><input type="date" id="rp-from" value="${f.from}"></label><label class="fld inline"><span>To</span><input type="date" id="rp-to" value="${f.to}"></label>
+          <label class="fld inline"><span>Company</span><select id="rp-co"><option value="">All</option>${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === f.co ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select></label></div>
+        <div class="seg pr-tabs">${[['summary', 'Summary'], ['daily', 'Daily & banks'], ['events', 'Events'], ['floats', 'Petty cash'], ['late', 'Late settlements'], ['receipts', 'Receipt issues']].map(([k, l]) => `<button type="button" data-t="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <div id="rp-body">${loading()}</div></section>`;
+      $$('[data-p]', el).forEach((b) => b.addEventListener('click', () => { f.preset = b.dataset.p; [f.from, f.to] = presets[b.dataset.p](); shell(); load(); }));
+      $('#rp-from', el).addEventListener('change', (e) => { f.from = e.target.value; f.preset = ''; load(); });
+      $('#rp-to', el).addEventListener('change', (e) => { f.to = e.target.value; f.preset = ''; load(); });
+      $('#rp-co', el).addEventListener('change', (e) => { f.co = e.target.value; load(); });
+      $$('[data-t]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.t; $$('[data-t]', el).forEach((x) => x.classList.toggle('on', x === b)); if (R) draw(); }));
+      $('[data-xls]', el).addEventListener('click', () => { if (R) exportAll(); });
+    }
+    async function load() { $('#rp-body', el).innerHTML = loading(); try { R = await API.rpc('cms_pr_report', { p_from: f.from, p_to: f.to, p_company: f.co || null }); draw(); } catch (e) { $('#rp-body', el).innerHTML = errorCard(e.message); } }
+    const bars = (rows, total) => rows.length ? `<table class="data rp-t"><tbody>${rows.map((x) => `<tr><td>${esc(x.k || '—')}${x.asset ? ' <span class="tag blue xs">asset</span>' : ''}</td><td class="rp-bar"><span style="width:${total ? Math.max(2, Math.round(Number(x.amt) / total * 100)) : 0}%"></span></td><td class="num nowrap"><b>${m2(x.amt)}</b></td></tr>`).join('')}</tbody></table>` : '<p class="muted small">Nothing in this period.</p>';
+    function draw() {
+      const box = $('#rp-body', el); const T = R.totals; const sp = Number(T.spent);
+      if (f.tab === 'summary') box.innerHTML = `<div class="pr-sum rp-kpi"><div><span>Spent (receipts posted)</span><b>${money(T.spent)}</b></div><div><span>Released to purchasers / suppliers</span><b>${money(T.released)}</b></div>
+          <div><span>Reimbursed</span><b>${money(T.reimbursed)}</b></div><div><span>Returned</span><b>${money(T.returned)}</b></div><div><span>Net paid out of the banks</span><b>${money(T.bank_net)}</b></div></div>
+        <div class="rp-grid"><div><h4>By company</h4>${bars(R.by_company, sp)}</div><div><h4>By category</h4>${bars(R.by_category, sp)}</div><div><h4>By department</h4>${bars(R.by_department, sp)}</div><div><h4>By month</h4>${bars(R.by_month, Math.max(...R.by_month.map((x) => Number(x.amt)), 0))}</div></div>
+        <p class="muted small">Requests now: ${Object.entries(R.status).map(([k, n]) => `${esc(PR_ST[k]?.[0] || k)} ${n}`).join(' · ') || 'none'}.</p>`;
+      else if (f.tab === 'daily') box.innerHTML = `<h4>Day by day</h4>${R.by_day.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Date</th><th class="num">Paid out</th><th class="num">Received back</th><th class="num">Spent (posted)</th></tr></thead><tbody>${R.by_day.map((d) => `<tr><td>${dShort(d.k)}</td><td class="num pr-cr">${m2(d.out)}</td><td class="num pr-dr">${m2(d.in)}</td><td class="num">${m2(d.spent)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Nothing in this period.</p>'}
+        <h4>Bank accounts</h4>${R.banks.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Account</th><th class="num">Paid out</th><th class="num">Received</th><th></th></tr></thead><tbody>${R.banks.map((b) => `<tr><td>${esc(b.k)}<small class="sub">${esc(b.company)}</small></td><td class="num pr-cr">${m2(b.out)}</td><td class="num pr-dr">${m2(b.in)}</td><td><button type="button" class="btn xs ghost" data-st="bank|${esc(b.id)}|${esc(b.company)}">Statement</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No bank accounts.</p>'}`;
+      else if (f.tab === 'events') box.innerHTML = R.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Event</th><th class="num">Budget</th><th class="num">Spent</th><th class="num">Still committed</th><th class="num">Left</th><th></th></tr></thead><tbody>
+          ${R.events.map((x) => { const left = Number(x.budget) - Number(x.spent) - Number(x.committed); return `<tr><td><b>${esc(x.k)}</b><small class="sub">${esc(x.company)} · ${esc(x.status)}</small></td><td class="num">${m2(x.budget)}</td><td class="num">${m2(x.spent)}</td><td class="num">${m2(x.committed)}</td><td class="num ${left < 0 ? 'bad-txt' : ''}"><b>${m2(left)}</b></td><td><button type="button" class="btn xs ghost" data-st="event|${esc(x.id)}|${esc(x.company)}">Statement</button></td></tr>`; }).join('')}</tbody></table></div><p class="muted small">Spent = receipts posted (all time). Still committed = approved requests not yet closed.</p>` : '<p class="muted small">No events.</p>';
+      else if (f.tab === 'floats') box.innerHTML = R.floats.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Purchaser</th><th>Company</th><th class="num">Held</th><th class="num">Free</th><th></th></tr></thead><tbody>
+          ${R.floats.map((x) => `<tr><td>${esc(x.holder)}</td><td>${esc(x.company)}</td><td class="num ${Number(x.balance) < 0 ? 'bad-txt' : ''}"><b>${m2(x.balance)}</b>${Number(x.balance) < 0 ? '<small class="sub">company owes</small>' : ''}</td><td class="num">${m2(x.free)}</td>
+            <td class="row-acts nowrap"><button type="button" class="btn xs ghost" data-st="float|${esc(x.uid)}|${esc(x.company)}">Statement</button>${fin && Number(x.balance) < 0 ? `<button type="button" class="btn xs" data-mv="reimburse|${esc(x.uid)}|${esc(x.company)}|${-Number(x.balance)}|${esc(x.holder)}">Reimburse</button>` : ''}${fin && Number(x.balance) > 0 ? `<button type="button" class="btn xs ghost" data-mv="return|${esc(x.uid)}|${esc(x.company)}|${Number(x.balance)}|${esc(x.holder)}">Money returned</button>` : ''}</td></tr>`).join('')}</tbody></table></div>
+          <p class="muted small">Held = petty cash with the purchaser now. Free = not yet committed to an open request.</p>` : '<p class="muted small">No petty cash out.</p>';
+      else if (f.tab === 'late') box.innerHTML = R.late.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Request</th><th>Purchaser</th><th class="num">Amount</th><th>Due</th><th></th></tr></thead><tbody>
+          ${R.late.map((x) => `<tr><td><a href="#/purchasing/pr?id=${esc(x.id)}"><b>${esc(x.pr_no)}</b></a><small class="sub">${esc(x.purpose)}</small></td><td>${esc(x.requester)}</td><td class="num">${m2(x.amount)}</td><td class="bad-txt nowrap">${dShort(x.due)}<small class="sub">${x.days} day${x.days === 1 ? '' : 's'} late</small></td><td>${fin ? `<button type="button" class="btn xs" data-remind="${esc(x.id)}">Email reminder</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No late settlements.</p>';
+      else box.innerHTML = R.receipts.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Request</th><th>Purchaser</th><th>Item</th><th class="num">Amount</th><th>Issue</th></tr></thead><tbody>
+          ${R.receipts.map((x) => `<tr><td><a href="#/purchasing/pr?id=${esc(x.id)}">${esc(x.pr_no)}</a></td><td>${esc(x.requester)}</td><td>${esc(x.item)}</td><td class="num">${m2(x.amount)}</td><td>${esc(x.issue)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No receipt issues in this period.</p>';
+      $$('[data-st]', box).forEach((b) => b.addEventListener('click', () => { const [k, ref, co] = b.dataset.st.split('|'); prStatement(el, k, ref, co, f.from, f.to, back); }));
+      $$('[data-remind]', box).forEach((b) => b.addEventListener('click', () => { prNotify('overdue', b.dataset.remind); b.disabled = true; b.textContent = 'Sent'; toast('Reminder emailed'); }));
+      $$('[data-mv]', box).forEach((b) => b.addEventListener('click', () => prMove(b.dataset.mv.split('|'), C, load)));
+    }
+    function exportAll() {
+      const T = R.totals;
+      prXlsx(`Purchasing report ${f.co || 'all'} ${f.from}_${f.to}.xlsx`, [
+        ['Summary', [['Purchasing report', f.co || 'All companies'], ['Period', f.from, f.to], [], ['Spent', Number(T.spent)], ['Released', Number(T.released)], ['Reimbursed', Number(T.reimbursed)], ['Returned', Number(T.returned)], ['Net paid out', Number(T.bank_net)],
+          [], ['By company'], ...R.by_company.map((x) => [x.k, Number(x.amt)]), [], ['By category'], ...R.by_category.map((x) => [x.k, Number(x.amt)]), [], ['By department'], ...R.by_department.map((x) => [x.k, Number(x.amt)]), [], ['By month'], ...R.by_month.map((x) => [x.k, Number(x.amt)])]],
+        ['Daily', [['Date', 'Paid out', 'Received back', 'Spent'], ...R.by_day.map((d) => [d.k, Number(d.out), Number(d.in), Number(d.spent)])]],
+        ['Banks', [['Account', 'Company', 'Paid out', 'Received'], ...R.banks.map((b) => [b.k, b.company, Number(b.out), Number(b.in)])]],
+        ['Events', [['Event', 'Company', 'Status', 'Budget', 'Spent', 'Committed', 'Left'], ...R.events.map((x) => [x.k, x.company, x.status, Number(x.budget), Number(x.spent), Number(x.committed), Number(x.budget) - Number(x.spent) - Number(x.committed)])]],
+        ['Petty cash', [['Purchaser', 'Company', 'Held', 'Free'], ...R.floats.map((x) => [x.holder, x.company, Number(x.balance), Number(x.free)])]],
+        ['Late', [['Request', 'Purchaser', 'Purpose', 'Amount', 'Due', 'Days late'], ...R.late.map((x) => [x.pr_no, x.requester, x.purpose, Number(x.amount), x.due, x.days])]],
+        ['Receipt issues', [['Request', 'Purchaser', 'Item', 'Amount', 'Issue'], ...R.receipts.map((x) => [x.pr_no, x.requester, x.item, Number(x.amount), x.issue])]]]);
+    }
+    shell(); load();
+  }
+  function prMove([kind, uid, co, amt, holder], C, after) {
+    const banks = (C.banks || []).filter((x) => x.active && x.company === co);
+    if (!banks.length) { toast(`Add a bank account for ${co} first.`, 'err'); return; }
+    return modal({ title: kind === 'reimburse' ? `Reimburse ${holder}` : `Money returned by ${holder}`, ok: kind === 'reimburse' ? 'Reimburse' : 'Record return',
+      body: `<p>${kind === 'reimburse' ? `The company owes <b>${money(amt)}</b> (${esc(co)}).` : `${esc(holder)} holds <b>${money(amt)}</b> petty cash (${esc(co)}).`}</p>
+        <label class="fld"><span>${kind === 'reimburse' ? 'Paid from' : 'Received into'}</span><select name="bank">${banks.map((x) => `<option value="${esc(x.id)}">${esc(`${x.bank || ''} ${x.name}${x.last4 ? ` ••${x.last4}` : ''}`)}</option>`).join('')}</select></label>
+        <div class="scf-g"><label class="fld"><span>Amount (RM)</span><input name="amount" type="number" step="0.01" min="0.01" max="${esc(amt)}" value="${esc(amt)}"></label><label class="fld"><span>Date</span><input name="date" type="date" value="${new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10)}"></label></div>
+        <label class="fld"><span>Transfer reference</span><input name="ref" maxlength="80"></label><label class="fld"><span>Note (optional)</span><input name="note" maxlength="200"></label>`,
+      onOk: async (fm) => { const res = await API.rpc('cms_pr_float_move', { p_uid: uid, p_company: co, p_kind: kind, p: { bank_id: fm.bank.value, amount: fm.amount.value, date: fm.date.value, ref: fm.ref.value, note: fm.note.value } });
+        toast(`Posted · balance now ${money(res.balance)}`); await after(res); } });
+  }
+
   function prPrint(el, r) {
     const items = r.items || [];
     const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>PURCHASE REQUEST</h2><p>${esc(r.company_name || r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.pr_no)}</code><small>${esc(PR_ST[r.status]?.[0] || r.status)}</small></div></div>
@@ -4701,21 +4914,59 @@
   async function prBooksPage(item, el) {
     let C; try { C = await prCtx(true); } catch (e) { el.innerHTML = `${pageHead(item)}${errorCard(e.message)}`; wireRetry(el); return; }
     const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
-    const f = { co: '', from: `${today.slice(0, 4)}-01-01`, to: today, tab: 'entries' };
-    el.innerHTML = `${pageHead(item)}<section class="card"><div class="toolbar">
-        <label class="fld inline"><span>Company</span><select id="bk-co"><option value="">All</option>${C.companies.map((c) => `<option value="${esc(c.code)}">${esc(c.code)}</option>`).join('')}</select></label>
-        <label class="fld inline"><span>From</span><input type="date" id="bk-from" value="${f.from}"></label><label class="fld inline"><span>To</span><input type="date" id="bk-to" value="${f.to}"></label>
-        <div class="seg"><button type="button" data-t="entries" class="on">Entries</button><button type="button" data-t="floats">Petty cash</button><button type="button" data-t="banks">Bank accounts</button></div></div>
-      <div id="bk-body">${loading()}</div></section>
-      <p class="muted small">Every movement is two equal lines (debit = credit). Posted entries cannot be edited; corrections are reversal entries. Statements, reports and Excel export come with release 2.</p>`;
-    let B = null;
-    async function load() { try { B = await API.rpc('cms_pr_books', { p_company: f.co || null, p_from: f.from || null, p_to: f.to || null }); draw(); } catch (e) { $('#bk-body', el).innerHTML = errorCard(e.message); } }
+    const f = { co: '', from: `${today.slice(0, 4)}-01-01`, to: today, tab: new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'entries', year: Number(today.slice(0, 4)) };
+    const fin = C.roles.finance; const adm = C.roles.settings;
+    const lastMonthEnd = () => { const d = new Date(`${today.slice(0, 7)}-01T00:00:00Z`); d.setUTCDate(0); return d.toISOString().slice(0, 10); };
+    function shell() {
+      const lock = C.settings.lock_date;
+      el.innerHTML = `${pageHead(item)}<section class="card"><div class="toolbar">
+          <label class="fld inline"><span>Company</span><select id="bk-co"><option value="">All</option>${C.companies.map((c) => `<option value="${esc(c.code)}" ${c.code === f.co ? 'selected' : ''}>${esc(c.code)}</option>`).join('')}</select></label>
+          <label class="fld inline"><span>From</span><input type="date" id="bk-from" value="${f.from}"></label><label class="fld inline"><span>To</span><input type="date" id="bk-to" value="${f.to}"></label>
+          <div class="seg">${[['entries', 'Entries'], ['floats', 'Petty cash'], ['banks', 'Bank accounts'], ['year', 'Year-end']].map(([k, l]) => `<button type="button" data-t="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+        <div class="bk-lock"><span>${lock ? `Books closed up to <b>${dShort(lock)}</b> — nothing can be posted on or before that date.` : 'No month is closed yet.'}</span>
+          ${fin && (!lock || lock < lastMonthEnd()) ? `<button type="button" class="btn xs" data-lock>Close up to ${dShort(lastMonthEnd())}</button>` : ''}${adm && lock ? '<button type="button" class="btn xs ghost" data-unlock>Reopen…</button>' : ''}</div>
+        <div id="bk-body">${loading()}</div></section>
+        <p class="muted small">Every movement is two equal lines (debit = credit). Posted entries cannot be edited; corrections are reversal entries. Reports, statements and Excel: Purchasing › Reports.</p>`;
+      $('#bk-co', el).addEventListener('change', (e) => { f.co = e.target.value; load(); });
+      $('#bk-from', el).addEventListener('change', (e) => { f.from = e.target.value; load(); });
+      $('#bk-to', el).addEventListener('change', (e) => { f.to = e.target.value; load(); });
+      $$('[data-t]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.t; $$('[data-t]', el).forEach((x) => x.classList.toggle('on', x === b)); if (f.tab !== 'year' && B) draw(); else load(); }));
+      $('[data-lock]', el)?.addEventListener('click', () => confirmBox('Close the books?', `Nothing can be posted on or before <b>${dShort(lastMonthEnd())}</b> after this. Only Admin can reopen.`, 'Close the month', false, async () => { C.settings = await API.rpc('cms_pr_lock', { p_until: lastMonthEnd() }); toast('Month closed'); shell(); load(); }));
+      $('[data-unlock]', el)?.addEventListener('click', () => modal({ title: 'Reopen the books', ok: 'Save', body: `<label class="fld"><span>Closed up to (leave empty to reopen everything)</span><input name="d" type="date" value="${esc(C.settings.lock_date || '')}"></label>`,
+        onOk: async (fm) => { C.settings = await API.rpc('cms_pr_lock', { p_until: fm.d.value || null }); toast('Saved'); shell(); load(); } }));
+    }
+    let B = null; let Y = null;
+    async function load() {
+      const box = $('#bk-body', el); box.innerHTML = loading();
+      try { if (f.tab === 'year') Y = await API.rpc('cms_pr_year_end', { p_year: f.year }); else B = await API.rpc('cms_pr_books', { p_company: f.co || null, p_from: f.from || null, p_to: f.to || null }); draw(); }
+      catch (e) { box.innerHTML = errorCard(e.message); }
+    }
     function draw() {
       const box = $('#bk-body', el);
+      if (f.tab === 'year') {
+        box.innerHTML = `<div class="toolbar"><label class="fld inline"><span>Year</span><select id="ye-y">${[f.year - 1, f.year, Number(today.slice(0, 4)) - 1, Number(today.slice(0, 4))].filter((v, i, a) => a.indexOf(v) === i).sort().map((y) => `<option ${y === f.year ? 'selected' : ''}>${y}</option>`).join('')}</select></label></div>
+          ${Y.rows.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Purchaser</th><th>Company</th><th class="num">At 31 Dec ${Y.year}</th><th class="num">Now</th><th>Decision</th></tr></thead><tbody>
+          ${Y.rows.map((x) => `<tr><td>${esc(x.holder)}</td><td>${esc(x.company)}</td><td class="num ${Number(x.year_end) < 0 ? 'bad-txt' : ''}"><b>${m2(x.year_end)}</b></td><td class="num">${m2(x.now)}</td>
+            <td class="row-acts nowrap">${x.decision ? `<span class="tag ${x.decision === 'carry' ? 'blue' : 'ok'} xs">${x.decision === 'carry' ? 'Brought forward' : 'Settled'}</span><small class="sub">${esc(x.decided_by || '')} ${dShort(x.decided_at)}</small>` : ''}
+              ${fin && Number(x.year_end) !== 0 ? `<button type="button" class="btn xs" data-ye="carry|${esc(x.uid)}|${esc(x.company)}">Bring forward</button>${Number(x.now) !== 0 ? `<button type="button" class="btn xs ghost" data-ye="settle|${esc(x.uid)}|${esc(x.company)}|${Number(x.now)}|${esc(x.holder)}">Settle</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>`
+            : '<p class="muted small">No petty cash at the end of this year.</p>'}
+          <p class="muted small">For each purchaser and company: bring the balance forward to next year, or settle it (the purchaser returns it, or the company pays what it owes). After deciding, close the books up to 31 Dec.</p>`;
+        $('#ye-y', el).addEventListener('change', (e) => { f.year = Number(e.target.value); load(); });
+        $$('[data-ye]', box).forEach((b) => b.addEventListener('click', async () => {
+          const [d, uid, co, amt, holder] = b.dataset.ye.split('|');
+          try {
+            if (d === 'carry') { await API.rpc('cms_pr_year_decide', { p_year: f.year, p_uid: uid, p_company: co, p_decision: 'carry', p_entry: null }); toast('Brought forward'); load(); }
+            else await prMove([Number(amt) < 0 ? 'reimburse' : 'return', uid, co, Math.abs(Number(amt)), holder], C, async (res) => { await API.rpc('cms_pr_year_decide', { p_year: f.year, p_uid: uid, p_company: co, p_decision: 'settle', p_entry: res.entry }); load(); });
+          } catch (x) { toast(x.message, 'err'); }
+        }));
+        return;
+      }
+      const reversed = new Set(B.entries.filter((j) => j.kind === 'reversal').map((j) => (String(j.memo || '').match(/^Reversal of (JV-[0-9-]+)/) || [])[1]).filter(Boolean));
       if (f.tab === 'entries') box.innerHTML = B.entries.length ? `<div class="table-wrap"><table class="data bk-t"><thead><tr><th>Entry</th><th>Account</th><th>Dept · event</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>
-          ${B.entries.map((j) => j.lines.map((l, k) => `<tr class="${k === 0 ? 'bk-first' : ''}">${k === 0 ? `<td rowspan="${j.lines.length}"><b>${esc(j.no)}</b><small class="sub">${dShort(j.date)} · ${esc(j.kind)}${j.pr_no ? ` · <a href="#/purchasing/pr?id=${esc(j.request_id)}">${esc(j.pr_no)}</a>` : ''}</small><small class="sub">${esc(j.memo || '')}</small></td>` : ''}
+          ${B.entries.map((j) => j.lines.map((l, k) => `<tr class="${k === 0 ? 'bk-first' : ''}">${k === 0 ? `<td rowspan="${j.lines.length}"><b>${esc(j.no)}</b>${reversed.has(j.no) ? ' <span class="tag xs">reversed</span>' : ''}<small class="sub">${dShort(j.date)} · ${esc(j.kind)}${j.pr_no ? ` · <a href="#/purchasing/pr?id=${esc(j.request_id)}">${esc(j.pr_no)}</a>` : ''}</small><small class="sub">${esc(j.memo || '')}</small>
+              ${fin && j.kind !== 'reversal' && !reversed.has(j.no) ? `<button type="button" class="btn xs ghost danger" data-rev="${esc(j.id)}" data-no="${esc(j.no)}">Reverse</button>` : ''}</td>` : ''}
             <td>${esc(l.account || '')}<small class="sub">${esc(l.company)}${l.memo ? ` · ${esc(l.memo)}` : ''}</small></td><td>${esc(l.department || '')}${l.event ? ` · ${esc(l.event)}` : ''}</td>
-            <td class="num">${Number(l.debit) ? m2(l.debit) : ''}</td><td class="num">${Number(l.credit) ? m2(l.credit) : ''}</td></tr>`).join('')).join('')}</tbody></table></div>`
+            <td class="num pr-dr">${Number(l.debit) ? m2(l.debit) : ''}</td><td class="num pr-cr">${Number(l.credit) ? m2(l.credit) : ''}</td></tr>`).join('')).join('')}</tbody></table></div>`
         : '<div class="empty small"><p>No entries in this period</p></div>';
       else if (f.tab === 'floats') box.innerHTML = B.floats.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Purchaser</th><th>Company</th><th class="num">Petty cash held (RM)</th></tr></thead><tbody>
           ${B.floats.map((x) => `<tr><td>${esc(x.holder)}</td><td>${esc(x.company)}</td><td class="num ${Number(x.balance) < 0 ? 'bad-txt' : ''}"><b>${m2(x.balance)}</b>${Number(x.balance) < 0 ? '<small class="sub">company owes the purchaser</small>' : ''}</td></tr>`).join('')}</tbody></table></div>`
@@ -4723,12 +4974,11 @@
       else box.innerHTML = B.banks.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Account</th><th>Company</th><th class="num">Paid out through Purchasing (RM)</th></tr></thead><tbody>
           ${B.banks.map((x) => `<tr><td>${esc(x.account)}${x.active ? '' : ' <span class="tag xs">off</span>'}</td><td>${esc(x.company)}</td><td class="num"><b>${m2(x.paid_out)}</b></td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty small"><p>No bank accounts yet</p><span>Admin adds them in Purchasing › Settings.</span></div>';
+      $$('[data-rev]', box).forEach((b) => b.addEventListener('click', () => modal({ title: `Reverse ${b.dataset.no}?`, ok: 'Post reversal', danger: true,
+        body: '<p>A reversal with the opposite amounts is posted today; the original stays. A reversed release puts its request back to “Approved · to release”; a reversed purchase back to “Settlement sent”.</p><label class="fld"><span>Reason</span><textarea name="reason" rows="2" class="ta" maxlength="300" required></textarea></label>',
+        onOk: async (fm) => { await API.rpc('cms_pr_reverse', { p_entry: b.dataset.rev, p_reason: fm.reason.value }); toast('Reversal posted'); load(); } })));
     }
-    $('#bk-co', el).addEventListener('change', (e) => { f.co = e.target.value; load(); });
-    $('#bk-from', el).addEventListener('change', (e) => { f.from = e.target.value; load(); });
-    $('#bk-to', el).addEventListener('change', (e) => { f.to = e.target.value; load(); });
-    $$('[data-t]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.t; $$('[data-t]', el).forEach((x) => x.classList.toggle('on', x === b)); if (B) draw(); }));
-    load();
+    shell(); load();
   }
 
   async function prSettingsPage(item, el) {
@@ -7642,7 +7892,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

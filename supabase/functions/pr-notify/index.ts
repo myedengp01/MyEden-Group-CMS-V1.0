@@ -4,6 +4,7 @@
 //   submitted -> Finance            forwarded / second -> the Directors who still have to approve
 //   approved  -> purchaser (+ Finance when money has to be released)      released -> purchaser
 //   returned / disapproved -> purchaser
+//   settled (purchase recorded) -> Finance · queried -> purchaser · closed -> purchaser · overdue (reminder from Reports) -> purchaser
 // From MyEden Group <noreply@mail.myeden.group>, replies to claims@myeden.group.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -23,6 +24,7 @@ const rm = (n: unknown) => "RM " + Number(n || 0).toLocaleString("en-MY", { mini
 const STATE: Record<string, string[]> = {
   submitted: ["finance"], forwarded: ["directors"], second: ["directors"], approved: ["approved", "purchasing"],
   released: ["released", "purchasing"], returned: ["returned"], disapproved: ["disapproved"],
+  settled: ["settlement"], queried: ["purchasing"], closed: ["closed"], overdue: ["released", "purchasing"],
 };
 
 async function send(to: string[], subject: string, html: string) {
@@ -59,6 +61,10 @@ Deno.serve(async (req) => {
       if (q.status === "approved") await go(q.finance || [], `Funds to release: ${q.pr_no}`, `<p>An approved purchase request is waiting for the funds to be released (<b>${rm(q.release_amount)}</b>).</p>`, "finance");
     } else if (event === "released") await go(me, `Funds released: ${q.pr_no}`, `<p><b>${rm(q.released_amount)}</b> has been released for your purchase request. Please confirm in the CMS when you have received it.</p>`, "purchaser");
     else if (event === "returned") await go(me, `Purchase request returned: ${q.pr_no}`, `<p>Your purchase request was returned for changes:</p><blockquote>${esc(q.reason)}</blockquote>`, "purchaser");
+    else if (event === "settled") await go(q.finance || [], `Purchase to verify: ${q.pr_no}`, `<p>${esc(q.requester)} has recorded the purchase (<b>${rm(q.actual_total)}</b>) with receipts.${q.excess ? " It is over the tolerance: the overspend needs approval." : ""}</p>`, "finance");
+    else if (event === "queried") await go(me, `Questions on your purchase: ${q.pr_no}`, `<p>Finance has questions about the receipts you recorded:</p><blockquote>${esc(q.reason)}</blockquote><p>Please fix them and send it again.</p>`, "purchaser");
+    else if (event === "closed") await go(me, `Purchase closed: ${q.pr_no}`, `<p>Finance has checked your receipts (<b>${rm(q.actual_total)}</b>) and closed the request. Any money left stays as your petty cash for the next request.</p>`, "purchaser");
+    else if (event === "overdue") await go(me, `Reminder: record your purchase ${q.pr_no}`, `<p>Please record what you bought, with the receipts, for this request. It was due on <b>${esc(q.settle_due)}</b>.</p>`, "purchaser");
     else if (event === "disapproved") await go(me, `Purchase request not approved: ${q.pr_no}`, `<p>Your purchase request was not approved:</p><blockquote>${esc(q.reason)}</blockquote>`, "purchaser");
     return out({ ok: true, sent });
   } catch (e) {
