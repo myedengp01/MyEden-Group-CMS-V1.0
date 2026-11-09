@@ -100,6 +100,7 @@ Other menu pages show the phase they arrive in and link to the app that does the
 72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 73. `20261107_cms_mtcf_new.sql` — F1 MTCF: `cms_mtcf_context / get / save` (+ `_fix_year`)
 79. `20261109_cms_letter_apply_transfer_options.sql` — Update records from a transfer letter: increment from the transfer date; next salary review when there is no increment
+80. `20261109_cms_letter_loc_snr.sql` — Letter of Confirmation — Senior Position: switches and choices (after a promotion, probation extended, increment start, allowance, JD appendix, review cycle 6/9/12, review counted from); Update records uses the letter's review cycle and date
 78. `20261109_cms_letter_options.sql` — HR letters: `hr_letter_options` (Switch / Choice placeholders), `cms_letter_options`, `cms_letter_option_save`, new placeholders (has_increment, increment_timing, last_increment_date, next_review_cycle, assessment_months, salary_after_transfer), `last_increment_date` in `cms_letter_context`
 77. `20261108_prfaf_old_read_only.sql` — the old MEG-PRFAF tables stop taking new entries (the app shows "moved to the CMS")
 76. `20261108_cms_purchasing_r2.sql` — Purchasing release 2: settlement columns, `pr_year_closings`, month lock in `pr_post`, `cms_pr_settle_save / verify / float_move / reverse / lock / year_end / year_decide / report / statement` (applied as parts a1, a2, a3, b)
@@ -156,6 +157,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.09-14:30** — HR letters: **Letter of Confirmation — Senior Position** as a Word template (`docs/letter-templates/LOC_SNR - Letter of Confirmation Senior Position.docx`, footer MEG-HR-LOC-002 v.1.0). Switches: after a promotion / direct senior hire, probation extended, increment (table: Current · Increment · % · Revised), allowance (name, RM a month, from; letter only), JD Appendix 1 or the instruction sheet. Choices: increment from the confirmation date / 1st of the following month / another date; performance and salary review every 6 / 9 / 12 months; next review counted from the confirmation or the increment date. The workspace fills the confirmation date (day after the probation ends), the increment date and the next review date; all stay editable. Update records from this letter sets the next review on the letter's cycle and date.
 - **v2026.11.09-11:30** — HR letters: **optional sections**. In a Word or text template, `[[IF name]] … [[END]]`, `[[IFNOT name]] … [[END]]`
   and `[[IF name=value]] … [[END]]` include a part of the letter only for some choices (a marker alone on its line covers a block of paragraphs
   and tables; a marker followed by text covers only that line; markers work inside table cells and can be nested; they never print). Placeholders

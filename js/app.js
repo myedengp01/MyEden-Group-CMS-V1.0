@@ -6437,20 +6437,38 @@
       if (hasSal() || isJD()) return; const k = new Set(keys()); const yes = String(vals.has_increment || '').toLowerCase() === 'yes';
       // no increment in this letter: nothing of an increment is kept (so "Update records from this letter" cannot apply one)
       if (condKeys(tpl()?.body).includes('has_increment') && !yes) ['basic_increment', 'basic_increment_pct', 'revised_basic', 'increment_effective_date', '_ie_auto'].forEach((x) => { delete vals[x]; });
-      if (k.has('increment_effective_date') && yes) {
+      if (k.has('increment_effective_date') && yes && !k.has('increment_start')) {
         let v = '';
         if (vals.increment_timing === 'transfer') v = String(vals.effective_date || '').trim();
         else { const e = parseLong(vals.promotion_probation_end); if (e) v = longDate(isoUTC(new Date(Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate() + 1)))); }
         if (v) follow('increment_effective_date', v, '_ie_auto');
       }
-      if (k.has('next_review_date') && !yes) { const l = parseLong(vals.last_increment_date); const n = parseInt(vals.next_review_cycle, 10);
+      if (k.has('next_review_date') && !yes && !k.has('review_cycle')) { const l = parseLong(vals.last_increment_date); const n = parseInt(vals.next_review_cycle, 10);
         if (l && n) follow('next_review_date', longDate(isoUTC(new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + n, l.getUTCDate())))), '_nr_auto'); }
       if ('salary_after_transfer' in vals || k.has('salary_after_transfer')) {
         const cur = mval(vals.current_basic);
         vals.salary_after_transfer = yes ? (vals.revised_basic ? `RM ${vals.revised_basic}${vals.increment_effective_date ? ` from ${vals.increment_effective_date}` : ''}` : '') : (cur > 0 ? `RM ${m2(cur)} (unchanged)` : '');
         const i = $('[data-k="salary_after_transfer"]', el); if (i) i.value = vals.salary_after_transfer;
       }
+      calcConfirm(k, yes);
     };
+    // senior confirmation (v2026.11.09): confirmed the day after the probation ends; the increment from the confirmation date, the 1st of the
+    // following month or another date; the next review {{review_cycle}} months after the confirmation (or the increment date). All editable.
+    const addDays = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
+    const put = (k, v, tag) => { vals[k] = v; vals[tag] = v; const i = $(`[data-k="${k}"]`, el); if (i) i.value = v; };
+    function calcConfirm(k, yes) {
+      if (!k.has('review_cycle') && !k.has('increment_start')) return;
+      const pe = parseLong(vals.promotion_probation_end);
+      if (k.has('confirmation_date') && pe) follow('confirmation_date', longDate(isoUTC(addDays(pe, 1))), '_cd_auto');
+      const conf = parseLong(vals.confirmation_date);
+      if (yes && k.has('increment_start')) {
+        const s = vals.increment_start || 'confirmation';
+        if (s === 'confirmation' && conf) put('increment_effective_date', longDate(isoUTC(conf)), '_ie_auto');
+        else if (s === 'next_month' && conf) put('increment_effective_date', longDate(isoUTC(conf.getUTCDate() === 1 ? conf : new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 1, 1)))), '_ie_auto');
+      }
+      const n = parseInt(vals.review_cycle, 10); const base = yes && vals.review_from === 'increment' ? parseLong(vals.increment_effective_date) : conf;
+      if (k.has('next_review_date') && n && base) follow('next_review_date', longDate(isoUTC(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + n, base.getUTCDate())))), '_nr_auto');
+    }
     const calc = () => { calcAssess(); salArr(); calcTransfer(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); }
