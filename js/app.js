@@ -6569,17 +6569,41 @@
     // following month or another date; the next review {{review_cycle}} months after the confirmation (or the increment date). All editable.
     const addDays = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
     const put = (k, v, tag) => { vals[k] = v; vals[tag] = v; const i = $(`[data-k="${k}"]`, el); if (i) i.value = v; };
+    // confirmation letters (v2026.11.09): confirmed on the day the probation ends; an increment takes effect on the coming 1st (31 Aug → 1 Sep,
+    // 1 Sep → 1 Oct); the next review counts from the confirmation (or the increment) date. If the increment starts in a month whose payroll is
+    // already finalised, the months before the first open payroll are paid once as salary arrears. Every date / amount stays editable.
+    const coming1st = (d) => { const n = addDays(d, 1); return n.getUTCDate() === 1 ? n : new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1)); };
+    const monthName = (d) => `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
     function calcConfirm(k, yes) {
-      if (!k.has('review_cycle') && !k.has('increment_start')) return;
+      const t = tpl(); const isLOC = !!t && String(t.letter_type || t.code).startsWith('LOC');
+      if (!isLOC && !k.has('review_cycle') && !k.has('increment_start')) return;
       const pe = parseLong(vals.promotion_probation_end);
-      if (k.has('confirmation_date') && pe) { const c0 = parseLong(vals.confirmation_date); if (vals._basis && c0 && +c0 === +pe) vals._cd_auto = vals.confirmation_date;
-        follow('confirmation_date', longDate(isoUTC(addDays(pe, 1))), '_cd_auto'); }
+      if (k.has('confirmation_date') && pe && k.has('promotion_probation_end')) {
+        if (vals._basis && ctx?.confirmation_date && vals.confirmation_date === ctx.confirmation_date) vals._cd_auto = vals.confirmation_date;   // the record's date gives way to the letter's
+        follow('confirmation_date', longDate(isoUTC(pe)), '_cd_auto'); }
       const conf = parseLong(vals.confirmation_date);
-      if (yes && k.has('increment_start')) {
-        const s = vals.increment_start || 'confirmation';
-        if (s === 'confirmation' && conf) put('increment_effective_date', longDate(isoUTC(conf)), '_ie_auto');
-        else if (s === 'next_month' && conf) put('increment_effective_date', longDate(isoUTC(conf.getUTCDate() === 1 ? conf : new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 1, 1)))), '_ie_auto');
+      const hasInc = k.has('increment_effective_date') && (k.has('has_increment') ? yes : mval(vals.basic_increment) > 0 || k.has('basic_increment'));
+      if (hasInc && conf) {
+        const s = k.has('increment_start') ? (vals.increment_start || 'next_month') : 'next_month';
+        if (s === 'confirmation') put('increment_effective_date', longDate(isoUTC(conf)), '_ie_auto');
+        else if (s === 'next_month') { if (k.has('increment_start')) put('increment_effective_date', longDate(isoUTC(coming1st(conf))), '_ie_auto'); else follow('increment_effective_date', longDate(isoUTC(coming1st(conf))), '_ie_auto'); }
       }
+      // salary arrears: the increment starts before the first payroll month still open
+      if (k.has('arrears') || k.has('arrears_amount')) {
+        const ie = hasInc ? parseLong(vals.increment_effective_date) : null; const op = ctx?._open_payroll ? new Date(`${ctx._open_payroll}T00:00:00Z`) : null;
+        const im = ie ? new Date(Date.UTC(ie.getUTCFullYear(), ie.getUTCMonth(), 1)) : null;
+        const n = im && op ? (op.getUTCFullYear() - im.getUTCFullYear()) * 12 + op.getUTCMonth() - im.getUTCMonth() : 0;
+        const inc = mval(vals.basic_increment); const before = vals.arrears;
+        if (vals._ar_auto === undefined && (vals.arrears ?? '') === (ph.get('arrears')?.default ?? '')) vals._ar_auto = vals.arrears;   // the default is not a choice made by hand
+        if (n > 0 && inc > 0) {
+          const last = new Date(Date.UTC(op.getUTCFullYear(), op.getUTCMonth() - 1, 1));
+          follow('arrears', 'yes', '_ar_auto');
+          follow('arrears_months', n === 1 ? monthName(im) : `${MONTHS[im.getUTCMonth()]}${im.getUTCFullYear() !== last.getUTCFullYear() ? ` ${im.getUTCFullYear()}` : ''} to ${monthName(last)}`, '_arm_auto');
+          follow('arrears_amount', m2(inc * n), '_ara_auto'); follow('arrears_payroll_month', monthName(op), '_arp_auto');
+        } else follow('arrears', 'no', '_ar_auto');
+        if (vals.arrears !== before) { const o = $('[data-opt="arrears"]', el); if (o) o.value = vals.arrears; setTimeout(() => drawFields(), 0); }
+      }
+      if (!k.has('review_cycle')) return;
       const n = parseInt(vals.review_cycle, 10); const base = yes && vals.review_from === 'increment' ? parseLong(vals.increment_effective_date) : conf;
       if (k.has('next_review_date') && n && base) follow('next_review_date', longDate(isoUTC(plusMonths(base, n))), '_nr_auto');
     }
@@ -6659,7 +6683,7 @@
       set('promotion_probation_start', f.promotion_probation_start || f.effective_date); set('promotion_probation_period', f.promotion_probation_period); set('promotion_probation_end', f.promotion_probation_end);
       if (f.review_cycle && OPT.get('review_cycle')?.options.some((o) => o.value === f.review_cycle)) vals.review_cycle = f.review_cycle;
       // the promotion letter split the senior increment: this confirmation pays the rest, from the confirmation date
-      if (mval(f.confirmation_increment) > 0 && OPT.get('has_increment')) { vals.has_increment = 'yes'; vals.increment_start = 'confirmation'; vals.basic_increment = String(f.confirmation_increment).replace(/,/g, ''); vals._basis_inc = '1'; }
+      if (mval(f.confirmation_increment) > 0 && OPT.get('has_increment')) { vals.has_increment = 'yes'; vals.increment_start = 'next_month'; vals.basic_increment = String(f.confirmation_increment).replace(/,/g, ''); vals._basis_inc = '1'; }
       if (vals.confirmation_date === vals._cd_auto) delete vals.confirmation_date;
       calc();
     };
@@ -6678,8 +6702,8 @@
         ${basis.length ? '' : `<p class="muted small">No promotion or transfer letter for this person yet. If it was issued before the CMS, <button type="button" class="lnk" data-basis-rec>record it first</button>.</p>`}`;
       $('[data-basis]', box).addEventListener('change', (e) => { const b = basis.find((x) => x.id === e.target.value); if (b) { fillBasis(b); toast('Filled from the letter'); } else delete vals._basis; drawFields(); later(); });
       const sel = basis.find((x) => x.id === cur);
-      if (sel) { const f = sel.fields || {}; const st = f.promotion_probation_start || f.effective_date; box.insertAdjacentHTML('beforeend', `<p class="muted small">Probation in the position: <b>${esc(st || '?')} – ${esc(f.promotion_probation_end || '?')}</b>${f.promotion_probation_period ? ` (${esc(f.promotion_probation_period)})` : ''} · letter ${esc(sel.reference || '')}. Confirmed from the day after it ends — change the confirmation date if needed.</p>`); }
-      if (sel && mval(sel.fields?.confirmation_increment) > 0) box.insertAdjacentHTML('beforeend', `<p class="note small">${icon('help')}<span>That letter pays RM ${esc(sel.fields.confirmation_increment)} of the senior increment after confirmation — it is filled in as the increment here, from the confirmation date. You can change it.</span></p>`);
+      if (sel) { const f = sel.fields || {}; const st = f.promotion_probation_start || f.effective_date; box.insertAdjacentHTML('beforeend', `<p class="muted small">Probation in the position: <b>${esc(st || '?')} – ${esc(f.promotion_probation_end || '?')}</b>${f.promotion_probation_period ? ` (${esc(f.promotion_probation_period)})` : ''} · letter ${esc(sel.reference || '')}. Confirmed on the day it ends; an increment starts on the coming 1st — both can be changed.</p>`); }
+      if (sel && mval(sel.fields?.confirmation_increment) > 0) box.insertAdjacentHTML('beforeend', `<p class="note small">${icon('help')}<span>That letter pays RM ${esc(sel.fields.confirmation_increment)} of the senior increment after confirmation — it is filled in as the increment here, from the 1st after the confirmation. You can change it.</span></p>`);
       $('[data-basis-rec]', box)?.addEventListener('click', async () => { const r = await recordPastLetter(L, personId); if (!r) return; toast(r.status === 'issued' ? `Recorded as ${r.reference}` : 'Recorded — waiting for approval'); basisFor = ''; drawBasis(); });
     }
     const loadCtx = async (fresh) => {
@@ -6853,12 +6877,13 @@
       const sched = (A.scheduled || []).filter((x) => x.status === 'pending');
       if (A.applied) {
         box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>${icon('check-circle')} Records updated from this letter</h3><span class="muted small">${dShort(A.applied.at)}${A.applied.by ? ` · ${esc(A.applied.by)}` : ''}</span></div>
-          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved', probation: 'On probation' }[x.kind] || x.kind)}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : x.kind === 'probation' ? ` until ${dShort(x.end)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
+          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved', probation: 'On probation', arrears: 'Salary arrears' }[x.kind] || x.kind)}${x.kind === 'arrears' ? ` RM ${m2(x.amount)} in the ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' }))} payroll${x.months ? ` (${esc(x.months)})` : ''}` : ''}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : x.kind === 'probation' ? ` until ${dShort(x.end)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
           ${status === 'void' ? `<p class="note warn small">${icon('help')}<span>This letter is cancelled. Changes not yet due were cancelled; changes already made (salary, review${A.applied.items.some((x) => !x.scheduled && ['confirm', 'position'].includes(x.kind)) ? ', confirmation / position' : ''}) stay — reverse them in Payroll / the profile if they no longer apply.</span></p>` : ''}</section>`;
         return;
       }
       if (status !== 'issued' || !A.items.length) { box.innerHTML = ''; return; }
       const inp = (x, i) => ['settlement', 'note'].includes(x.kind) ? (x.kind === 'settlement' && !x.module_on ? '<small class="muted">Saved now; added to payroll once the Final settlement module is switched on (Settings › Policies).</small>' : '') : x.kind === 'salary' ? `<label class="fld"><span>New basic (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>From payroll month</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
+        : x.kind === 'arrears' ? `<label class="fld"><span>Arrears (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>Paid in the payroll of</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'probation' ? `<label class="fld"><span>On probation until</span><input type="date" data-i="${i}" data-f="end" value="${esc(x.end || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'review' ? `<label class="fld"><span>Review every</span><select data-i="${i}" data-f="interval" ${x.allowed ? '' : 'disabled'}>${(x.intervals || []).map((v) => `<option value="${esc(v.code)}" ${v.code === x.interval ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label><label class="fld"><span>Next review</span><input type="date" data-i="${i}" data-f="next" value="${esc(x.next || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
@@ -6868,7 +6893,7 @@
         <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
         <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
       $('#la-go', box).addEventListener('click', async () => {
-        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, end: x.end, amount: x.amount, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
+        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, end: x.end, amount: x.amount, months: x.months, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
           $$(`[data-i="${i}"]`, box).forEach((f) => { o[f.dataset.f] = f.dataset.f === 'date' && f.type === 'month' ? `${f.value}-01` : f.dataset.f === 'amount' ? String(f.value).replace(/,/g, '') : f.value; }); return o; }).filter(Boolean);
         if (!items.length) { toast('Tick at least one change.', 'err'); return; }
         if (!(await ask(`Update ${A.person}'s records from this letter (${items.length} change${items.length === 1 ? '' : 's'})?`, 'Apply'))) return;
