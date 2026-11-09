@@ -6254,6 +6254,7 @@
   }
   async function letterPdfUrl(path) { const { data, error } = await srcBucket().download(path); if (error) throw new Error(API.friendly(error)); return URL.createObjectURL(new Blob([data], { type: 'application/pdf' })); }
   const isoOf = (v) => { const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/); if (!m) return ''; const mi = MONTHS.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()); return mi < 0 ? '' : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; };
+  const okIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && +String(s).slice(0, 4) >= 2000 && +String(s).slice(0, 4) <= 2100;
   const addMonthsIso = (iso, n, days = 0) => { const [y, m, d] = iso.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + n, d + days)); return x.toISOString().slice(0, 10); };
   async function recordPastLetter(L, personId0) {
     const types = [...new Map(L.templates.filter((t) => t.code !== 'TRL_LOP').map((t) => [t.letter_type, t.type_title])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
@@ -6282,18 +6283,24 @@
             <label class="fld"><span>Basic after (RM)</span><input name="revised_basic" inputmode="decimal" readonly></label>
             <label class="fld"><span>Increment from</span><input type="date" name="increment_from"></label></div></div>
         <div data-other hidden><label class="fld"><span>Takes effect from <small class="muted">optional</small></span><input type="date" name="effective_other"></label></div>
-        <label class="fld"><span>Note <small class="muted">optional — e.g. what the letter is about, or anything that is not followed any more</small></span><input name="note" maxlength="300"></label>`,
+        <label class="fld"><span>Note <small class="muted">optional — e.g. what the letter is about, or anything that is not followed any more</small></span><input name="note" maxlength="300"></label>
+        <p class="note small" data-sum></p>`,
       onOpen: (w) => {
         const f = $('form', w); const g = (n) => f.elements[n];
         const sync = () => { const promo = PROMO_TYPES.includes(g('type').value); $('[data-promo]', w).hidden = !promo; $('[data-other]', w).hidden = promo; };
-        const calcEnd = () => { const s = g('effective_date').value; const n = parseInt(g('prob_months').value, 10); if (s && n > 0 && (!g('prob_end').value || g('prob_end').dataset.auto === g('prob_end').value)) { g('prob_end').value = addMonthsIso(s, n, -1); g('prob_end').dataset.auto = g('prob_end').value; } if (s && !g('increment_from').value) g('increment_from').value = s; };
+        const follow2 = (n, val) => { const i = g(n); if (!i.value || i.dataset.auto === i.value) { i.value = val; i.dataset.auto = val; } };
+        const calcEnd = () => { const s = g('effective_date').value; if (!okIso(s)) return sum(); const n = parseInt(g('prob_months').value, 10);
+          if (n > 0) follow2('prob_end', addMonthsIso(s, n, -1)); follow2('increment_from', s); sum(); };
+        const sum = () => { const fmt = (n) => (okIso(g(n).value) ? longDate(g(n).value) : '—'); const n = parseInt(g('prob_months').value, 10) || 0;
+          $('[data-sum]', w).textContent = PROMO_TYPES.includes(g('type').value) ? `Letter dated ${fmt('letter_date')} · effective ${fmt('effective_date')}${n > 0 ? ` · probation ${n} month${n === 1 ? '' : 's'}, ends ${fmt('prob_end')}` : ' · no probation'}${g('revised_basic').value ? ` · basic RM ${g('current_basic').value || '—'} → RM ${g('revised_basic').value} from ${fmt('increment_from')}` : ''}` : `Letter dated ${fmt('letter_date')}`; };
         const calcSal = () => { const c = mval(g('current_basic').value); const i = mval(g('basic_increment').value); g('revised_basic').value = c > 0 && i >= 0 && String(g('basic_increment').value).trim() ? m2(c + i) : ''; };
         const pos = async () => { const pid = g('person').value; if (!pid) return; try { const c = await API.rpc('cms_letter_context', { p_person: pid }); if (pid !== g('person').value) return; if (c.position) g('new_position').value = c.position; } catch (e) { /* typed in */ } };
         g('type').addEventListener('change', sync); g('person').addEventListener('change', pos);
         ['effective_date', 'prob_months'].forEach((n) => g(n).addEventListener('change', calcEnd));
-        ['current_basic', 'basic_increment'].forEach((n) => g(n).addEventListener('input', calcSal));
-        g('letter_date').addEventListener('change', () => { if (!g('effective_date').value) { g('effective_date').value = g('letter_date').value; calcEnd(); } });
-        sync(); pos();
+        ['prob_end', 'increment_from', 'signed_on'].forEach((n) => g(n).addEventListener('change', sum));
+        ['current_basic', 'basic_increment'].forEach((n) => g(n).addEventListener('input', () => { calcSal(); sum(); }));
+        g('letter_date').addEventListener('change', () => { const d = g('letter_date').value; if (okIso(d)) { follow2('effective_date', d); calcEnd(); } else sum(); });
+        g('type').addEventListener('change', sum); sync(); pos(); sum();
       },
       onOk: async (f) => {
         const v = (n) => String(f.elements[n].value || '').trim(); const type = v('type'); const promo = PROMO_TYPES.includes(type);
@@ -6301,6 +6308,11 @@
         if (!v('letter_date')) throw new Error('Give the letter date.');
         if (!v('signatory')) throw new Error('Give who signed the letter for the Company.');
         const file = f.elements.pdf.files[0]; if (!file) throw new Error('Choose the signed PDF.');
+        const dates = promo ? ['letter_date', 'signed_on', 'effective_date', 'prob_end', 'increment_from'] : ['letter_date', 'signed_on', 'effective_other'];
+        const lbl = { letter_date: 'Letter date', signed_on: 'Employee signed on', effective_date: 'Takes effect from', prob_end: 'Probation ends', increment_from: 'Increment from', effective_other: 'Takes effect from' };
+        dates.forEach((n) => { if (v(n) && !okIso(v(n))) throw new Error(`${lbl[n]}: the date is not complete (year 2000 or later).`); });
+        if (v('signed_on') && v('signed_on') < v('letter_date')) throw new Error('The employee cannot sign before the letter date.');
+        if (promo && v('prob_end') && v('effective_date') && v('prob_end') < v('effective_date')) throw new Error('The probation ends before it starts.');
         const fields = {};
         if (promo) {
           const n = parseInt(v('prob_months'), 10) || 0;
@@ -6830,7 +6842,7 @@
         : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
       box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>Update records from this letter</h3><span class="muted small">Issuing files the letter; these change ${esc(A.person)}'s records.</span></div>
         <div class="table-wrap"><table class="data la-t"><thead><tr><th></th><th>Change</th><th>Now</th><th>After</th><th></th></tr></thead><tbody>
-        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : x.already ? '<br><small>already in payroll</small>' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
+        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? (x.same ? '' : 'checked') : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : x.already ? '<br><small>already in payroll</small>' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.same ? `No change — already ${x.title}` : x.already ? `Already in payroll from ${new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}` : x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
         <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
       $('#la-go', box).addEventListener('click', async () => {
