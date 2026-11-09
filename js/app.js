@@ -6532,8 +6532,26 @@
         vals.salary_after_transfer = yes ? (vals.revised_basic ? `RM ${vals.revised_basic}${vals.increment_effective_date ? ` from ${vals.increment_effective_date}` : ''}` : '') : (cur > 0 ? `RM ${m2(cur)} (unchanged)` : '');
         const i = $('[data-k="salary_after_transfer"]', el); if (i) i.value = vals.salary_after_transfer;
       }
-      calcConfirm(k, yes);
+      calcConfirm(k, yes); calcPromo(k);
     };
+    // senior promotion (v2026.11.09): the senior increment is paid in two parts — {{probation_increment_pct}} % (set by Admin) from the promotion
+    // date, the rest after confirmation. "Update records" posts the first part; the confirmation letter based on this letter gets the rest.
+    function calcPromo(k) {
+      if (!k.has('senior_increment') || !editable) return;
+      if (!vals._lop) { vals._lop = '1'; if (k.has('assessment_months') && (!vals.assessment_months || vals.assessment_months === ph.get('assessment_months')?.default)) vals.assessment_months = '6'; }
+      if (k.has('promotion_probation_start') && String(vals.effective_date || '').trim()) follow('promotion_probation_start', String(vals.effective_date).trim(), '_ps_auto');
+      calcAssess();
+      const n = parseInt(vals.assessment_months, 10); if (n > 0) vals.promotion_probation_period = `${n} month${n === 1 ? '' : 's'}`;
+      let pct = parseFloat(vals.probation_increment_pct); if (!(pct >= 0 && pct <= 100)) pct = 60;
+      const tot = mval(vals.senior_increment); const cur = mval(vals.current_basic); const ok = tot > 0 && cur > 0;
+      const p1 = ok ? Math.round(tot * pct) / 100 : 0;
+      const out = { probation_increment: ok ? m2(p1) : '', confirmation_increment: ok ? m2(tot - p1) : '', confirmation_increment_pct: String(Math.round((100 - pct) * 100) / 100),
+        basic_during_probation: ok ? m2(cur + p1) : '', basic_after_confirmation: ok ? m2(cur + tot) : '', revised_basic: ok ? m2(cur + p1) : '', basic_increment: ok ? m2(p1) : '',
+        increment_effective_date: ok ? String(vals.effective_date || '').trim() : '' };
+      Object.entries(out).forEach(([key, v]) => { vals[key] = v; const i = $(`[data-k="${key}"]`, el); if (i) i.value = v; });
+      const e = parseLong(vals.promotion_probation_end); const c = parseInt(vals.review_cycle, 10);
+      if (e && c) { const d1 = addDays(e, 1); vals.next_review_date = longDate(isoUTC(new Date(Date.UTC(d1.getUTCFullYear(), d1.getUTCMonth() + c, d1.getUTCDate())))); }
+    }
     // senior confirmation (v2026.11.09): confirmed the day after the probation ends; the increment from the confirmation date, the 1st of the
     // following month or another date; the next review {{review_cycle}} months after the confirmation (or the increment date). All editable.
     const addDays = (d, n) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + n));
@@ -6608,6 +6626,8 @@
       vals._basis = b.id; set('promotion_letter_date', longDate(String(b.letter_date).slice(0, 10)));
       set('promotion_probation_start', f.promotion_probation_start || f.effective_date); set('promotion_probation_period', f.promotion_probation_period); set('promotion_probation_end', f.promotion_probation_end);
       if (f.review_cycle && OPT.get('review_cycle')?.options.some((o) => o.value === f.review_cycle)) vals.review_cycle = f.review_cycle;
+      // the promotion letter split the senior increment: this confirmation pays the rest, from the confirmation date
+      if (mval(f.confirmation_increment) > 0 && OPT.get('has_increment')) { vals.has_increment = 'yes'; vals.increment_start = 'confirmation'; vals.basic_increment = String(f.confirmation_increment).replace(/,/g, ''); vals._basis_inc = '1'; }
       if (vals.confirmation_date === vals._cd_auto) delete vals.confirmation_date;
       calc();
     };
@@ -6625,6 +6645,7 @@
       box.innerHTML = `<label class="fld"><span>Based on letter <small class="muted">fills the promotion letter date and the probation</small></span><select data-basis><option value="">None — type the details</option>${basis.map((b) => `<option value="${esc(b.id)}" ${b.id === cur ? 'selected' : ''}>${esc(b.title)} · ${esc(b.reference || '')} · dated ${dShort(b.letter_date)}${b.origin === 'recorded' ? ' (recorded)' : ''}</option>`).join('')}</select></label>
         ${basis.length ? '' : `<p class="muted small">No promotion or transfer letter for this person yet. If it was issued before the CMS, <button type="button" class="lnk" data-basis-rec>record it first</button>.</p>`}`;
       $('[data-basis]', box).addEventListener('change', (e) => { const b = basis.find((x) => x.id === e.target.value); if (b) { fillBasis(b); toast('Filled from the letter'); } else delete vals._basis; drawFields(); later(); });
+      const sel = basis.find((x) => x.id === cur); if (sel && mval(sel.fields?.confirmation_increment) > 0) box.insertAdjacentHTML('beforeend', `<p class="note small">${icon('help')}<span>That letter pays RM ${esc(sel.fields.confirmation_increment)} of the senior increment after confirmation — it is filled in as the increment here, from the confirmation date. You can change it.</span></p>`);
       $('[data-basis-rec]', box)?.addEventListener('click', async () => { const r = await recordPastLetter(L, personId); if (!r) return; toast(r.status === 'issued' ? `Recorded as ${r.reference}` : 'Recorded — waiting for approval'); basisFor = ''; drawBasis(); });
     }
     const loadCtx = async (fresh) => {
