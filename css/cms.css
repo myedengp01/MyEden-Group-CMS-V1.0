@@ -1271,3 +1271,8 @@ table.fp-t select{max-width:130px}
 .rp-grid h4,#rp-body h4{margin:8px 0 4px;font-size:14px}
 .rp-t td{padding:4px 6px}
 .rp-bar{width:40%}.rp-bar span{display:block;height:8px;border-radius:4px;background:var(--blue,#2563eb);opacity:.75}
+/* HR letters: optional sections (v2026.11.09) */
+.lt-cond{font:600 11px/1.4 system-ui,sans-serif;color:#6b46c1;background:#f3eefe;border-left:3px solid #8b5cf6;padding:2px 8px;margin:4px 0!important;border-radius:4px}
+:root[data-theme="dark"] .lt-cond{color:#d8c8ff;background:#2a2140}
+.lw-opt select{font-weight:600}
+@media print{.lt-cond{display:none}}

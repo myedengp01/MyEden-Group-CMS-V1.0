@@ -1,0 +1,4 @@
+-- MyEden Group CMS V1.0 · v2026.11.09 · "Update records from this letter" for transfer letters with the new options (applied as a patch to
+-- public.cms_letter_apply_preview): an increment "from the transfer date" starts in the transfer month instead of after the assessment, and a
+-- letter with no increment offers to set the next salary review it states (interval M6 / M9 / M12 from {{next_review_cycle}}).
+-- See the DB function for the full text; the patch adds the increment_timing test to v_sal and a 'review' item when has_increment = 'no'.

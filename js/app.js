@@ -5750,6 +5750,43 @@
   const LONG_KEYS = /(details|areas|objectives|description|expectations|summary|evidence|allegation|particulars|conditions|information|process|findings|correspondence|resources|targets|gaps|actions|instructions|basis|arrangements|considered)/;
   const tplKeys = (body) => [...new Set([...String(body || '').matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => m[1]))];
   const fillTpl = (body, v) => String(body || '').replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => (v[k] != null && String(v[k]).trim() !== '' ? String(v[k]) : m));
+  // Optional sections (v2026.11.09): [[IF key]] … [[END]] · [[IFNOT key]] … [[END]] · [[IF key=value]] … [[END]].
+  // A marker alone on its line (or Word paragraph) starts / ends a block; a marker followed by text covers only that line / paragraph.
+  // Yes = yes / y / true / 1. Sections can be nested. Markers never reach the letter.
+  const COND_RE = /^\s*\[\[(IF|IFNOT)\s+([a-z0-9_]+)(?:\s*=\s*([a-z0-9_]+))?\]\]\s*([\s\S]*)$/;
+  const COND_END = /^\s*\[\[END(?:\s+[a-z0-9_]+)?\]\]\s*$/;
+  const condTrue = (m, v) => { const x = String(v[m[2]] ?? '').trim().toLowerCase(); const hit = m[3] ? x === m[3] : ['yes', 'y', 'true', '1'].includes(x); return m[1] === 'IF' ? hit : !hit; };
+  const condKeys = (body) => [...new Set([...String(body || '').matchAll(/\[\[IF(?:NOT)?\s+([a-z0-9_]+)/g)].map((m) => m[1]))];
+  function condCheck(body) {   // '' when the markers pair up, else what is wrong
+    let depth = 0; const lines = String(body || '').split('\n');
+    for (let i = 0; i < lines.length; i += 1) { const ln = lines[i];
+      if (/\[\[(?!IF\b|IFNOT\b|END\b)[^\]]*\]\]/.test(ln)) return `Line ${i + 1}: unknown marker ${(ln.match(/\[\[[^\]]*\]\]/) || [''])[0]} (use [[IF name]], [[IFNOT name]], [[IF name=value]] or [[END]]).`;
+      const m = ln.match(COND_RE); if (m && !m[4].trim()) depth += 1; else if (COND_END.test(ln)) { depth -= 1; if (depth < 0) return `Line ${i + 1}: [[END]] without a matching [[IF …]].`; }
+      else if (/\[\[(IF|IFNOT|END)\b/.test(ln) && !m) return `Line ${i + 1}: a marker must start the line (${(ln.match(/\[\[[^\]]*\]\]/) || [''])[0]}).`; }
+    return depth ? `${depth} [[IF …]] without a matching [[END]].` : '';
+  }
+  // switches / choices whose marker sits in a part of the letter that is shown (so a choice inside a hidden section is not asked)
+  function condKeysShown(body, v) {
+    const out = []; const stack = [];
+    for (const ln of String(body || '').split('\n')) {
+      const show = stack.every(Boolean); const m = ln.match(COND_RE);
+      if (m) { if (show && !out.includes(m[2])) out.push(m[2]); if (!m[4].trim()) stack.push(show && condTrue(m, v)); continue; }
+      if (COND_END.test(ln)) stack.pop();
+    }
+    return out;
+  }
+  function condText(body, v) {
+    const out = []; const stack = [];
+    for (const ln of String(body || '').split('\n')) {
+      const show = stack.every(Boolean); const m = ln.match(COND_RE);
+      if (m && !m[4].trim()) { stack.push(show && condTrue(m, v)); continue; }
+      if (COND_END.test(ln)) { stack.pop(); continue; }
+      if (!show) continue;
+      if (m) { if (condTrue(m, v)) out.push(ln.replace(/^\s*\[\[[^\]]*\]\]\s*/, '')); continue; }
+      out.push(ln);
+    }
+    return out.join('\n');
+  }
   const LETTERHEADS = { MEG: 'assets/letterheads/MEG.jpg', HD: 'assets/letterheads/HD.jpg', ABP: 'assets/letterheads/ABP.jpg', MEH: 'assets/letterheads/MEH.jpg' };
   const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -5772,6 +5809,9 @@
     const formatted=String(text).replace(/\bRM\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.,])/g,(_,v)=>'RM '+Number(v.replaceAll(',','')).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}));
     const raw=formatted.split('\n'), html=[];
     for(let i=0;i<raw.length;i++) { const t=raw[i].trim();
+      { const cm=t.match(COND_RE); if(cm||COND_END.test(t)){ const lab=(k)=>esc(labelOf?labelOf(k):k);
+        html.push(cm?`<p class="lt-cond">${cm[1]==='IF'?'Only if':'Only if not'} ${lab(cm[2])}${cm[3]?` = ${esc(cm[3])}`:''}${cm[4].trim()?':':' ▾'}</p>`:'<p class="lt-cond">▴ end</p>');
+        if(cm&&cm[4].trim()) html.push('<p>'+richLine(cm[4].trim(),labelOf)+'</p>'); continue; } }
       // one blank line = a small gap between paragraphs; two or more stacked blank lines = full lines (signing space, v2026.11.05)
       if(!t){let n=1;while(i+1<raw.length&&!raw[i+1].trim()){n++;i++;}html.push(n===1?'<div class="lt-gap"></div>':'<div class="lt-line"></div>'.repeat(n));continue;}
       if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
@@ -5852,7 +5892,7 @@
       for (const n of names) { const d = W.xml(await z.file(n).async('string')); W.paras(d).forEach((p) => out.push(W.ptext(p))); }
       const text = out.join('\n'); if (!text.trim()) throw new Error('The Word file has no text.'); if (text.length > 100000) throw new Error('The Word file is too long (100,000 characters at most).');
       const broken = text.replace(/\{\{[a-z0-9_]+\}\}/g, '').match(/\{\{[^}]*\}\}/g);
-      return { text, fields: tplKeys(text), broken: broken ? [...new Set(broken)] : [] };
+      return { text, fields: [...new Set([...condKeys(text), ...tplKeys(text)])], broken: broken ? [...new Set(broken)] : [], cond: condCheck(text) };
     },
     async edit(bytes, fn) {
       const z = await W.zip(bytes); let count = 0;
@@ -5876,7 +5916,34 @@
         if (ranges.length) W.splice(p, ranges); return ranges.length;
       });
     },
+    // optional sections in the document body and in table cells: marker paragraphs bound a run of sibling paragraphs / tables
+    async cond(bytes, values) {
+      const z = await W.zip(bytes); const n = 'word/document.xml'; const d = W.xml(await z.file(n).async('string')); let changed = false;
+      const walk = (box) => {
+        const stack = []; const kids = Array.from(box.childNodes).filter((c) => c.nodeType === 1);
+        for (const c of kids) {
+          if (c.localName === 'sectPr') continue;
+          const show = stack.every(Boolean);
+          if (c.localName === 'p') { const t = W.ptext(c); const m = t.match(COND_RE);
+            if (m && !m[4].trim()) { stack.push(show && condTrue(m, values)); box.removeChild(c); changed = true; continue; }
+            if (COND_END.test(t)) { stack.pop(); box.removeChild(c); changed = true; continue; }
+            if (!show) { box.removeChild(c); changed = true; continue; }
+            if (m) { changed = true; if (!condTrue(m, values)) { box.removeChild(c); continue; } const at = t.indexOf('[['); const end = t.indexOf(']]', at) + 2; const sp = t.slice(end).match(/^\s*/)[0].length; W.splice(c, [{ start: at, end: end + sp, text: '' }]); }
+            continue; }
+          if (!show) { box.removeChild(c); changed = true; continue; }
+          if (c.localName === 'tbl') Array.from(c.getElementsByTagNameNS(WNS, 'tc')).forEach(walk);
+          else if (c.localName === 'sdt') { const sc = Array.from(c.childNodes).find((x) => x.localName === 'sdtContent'); if (sc) walk(sc); }
+        }
+      };
+      const body = d.getElementsByTagNameNS(WNS, 'body')[0]; if (body) walk(body);
+      // a table cell must keep at least one paragraph
+      Array.from(d.getElementsByTagNameNS(WNS, 'tc')).forEach((tc) => { if (!Array.from(tc.childNodes).some((x) => x.localName === 'p' || x.localName === 'tbl')) tc.appendChild(d.createElementNS(WNS, 'w:p')); });
+      if (!changed) return bytes;
+      z.file(n, new XMLSerializer().serializeToString(d));
+      return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME });
+    },
     async fill(bytes, values, labelOf) {
+      bytes = await W.cond(bytes, values);
       const r = await W.edit(bytes, (p, text, d) => {
         const only = text.trim().match(/^\{\{([a-z0-9_]+)\}\}$/); const multi = only && values[only[1]] != null && String(values[only[1]]).includes('\n');
         if (multi) {   // e.g. {{jd_responsibilities}}: one paragraph per line, each a copy of the template paragraph
@@ -6023,7 +6090,10 @@
   const fileSafe = (s) => String(s || 'letter').replace(/[^A-Za-z0-9 ._-]+/g, '').trim().replace(/\s+/g, '-');
 
   const ask = (text, ok) => confirmBox(ok, esc(text), ok);
-  async function lettersData(force) { if (force || !state.lettersData) state.lettersData = await API.rpc('cms_letters'); return state.lettersData; }
+  async function lettersData(force) {
+    if (force || !state.lettersData) { const [d, o] = await Promise.all([API.rpc('cms_letters'), API.rpc('cms_letter_options').catch(() => [])]); d.options = o || []; state.lettersData = d; }
+    return state.lettersData;
+  }
   async function loadLettersPending() { try { state.lettersPending = await API.rpc('cms_letters_pending'); drawBell(); } catch (e) { /* reminders only */ } }
   function letterTasks() {
     const x = state.lettersPending; const t = []; if (!x) return t;
@@ -6036,7 +6106,7 @@
 
   // new or changed placeholder
   async function placeholderWindow(L, p, preKey) {
-    const isNew = !p; let saved = null;
+    const isNew = !p; let saved = null; const op0 = (L.options || []).find((o) => o.key === p?.key) || { type: 'none', options: [] };
     const ok = await modal({ title: isNew ? 'New placeholder' : `Placeholder {{${p.key}}}`, ok: 'Save', wide: true,
       body: `<div class="grid-2 tight">
           <label class="fld"><span>Name used in templates</span><input name="key" ${isNew ? '' : 'disabled'} value="${esc(p?.key || preKey || '')}" placeholder="e.g. probation_months" pattern="[a-z][a-z0-9_]*" required><small class="muted">lower-case, numbers and _ · written as {{name}}</small></label>
@@ -6045,12 +6115,16 @@
           <label class="fld"><span>Filled</span><select name="source">${SOURCES.map(([k, l]) => `<option value="${k}" ${(p?.source || 'manual') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="fld" data-srckey><span>Record field</span><input name="skey" value="${esc(p?.source_key || '')}" placeholder="e.g. confirmation_date"></label>
           <label class="fld"><span>Default value (optional)</span><input name="def" value="${esc(p?.default || '')}"></label>
+          <label class="fld"><span>Shown in a letter as</span><select name="show"><option value="none">A field to fill</option><option value="switch" ${op0.type === 'switch' ? 'selected' : ''}>A Yes / No switch</option><option value="choice" ${op0.type === 'choice' ? 'selected' : ''}>A choice list</option></select>
+            <small class="muted">Switches and choices decide optional sections: [[IF name]] … [[END]]</small></label>
+          <label class="fld fld-2" data-opts><span>Choices — one per line: <code>value | label</code> (value: lower-case, numbers, _)</span><textarea name="opts" rows="4" class="ta" placeholder="6 | 6 months&#10;12 | 12 months">${esc(op0.type === 'choice' ? op0.options.map((o) => `${o.value} | ${o.label}`).join('\n') : '')}</textarea></label>
           <label class="fld fld-2"><span>Help text (optional)</span><input name="desc" value="${esc(p && p.description !== p.label ? p.description || '' : '')}"></label>
           <div class="fld fld-2 chk-row"><label class="chk"><input type="checkbox" name="req" ${p?.required === false ? '' : 'checked'}> Must be filled before submitting</label>
             <label class="chk"><input type="checkbox" name="edit" ${p?.editable === false ? '' : 'checked'}> HR may change it in a letter</label>
             ${isNew ? '' : `<label class="chk"><input type="checkbox" name="act" ${p.active ? 'checked' : ''}> In use</label>`}</div>
           ${isNew ? '' : '<label class="fld fld-2"><span>Reason for the change</span><input name="why" required maxlength="300"></label>'}</div>`,
-      onOpen: (w) => { const sync = () => { $('[data-srckey]', w).hidden = $('select[name=source]', w).value !== 'employee'; }; $('select[name=source]', w).addEventListener('change', sync); sync(); },
+      onOpen: (w) => { const sync = () => { $('[data-srckey]', w).hidden = $('select[name=source]', w).value !== 'employee'; $('[data-opts]', w).hidden = $('select[name=show]', w).value !== 'choice'; };
+        $('select[name=source]', w).addEventListener('change', sync); $('select[name=show]', w).addEventListener('change', sync); sync(); },
       onOk: async (f) => {
         const key = (isNew ? f.key.value : p.key).trim().toLowerCase();
         if (!/^[a-z][a-z0-9_]{0,79}$/.test(key)) throw new Error('The name uses lower-case letters, numbers and _, starting with a letter.');
@@ -6059,8 +6133,10 @@
         saved = await API.rpc('cms_letter_placeholder_save', { p: { key, label: f.label.value.trim(), description: f.desc.value.trim(), kind: f.kind.value, source: f.source.value,
           source_key: f.source.value === 'employee' ? f.skey.value.trim() : '', default: f.def.value, required: f.req.checked, editable: f.edit.checked,
           active: isNew ? true : f.act.checked, revision: p?.revision || null, reason: isNew ? null : f.why.value.trim() } });
+        const show = f.show.value; const opts = f.opts.value.split('\n').map((l) => l.split('|')).filter((x) => x[0].trim()).map((x) => ({ value: x[0].trim(), label: (x[1] || x[0]).trim() }));
+        if (show !== op0.type || (show === 'choice' && JSON.stringify(opts) !== JSON.stringify(op0.options))) await API.rpc('cms_letter_option_save', { p_key: key, p_type: show, p_options: opts });
       } });
-    if (ok) { toast(isNew ? `{{${saved}}} created` : 'Placeholder saved'); const fresh = await lettersData(true); L.placeholders = fresh.placeholders; }
+    if (ok) { toast(isNew ? `{{${saved}}} created` : 'Placeholder saved'); const fresh = await lettersData(true); L.placeholders = fresh.placeholders; L.options = fresh.options; }
     return ok ? saved : null;
   }
   const phOptions = (L, sel, blank = 'Choose…') => `<option value="">${blank}</option>${L.placeholders.filter((p) => p.active).map((p) => `<option value="${esc(p.key)}" ${p.key === sel ? 'selected' : ''}>${esc(p.label)} — {{${esc(p.key)}}}</option>`).join('')}<option value="__new">＋ New placeholder…</option>`;
@@ -6196,6 +6272,7 @@
     el.innerHTML = loading();
     let L; try { L = await lettersData(true); } catch (e) { el.innerHTML = errorCard(e.message); wireRetry(el); return; }
     const ph = new Map(L.placeholders.map((p) => [p.key, p])); const labelOf = (k) => ph.get(k)?.label || k.replace(/_/g, ' ');
+    const OPT = new Map((L.options || []).map((o) => [o.key, o]));
     const id = q.get('ws') === 'new' ? null : q.get('ws'); const rec = id ? L.letters.find((x) => x.id === id) : null;
     if (id && !rec) { el.innerHTML = errorCard('This letter was not found, or you cannot see it.'); return; }
     const usable = L.templates.filter((t) => (t.status === 'published' && t.active && t.code !== 'TRL_LOP') || (L.can_jd_test && t.code === 'TRL_LOP' && t.status !== 'retired'));
@@ -6322,9 +6399,10 @@
       $('[data-trial-print]',box).onclick=()=>{if(!tpl())return;docView(el,'TRL_LOP — TEST DRAFT',[`<div class="lw-stamp">TEST DRAFT — NOT ISSUED</div>`+letterSheet(textNow(),co,coCode,labelOf)],()=>render());};
     }
 
-    const keys = () => tplKeys(tpl()?.body);
-    const textNow = () => (status === 'new' || status === 'draft' ? jdText(fillTpl(tpl()?.body, vals)) : rec.text || fillTpl(tpl()?.body, vals));
-    const missing = () => tplKeys(textNow()).filter((k) => ph.get(k)?.required !== false);
+    // fields: the switches / choices of the optional sections first, then the placeholders of the sections that are shown
+    const keys = () => { const b = tpl()?.body; return [...new Set([...condKeysShown(b, vals), ...tplKeys(condText(b, vals))])]; };
+    const textNow = () => (status === 'new' || status === 'draft' ? jdText(fillTpl(condText(tpl()?.body, vals), vals)) : rec.text || fillTpl(condText(tpl()?.body, vals), vals));
+    const missing = () => [...condKeysShown(tpl()?.body, vals).filter((k) => status !== 'issued' && String(vals[k] ?? '').trim() === ''), ...tplKeys(textNow()).filter((k) => ph.get(k)?.required !== false)];
     const applyZoom = () => {
       const s = $('.sheet', pv); if (s) s.style.zoom = zoom === 'fit' ? Math.max(0.35, Math.min(1.4, (pv.clientWidth - 24) / 794)) : zoom;
       if (view) { try { view.frame.contentDocument.querySelectorAll('section.docx').forEach((p) => { p.style.zoom = ''; p.style.zoom = zoom === 'fit' ? Math.max(0.35, Math.min(1.4, (view.frame.clientWidth - 24) / (p.offsetWidth || 794))) : zoom; });
@@ -6347,14 +6425,36 @@
     const calcAssess = () => {
       if (!keys().includes('promotion_probation_start') || !keys().includes('promotion_probation_end')) return;
       const raw = String(vals.promotion_probation_start || '').trim(); const t = raw ? Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw) : NaN; if (isNaN(t)) return;
-      const s0 = new Date(t); const e = new Date(s0.getFullYear(), s0.getMonth() + 3, s0.getDate() - 1);
+      const mo = keys().includes('assessment_months') ? Math.max(1, Math.min(6, parseInt(vals.assessment_months, 10) || 3)) : 3;
+      const s0 = new Date(t); const e = new Date(s0.getFullYear(), s0.getMonth() + mo, s0.getDate() - 1);
       const iso = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`; const v = longDate(iso);
       const cur = String(vals.promotion_probation_end || '').trim();
       if (cur === '' || cur === vals._pp_auto) { vals.promotion_probation_end = v; vals._pp_auto = v; const i = $('[data-k="promotion_probation_end"]', el); if (i) i.value = v; }
     };
-    const calc = () => { calcAssess(); salArr(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
+    // transfer letters (v2026.11.09): increment or not, when it takes effect, and the next salary review after the last increment
+    const follow = (k, v, tag) => { const cur = String(vals[k] ?? '').trim(); if (cur === '' || cur === vals[tag]) { vals[k] = v; vals[tag] = v; const i = $(`[data-k="${k}"]`, el); if (i) i.value = v; } };
+    const calcTransfer = () => {
+      if (hasSal() || isJD()) return; const k = new Set(keys()); const yes = String(vals.has_increment || '').toLowerCase() === 'yes';
+      // no increment in this letter: nothing of an increment is kept (so "Update records from this letter" cannot apply one)
+      if (condKeys(tpl()?.body).includes('has_increment') && !yes) ['basic_increment', 'basic_increment_pct', 'revised_basic', 'increment_effective_date', '_ie_auto'].forEach((x) => { delete vals[x]; });
+      if (k.has('increment_effective_date') && yes) {
+        let v = '';
+        if (vals.increment_timing === 'transfer') v = String(vals.effective_date || '').trim();
+        else { const e = parseLong(vals.promotion_probation_end); if (e) v = longDate(isoUTC(new Date(Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate() + 1)))); }
+        if (v) follow('increment_effective_date', v, '_ie_auto');
+      }
+      if (k.has('next_review_date') && !yes) { const l = parseLong(vals.last_increment_date); const n = parseInt(vals.next_review_cycle, 10);
+        if (l && n) follow('next_review_date', longDate(isoUTC(new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + n, l.getUTCDate())))), '_nr_auto'); }
+      if ('salary_after_transfer' in vals || k.has('salary_after_transfer')) {
+        const cur = mval(vals.current_basic);
+        vals.salary_after_transfer = yes ? (vals.revised_basic ? `RM ${vals.revised_basic}${vals.increment_effective_date ? ` from ${vals.increment_effective_date}` : ''}` : '') : (cur > 0 ? `RM ${m2(cur)} (unchanged)` : '');
+        const i = $('[data-k="salary_after_transfer"]', el); if (i) i.value = vals.salary_after_transfer;
+      }
+    };
+    const calc = () => { calcAssess(); salArr(); calcTransfer(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
-        ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); } };
+        ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); }
+      calcTransfer(); };
     // duties, JD reference and version from the JD Manual, by job title: the position in the letter (transfer / promotion), else the current one
     const JD_KEYS = ['jd_title', 'jd_responsibilities', 'jd_reference', 'jd_version', 'jd_department', 'jd_level', 'jd_reports_to', 'jd_purpose', 'jd_effective_date', 'jd_qualifications', 'jd_experience'];
     let jdTitles = null; let jdTitlesFor = '';
@@ -6381,7 +6481,10 @@
       const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; drawSal(); return; }
       salArr(); if (!$('#lw-sal [data-sal-mode]', el) || !editable) drawSal();
       if (jdTitlesFor !== personId) { jdTitles = null; loadJdTitles(); }
-      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k)) || (hasSal() && k === 'salary_arrangement');
+      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const op = OPT.get(k);
+        if (op) { const cur = String(vals[k] ?? '');
+          return `<label class="fld lw-opt"><span>${esc(p.label || k.replace(/_/g, ' '))}${op.type === 'switch' ? ' <small class="muted">changes which parts of the letter are included</small>' : ''}</span><select data-opt="${k}" ${editable ? '' : 'disabled'}>${cur && op.options.some((o) => o.value === cur) ? '' : '<option value="">Choose…</option>'}${op.options.map((o) => `<option value="${esc(o.value)}" ${o.value === cur ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>`; }
+        const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k)) || (hasSal() && k === 'salary_arrangement');
         const kind = p.kind || (LONG_KEYS.test(k) ? 'paragraph' : 'text'); const v = esc(vals[k] ?? '');
         const inp = kind === 'paragraph' || LONG_KEYS.test(k) ? `<textarea data-k="${k}" rows="3" ${ro ? 'readonly' : ''}>${v}</textarea>`
           : kind === 'date' ? `<span class="lw-dt"><input data-k="${k}" value="${v}" placeholder="e.g. 14 November 2026" ${ro ? 'readonly' : ''}>${ro ? '' : `<input type="date" data-pick="${k}" aria-label="Pick a date for ${esc(p.label || k)}">`}</span>`
@@ -6392,6 +6495,7 @@
         <datalist id="lw-jdtitles">${(jdTitles || []).map((x) => `<option value="${esc(x.title)}">${esc([x.level, x.department].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`;
       $$('[data-k]', box).forEach((i) => { i.addEventListener('input', () => { vals[i.dataset.k] = i.value; calc(); later(); }); i.addEventListener('focusout', () => { vals[i.dataset.k] = i.value; calc(); later(); });
         if (['new_position', 'revised_position'].includes(i.dataset.k)) i.addEventListener('change', () => { vals[i.dataset.k] = i.value; fillJD(true); }); });
+      $$('[data-opt]', box).forEach((i) => i.addEventListener('change', () => { vals[i.dataset.opt] = i.value; calc(); drawFields(); later(); }));
       $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; calc(); later(); }));
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
     };
@@ -6629,7 +6733,7 @@
     const f = $('#te-f', el); const ta = $('#te-body', el); wireTypeField(el);
     const labelOf = (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k.replace(/_/g, ' ');
     let pv = {}; let pco = null; let pcode = null;
-    const draw = () => { const unk = tplKeys(ta.value).filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
+    const draw = () => { const unk = [...new Set([...condKeys(ta.value), ...tplKeys(ta.value)])].filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
       $('#te-unk', el).innerHTML = unk.length ? `<span class="bad-t">Not in the placeholder list:</span> ${unk.map((k) => `<code>{{${esc(k)}}}</code> <button type="button" class="lnk" data-mk="${esc(k)}">create</button>`).join(' ')}` : '';
       $$('[data-mk]', el).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, null, b.dataset.mk)) { $('#te-ph', el).innerHTML = phOptions(L, '', 'Insert a placeholder…'); draw(); } }));
       $('#te-pv', el).innerHTML = letterSheet(fillTpl(ta.value, pv), pco, pcode || f.co.value || t?.company || 'MEG', labelOf); };
@@ -6649,7 +6753,8 @@
         if (!f.title.value.trim()) throw new Error('Give the template a title.');
         if (!t && !f.ltype.value) throw new Error('Choose the letter type.');
         if (pub && !f.why.value.trim()) throw new Error('Give the reason for the change.');
-        const unk = tplKeys(ta.value).filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
+        const ce = condCheck(ta.value); if (ce) throw new Error(`Optional sections: ${ce}`);
+        const unk = [...new Set([...condKeys(ta.value), ...tplKeys(ta.value)])].filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
         if (submit && !(await ask(L.can_publish ? 'Publish this template? Switch it on afterwards to use it for letters.' : 'Send this template for approval?', L.can_publish ? 'Publish' : 'Send'))) return;
         const c = await API.rpc('cms_letter_template_save', { p: { code: t?.code || null, ...(t ? {} : readType(f)), title: f.title.value.trim(), format: 'text', body: ta.value, company: f.co.value, reason: pub ? f.why.value.trim() : (fromWord ? 'Converted from a Word file' : null), submit } });
         toast(submit ? (L.can_publish ? `${c} published` : `${c} sent for approval`) : `${c} saved as a draft`); state.lettersData = null; loadLettersPending();
@@ -6697,7 +6802,8 @@
           <select id="wi-key">${phOptions(L, '')}</select><button type="button" class="btn sm primary" data-mkph>Make placeholder</button></div>
         <p class="small">Placeholders in this file: ${info.fields.length ? info.fields.map((k) => `<code class="${unk.includes(k) ? 'bad-t' : ''}">{{${esc(k)}}}</code>`).join(' ') : '<span class="muted">none yet</span>'}</p>
         ${unk.length ? `<p class="small bad-t">Not in the placeholder list: ${unk.map((k) => `<code>{{${esc(k)}}}</code> <button type="button" class="lnk" data-mk="${esc(k)}">create</button>`).join(' ')}</p>` : ''}
-        ${info.broken.length ? `<p class="small bad-t">Placeholders written wrongly (use lower-case letters, numbers and _): ${info.broken.map(esc).join(', ')}</p>` : ''}`;
+        ${info.broken.length ? `<p class="small bad-t">Placeholders written wrongly (use lower-case letters, numbers and _): ${info.broken.map(esc).join(', ')}</p>` : ''}
+        ${info.cond ? `<p class="small bad-t">Optional sections: ${esc(info.cond)}</p>` : condKeys(info.text).length ? `<p class="small muted">Optional sections use: ${condKeys(info.text).map((k) => `<code>${esc(k)}</code>`).join(' ')}</p>` : ''}`;
       $('[data-sel]', el).addEventListener('click', () => { const s = view?.selection(); if (!s) { toast('Select some words in the preview first.', 'err'); return; } $('#wi-find', el).value = s; });
       $('#wi-key', el).addEventListener('change', async (e) => { if (e.target.value === '__new') { const k = await placeholderWindow(L, null); drawManual(); if (k) $('#wi-key', el).value = k; } });
       $('[data-mkph]', el).addEventListener('click', async () => { const find = $('#wi-find', el).value.trim(); const key = $('#wi-key', el).value;
@@ -6762,6 +6868,7 @@
         if (!t && !f.ltype.value) throw new Error('Choose the letter type.');
         if (pub && !f.why.value.trim()) throw new Error('Give the reason for the change.');
         if (info.broken.length) throw new Error(`Fix the placeholders written wrongly: ${info.broken.join(', ')}.`);
+        if (info.cond) throw new Error(`Optional sections: ${info.cond}`);
         const unk = info.fields.filter((k) => !L.placeholders.some((p) => p.key === k && p.active)); if (unk.length) throw new Error(`Create these placeholders first: ${unk.join(', ')}.`);
         if ($('input[name=keep]:checked', el)?.value === 'text') { state.wordText = { body: await W.toText(bytes), title: f.title.value.trim(), letter_type: f.ltype.value === '__new' ? '' : f.ltype.value, company: f.co.value }; location.hash = '#/letters?tpl=new&from=word'; return; }
         if (!info.fields.length && !(await ask('This letter has no placeholders yet, so every letter would be identical. Save anyway?', 'Save anyway'))) return;

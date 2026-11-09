@@ -99,6 +99,8 @@ Other menu pages show the phase they arrive in and link to the app that does the
 71. `20261107_cms_my_claims_no_approval_labels.sql`, `20261107_cms_claim_settings_scf.sql` — My Claims labels for forms without approval; receipts setting in Claim settings
 72. `20261107_cms_otcf_new.sql` — F1 OTCF: `private.cms_claim_who` (any form), `cms_otcf_context / get / save / discard`, `private.cms_hm`
 73. `20261107_cms_mtcf_new.sql` — F1 MTCF: `cms_mtcf_context / get / save` (+ `_fix_year`)
+79. `20261109_cms_letter_apply_transfer_options.sql` — Update records from a transfer letter: increment from the transfer date; next salary review when there is no increment
+78. `20261109_cms_letter_options.sql` — HR letters: `hr_letter_options` (Switch / Choice placeholders), `cms_letter_options`, `cms_letter_option_save`, new placeholders (has_increment, increment_timing, last_increment_date, next_review_cycle, assessment_months, salary_after_transfer), `last_increment_date` in `cms_letter_context`
 77. `20261108_prfaf_old_read_only.sql` — the old MEG-PRFAF tables stop taking new entries (the app shows "moved to the CMS")
 76. `20261108_cms_purchasing_r2.sql` — Purchasing release 2: settlement columns, `pr_year_closings`, month lock in `pr_post`, `cms_pr_settle_save / verify / float_move / reverse / lock / year_end / year_decide / report / statement` (applied as parts a1, a2, a3, b)
 75. `20261108_cms_purchasing_r1.sql` — Purchasing & Petty Cash (new PRFAF) release 1: `pr_bank_accounts`, `pr_categories`, `pr_events`, `pr_requests`, `pr_items`, double-entry `pr_journal` / `pr_journal_lines` (locked after posting), modules `purchasing` / `purchasing.finance` / `purchasing.settings`, `cms_pr_*` functions, `pr-files` bucket (applied as parts a, b, c + `_available`)
@@ -154,6 +156,14 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.09-11:30** — HR letters: **optional sections**. In a Word or text template, `[[IF name]] … [[END]]`, `[[IFNOT name]] … [[END]]`
+  and `[[IF name=value]] … [[END]]` include a part of the letter only for some choices (a marker alone on its line covers a block of paragraphs
+  and tables; a marker followed by text covers only that line; markers work inside table cells and can be nested; they never print). Placeholders
+  can be **shown as a Yes / No switch or a choice list** (Placeholders › edit › “Shown in a letter as”). When preparing a letter the switches come
+  first; fields of hidden sections are hidden and not required. Templates with unpaired markers are refused. New placeholders for transfers with or
+  without an increment: Includes salary increment, Increment takes effect (from the transfer date / after the assessment), Last increment date
+  (from payroll), Next salary review after 6 / 9 / 12 months (date worked out), Assessment period (months, default 3, end date follows), Basic
+  salary (new). With no increment, the increment fields are cleared so “Update records” cannot apply one; it offers to set the next salary review.
 - **v2026.11.09-10:00** — HR Letters › Templates › Edit (Word template): **Download Word** button, to edit a template's Word file in Word.
 - **v2026.11.08-19:30** — Purchasing & Petty Cash **release 2**: the purchaser **records the purchase** (actual qty / price / supplier /
   receipt no. and photo per line, extra lines, "no receipt" with a reason; nothing bought = 0) and sends it to Finance. Over the tolerance (10 %,

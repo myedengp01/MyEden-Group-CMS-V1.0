@@ -257,6 +257,9 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   net and refuses a page without course, standard, students, names or fees on submit; serial and grouping as MEG-TEC-V2. Tutors are a separate
   `cms_tutors` list (not the Employee Master, not payroll); Admin creates them and invites them (`cms-invite` `{tutor_id}`), Tutor role = module
   `tutor_self` only; staff names are refused as tutors. The PIC still checks claims in MEG-TEC-V2 / the Action Center. Next: PRFAF (plan first).
+- **HR letters: transfer with or without increment (CLC 9 Nov 2026, option B).** Engine built (v2026.11.09-11:30): optional sections and
+  Switch / Choice placeholders. Next: "Letter of Transfer and Promotion v3" (from the TP3 Word file) and a new plain "Letter of Transfer" (TRL_TP2);
+  wording "next salary review"; plain-transfer assessment default 3 months, editable. Woo Pey Yee's pending letter is then moved to v3 (no increment).
 - **F1 PRFAF redesigned as Purchasing & Petty Cash (plan agreed with CLC 8 Nov 2026).** Request → Finance review → approval by amount
   (≤ RM 1,000 Finance, above a Director, above RM 5,000 both) → release from a company bank account → purchaser acknowledges → purchase →
   settlement with receipts (tolerance 10 %, Admin setting) → verified → closed. No returns: unspent money stays as the purchaser's petty cash per
