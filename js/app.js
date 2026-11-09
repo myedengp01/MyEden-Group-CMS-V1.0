@@ -938,7 +938,7 @@
         <td class="nowrap"><code>${esc(r.employee_id || '—')}</code>${r.previous_id && r.previous_id !== r.employee_id ? `<small class="prev-id" title="Previous Employee ID">was ${esc(r.previous_id)}</small>` : ''}</td><td><b><a class="plink" href="#/person?id=${esc(r.id)}">${esc(r.name)}</a></b>${r.login_email ? ` <span class="tag ok xs" title="CMS login: ${esc(r.login_email)}">login</span>` : ''}</td>
         <td>${esc(coShort(r.company_code))}</td>
         <td>${paidByCell(r)}</td>
-        <td>${esc(r.unit_code || '—')}</td>
+        <td>${esc(r.unit_code || '—')}${r.department && r.unit_code && String(r.department).toUpperCase() !== String(r.unit_code).toUpperCase() ? ` <span class="tag warn xs" title="The profile department (${esc(r.department)}) differs from the payroll centre (${esc(r.unit_code)}). Letters print the profile department.">profile ${esc(r.department)}</span>` : ''}</td>
         <td>${esc(r.job_title || '—')}${r.level ? ` <span class="muted">${esc(r.level)}</span>` : ''}</td>
         <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
         <td class="nowrap">${dShort(r.start_date)}</td>
@@ -6393,7 +6393,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-resign"></div><div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-basis"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-hist"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-basis"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-warn"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -6502,6 +6502,7 @@
         view.frame.style.height = `${Math.max(500, view.frame.contentDocument.body.scrollHeight + 20)}px`; } catch (e) { /* zoom only */ } } };
     const stamp = () => (status === 'issued' ? null : status === 'approved' ? 'APPROVED — NOT YET ISSUED' : missing().length ? 'DRAFT — INCOMPLETE' : 'DRAFT — NOT ISSUED');
     const preview = async () => {
+      try { drawWarn(); } catch (e) { /* warnings are a help only */ }
       postSalary();
       const t = tpl(); if (!t || !personId) { pv.innerHTML = '<div class="empty small"><p>Choose the person and the letter.</p></div>'; st.textContent = ''; return; }
       if (recorded) { st.textContent = 'signed copy'; if (pv.dataset.pdf === rec.signed_path) return; pv.innerHTML = loading();
@@ -6545,7 +6546,33 @@
         vals.salary_after_transfer = yes ? (vals.revised_basic ? `RM ${vals.revised_basic}${vals.increment_effective_date ? ` from ${vals.increment_effective_date}` : ''}` : '') : (cur > 0 ? `RM ${m2(cur)} (unchanged)` : '');
         const i = $('[data-k="salary_after_transfer"]', el); if (i) i.value = vals.salary_after_transfer;
       }
-      calcConfirm(k, yes); calcPromo(k);
+      calcConfirm(k, yes); calcPromo(k); calcChecks(k);
+    };
+    // every letter (v2026.11.09): dates in one style ("1 November 2026"); the "effective date already passed" switch; warnings to check
+    const anyDate = (x) => { const v = String(x || '').trim(); let m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/); if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+      m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/); if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return parseLong(v); };
+    function calcChecks(k) {
+      k.forEach((key) => { if (ph.get(key)?.kind !== 'date') return; const v = String(vals[key] ?? '').trim(); const d = v && anyDate(v); if (!d || isNaN(d)) return;
+        const nv = longDate(isoUTC(d)); if (nv !== v) { vals[key] = nv; const i = $(`[data-k="${key}"]`, el); if (i) i.value = nv; } });
+      if (k.has('effective_passed')) {
+        if (vals._ep_auto === undefined && (vals.effective_passed ?? '') === (ph.get('effective_passed')?.default ?? '')) vals._ep_auto = vals.effective_passed;
+        const ef = anyDate(vals.effective_date); const ld = anyDate(vals.letter_date); const before = vals.effective_passed;
+        if (ef && ld) follow('effective_passed', +ef < +ld ? 'yes' : 'no', '_ep_auto');
+        if (vals.effective_passed !== before) { const o = $('[data-opt="effective_passed"]', el); if (o) o.value = vals.effective_passed; }
+      }
+    }
+    const drawWarn = () => {
+      const box = $('#lw-warn', el); if (!box) return; const k = new Set(keys()); const w = [];
+      if (editable && personId && tpl()) {
+        const today = new Date(`${new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10)}T00:00:00Z`);
+        const ld = anyDate(vals.letter_date); const ef = anyDate(vals.effective_date); const ho = anyDate(vals.handover_date);
+        if (k.has('letter_date') && ld && +ld < +today) w.push(`The letter date (${esc(vals.letter_date)}) is before today — a letter is normally dated the day it is issued.`);
+        if (k.has('handover_date') && vals.has_handover !== 'no' && ho && ef && +ho > +ef) w.push(`The handover date (${esc(vals.handover_date)}) is after the effective date (${esc(vals.effective_date)}).`);
+        if (k.has('handover_date') && vals.has_handover !== 'no' && ho && ld && +ho < +ld) w.push(`The handover date (${esc(vals.handover_date)}) is before the letter date — switch “Handover of current duties” off or change the date.`);
+        if (ctx?._dept_profile && ctx?._dept_payroll && String(ctx._dept_profile).toUpperCase() !== String(ctx._dept_payroll).toUpperCase() && keys().some((x) => ['department', 'current_department'].includes(x)))
+          w.push(`Profile department <b>${esc(ctx._dept_profile)}</b> differs from the payroll centre <b>${esc(ctx._dept_payroll)}</b> — the letter uses the profile department.`);
+      }
+      box.innerHTML = w.length ? `<div class="note warn small">${icon('help')}<div>${w.map((x) => `<div>${x}</div>`).join('')}</div></div>` : '';
     };
     // senior promotion (v2026.11.09): the senior increment is paid in two parts — {{probation_increment_pct}} % (set by Admin) from the promotion
     // date, the rest after confirmation. "Update records" posts the first part; the confirmation letter based on this letter gets the rest.
@@ -6877,7 +6904,7 @@
       const sched = (A.scheduled || []).filter((x) => x.status === 'pending');
       if (A.applied) {
         box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>${icon('check-circle')} Records updated from this letter</h3><span class="muted small">${dShort(A.applied.at)}${A.applied.by ? ` · ${esc(A.applied.by)}` : ''}</span></div>
-          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved', probation: 'On probation', arrears: 'Salary arrears' }[x.kind] || x.kind)}${x.kind === 'arrears' ? ` RM ${m2(x.amount)} in the ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' }))} payroll${x.months ? ` (${esc(x.months)})` : ''}` : ''}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : x.kind === 'probation' ? ` until ${dShort(x.end)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
+          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved', probation: 'On probation', arrears: 'Salary arrears', department: 'Department' }[x.kind] || x.kind)}${x.kind === 'department' ? `: ${esc(x.department || '')} from ${dShort(x.date)}${x.scheduled ? ' (scheduled)' : ''}` : ''}${x.kind === 'arrears' ? ` RM ${m2(x.amount)} in the ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' }))} payroll${x.months ? ` (${esc(x.months)})` : ''}` : ''}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : x.kind === 'probation' ? ` until ${dShort(x.end)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
           ${status === 'void' ? `<p class="note warn small">${icon('help')}<span>This letter is cancelled. Changes not yet due were cancelled; changes already made (salary, review${A.applied.items.some((x) => !x.scheduled && ['confirm', 'position'].includes(x.kind)) ? ', confirmation / position' : ''}) stay — reverse them in Payroll / the profile if they no longer apply.</span></p>` : ''}</section>`;
         return;
       }
@@ -6886,14 +6913,14 @@
         : x.kind === 'arrears' ? `<label class="fld"><span>Arrears (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>Paid in the payroll of</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'probation' ? `<label class="fld"><span>On probation until</span><input type="date" data-i="${i}" data-f="end" value="${esc(x.end || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'review' ? `<label class="fld"><span>Review every</span><select data-i="${i}" data-f="interval" ${x.allowed ? '' : 'disabled'}>${(x.intervals || []).map((v) => `<option value="${esc(v.code)}" ${v.code === x.interval ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label><label class="fld"><span>Next review</span><input type="date" data-i="${i}" data-f="next" value="${esc(x.next || '')}" ${x.allowed ? '' : 'disabled'}></label>`
-        : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
+        : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : x.kind === 'department' ? 'New department from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
       box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>Update records from this letter</h3><span class="muted small">Issuing files the letter; these change ${esc(A.person)}'s records.</span></div>
         <div class="table-wrap"><table class="data la-t"><thead><tr><th></th><th>Change</th><th>Now</th><th>After</th><th></th></tr></thead><tbody>
         ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? (x.same ? '' : 'checked') : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : x.already ? '<br><small>already in payroll</small>' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.same ? `No change — already ${x.title}` : x.already ? `Already in payroll from ${new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' })}` : x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
         <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
       $('#la-go', box).addEventListener('click', async () => {
-        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, end: x.end, amount: x.amount, months: x.months, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
+        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, end: x.end, amount: x.amount, months: x.months, department: x.department, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
           $$(`[data-i="${i}"]`, box).forEach((f) => { o[f.dataset.f] = f.dataset.f === 'date' && f.type === 'month' ? `${f.value}-01` : f.dataset.f === 'amount' ? String(f.value).replace(/,/g, '') : f.value; }); return o; }).filter(Boolean);
         if (!items.length) { toast('Tick at least one change.', 'err'); return; }
         if (!(await ask(`Update ${A.person}'s records from this letter (${items.length} change${items.length === 1 ? '' : 's'})?`, 'Apply'))) return;
