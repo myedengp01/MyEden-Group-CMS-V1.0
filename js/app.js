@@ -6671,7 +6671,7 @@
     let bytes = null; let info = null; let fileName = t?.pending?.file_name || t?.file_name || ''; let view = null; let rows = []; let who = null; let changed = false;
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters?tab=templates">‹ Templates</a><div class="lw-title"><b>${t ? `Edit Word template · ${esc(t.title)}` : 'Import a letter from Word'}</b>${t ? ` <small class="muted">${esc(t.code)}</small> <span class="tag ${TPL_ST[t.status][1]} xs">${TPL_ST[t.status][0]}</span>` : ''}</div>
-        <div class="lw-acts"><button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_publish ? 'Publish' : 'Send for approval'}</button></div></div>
+        <div class="lw-acts">${t ? `<button type="button" class="btn ghost" data-dl title="Download this template's Word file to edit it in Word">${icon('download')}Download Word</button>` : ''}<button type="button" class="btn" data-a="draft">Save draft</button><button type="button" class="btn primary" data-a="submit">${L.can_publish ? 'Publish' : 'Send for approval'}</button></div></div>
       ${pub ? `<div class="note">${icon('help')}<div>This template is published. Your change ${L.can_publish ? 'takes effect when you publish it' : 'is approved by Admin, Super Admin or a Director'}; until then the current file stays in use.</div></div>` : ''}
       <form class="lw-grid" id="wi-f" onsubmit="return false">
         <section class="card lw-form">
@@ -6753,6 +6753,7 @@
       try { if (!/\.docx$/i.test(file.name)) throw new Error('Choose a Word .docx file (old .doc files: open in Word and “Save as” .docx).'); await loadBytes(new Uint8Array(await file.arrayBuffer()), file.name); changed = true; }
       catch (e) { f.file.value = ''; toast(e.message, 'err'); } });
     if (t) { try { await loadBytes(await getDocx(t.pending?.source_path || t.source_path), t.pending?.file_name || t.file_name); } catch (e) { pv.innerHTML = errorCard(e.message); } }
+    $('[data-dl]', el)?.addEventListener('click', () => { if (!bytes) { toast('The Word file is still loading.', 'err'); return; } saveBytes(bytes, `${t.code} - ${fileSafe(t.pending?.title || t.title)}.docx`); });
     $$('[data-a]', el).forEach((b) => b.addEventListener('click', async () => {
       const submit = b.dataset.a === 'submit';
       try {

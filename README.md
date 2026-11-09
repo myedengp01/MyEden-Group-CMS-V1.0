@@ -154,6 +154,7 @@ assets/logos/       MyEden mark (3D logo) and company logos
   another Resend account and was refused for this domain). Delivery tested to an outside Gmail address on 7 Nov 2026.
 
 ## Change log
+- **v2026.11.09-10:00** — HR Letters › Templates › Edit (Word template): **Download Word** button, to edit a template's Word file in Word.
 - **v2026.11.08-19:30** — Purchasing & Petty Cash **release 2**: the purchaser **records the purchase** (actual qty / price / supplier /
   receipt no. and photo per line, extra lines, "no receipt" with a reason; nothing bought = 0) and sends it to Finance. Over the tolerance (10 %,
   Admin setting) the overspend needs approval (Finance up to the Finance limit, else a Director). Finance **accepts or queries each line**, sends
