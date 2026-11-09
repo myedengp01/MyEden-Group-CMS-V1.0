@@ -6255,7 +6255,7 @@
   async function letterPdfUrl(path) { const { data, error } = await srcBucket().download(path); if (error) throw new Error(API.friendly(error)); return URL.createObjectURL(new Blob([data], { type: 'application/pdf' })); }
   const isoOf = (v) => { const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/); if (!m) return ''; const mi = MONTHS.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()); return mi < 0 ? '' : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; };
   const okIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && +String(s).slice(0, 4) >= 2000 && +String(s).slice(0, 4) <= 2100;
-  const addMonthsIso = (iso, n, days = 0) => { const [y, m, d] = iso.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + n, d + days)); return x.toISOString().slice(0, 10); };
+  const addMonthsIso = (iso, n, days = 0) => { const [y, m, d] = iso.split('-').map(Number); const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate(); const x = new Date(Date.UTC(y, m - 1 + n, Math.min(d, last) + days)); return x.toISOString().slice(0, 10); };
   async function recordPastLetter(L, personId0) {
     const types = [...new Map(L.templates.filter((t) => t.code !== 'TRL_LOP').map((t) => [t.letter_type, t.type_title])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
     const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
@@ -6424,6 +6424,7 @@
     // (the confirmation date, the 1st of the following month, or another date). Next performance review: confirmation + 6 months unless typed.
     const parseLong = (x) => { const m = String(x || '').trim().match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})$/); if (!m) return null; const mi = MONTHS.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()); return mi < 0 ? null : new Date(Date.UTC(+m[3], mi, +m[1])); };
     const isoUTC = (d) => d.toISOString().slice(0, 10);
+    const plusMonths = (d, n) => { const y = d.getUTCFullYear(); const m = d.getUTCMonth() + n; const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return new Date(Date.UTC(y, m, Math.min(d.getUTCDate(), last))); };
     const hasSal = () => keys().includes('salary_arrangement') && !isJD();
     function salArr() {
       if (!hasSal() || !editable) return;
@@ -6442,7 +6443,7 @@
         vals.salary_arrangement = `Your monthly basic salary remains at RM ${cur > 0 ? m2(cur) : '{{current_basic}}'}.`;
       }
       if (keys().includes('next_review_date') && conf && (!String(vals.next_review_date || '').trim() || vals.next_review_date === vals._nr_auto)) {
-        const d = new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 6, conf.getUTCDate())); vals.next_review_date = longDate(isoUTC(d)); vals._nr_auto = vals.next_review_date;
+        const d = plusMonths(conf, 6); vals.next_review_date = longDate(isoUTC(d)); vals._nr_auto = vals.next_review_date;
       }
     }
     function drawSal() {
@@ -6538,7 +6539,7 @@
         if (v) follow('increment_effective_date', v, '_ie_auto');
       }
       if (k.has('next_review_date') && !yes && !k.has('review_cycle')) { const l = parseLong(vals.last_increment_date); const n = parseInt(vals.next_review_cycle, 10);
-        if (l && n) follow('next_review_date', longDate(isoUTC(new Date(Date.UTC(l.getUTCFullYear(), l.getUTCMonth() + n, l.getUTCDate())))), '_nr_auto'); }
+        if (l && n) follow('next_review_date', longDate(isoUTC(plusMonths(l, n))), '_nr_auto'); }
       if ('salary_after_transfer' in vals || k.has('salary_after_transfer')) {
         const cur = mval(vals.current_basic);
         vals.salary_after_transfer = yes ? (vals.revised_basic ? `RM ${vals.revised_basic}${vals.increment_effective_date ? ` from ${vals.increment_effective_date}` : ''}` : '') : (cur > 0 ? `RM ${m2(cur)} (unchanged)` : '');
@@ -6562,7 +6563,7 @@
         increment_effective_date: ok ? String(vals.effective_date || '').trim() : '' };
       Object.entries(out).forEach(([key, v]) => { vals[key] = v; const i = $(`[data-k="${key}"]`, el); if (i) i.value = v; });
       const e = parseLong(vals.promotion_probation_end); const c = parseInt(vals.review_cycle, 10);
-      if (e && c) { const d1 = addDays(e, 1); vals.next_review_date = longDate(isoUTC(new Date(Date.UTC(d1.getUTCFullYear(), d1.getUTCMonth() + c, d1.getUTCDate())))); }
+      if (e && c) vals.next_review_date = longDate(isoUTC(plusMonths(addDays(e, 1), c)));
     }
     // senior confirmation (v2026.11.09): confirmed the day after the probation ends; the increment from the confirmation date, the 1st of the
     // following month or another date; the next review {{review_cycle}} months after the confirmation (or the increment date). All editable.
@@ -6571,7 +6572,8 @@
     function calcConfirm(k, yes) {
       if (!k.has('review_cycle') && !k.has('increment_start')) return;
       const pe = parseLong(vals.promotion_probation_end);
-      if (k.has('confirmation_date') && pe) follow('confirmation_date', longDate(isoUTC(addDays(pe, 1))), '_cd_auto');
+      if (k.has('confirmation_date') && pe) { const c0 = parseLong(vals.confirmation_date); if (vals._basis && c0 && +c0 === +pe) vals._cd_auto = vals.confirmation_date;
+        follow('confirmation_date', longDate(isoUTC(addDays(pe, 1))), '_cd_auto'); }
       const conf = parseLong(vals.confirmation_date);
       if (yes && k.has('increment_start')) {
         const s = vals.increment_start || 'confirmation';
@@ -6579,7 +6581,7 @@
         else if (s === 'next_month' && conf) put('increment_effective_date', longDate(isoUTC(conf.getUTCDate() === 1 ? conf : new Date(Date.UTC(conf.getUTCFullYear(), conf.getUTCMonth() + 1, 1)))), '_ie_auto');
       }
       const n = parseInt(vals.review_cycle, 10); const base = yes && vals.review_from === 'increment' ? parseLong(vals.increment_effective_date) : conf;
-      if (k.has('next_review_date') && n && base) follow('next_review_date', longDate(isoUTC(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + n, base.getUTCDate())))), '_nr_auto');
+      if (k.has('next_review_date') && n && base) follow('next_review_date', longDate(isoUTC(plusMonths(base, n))), '_nr_auto');
     }
     const calc = () => { calcAssess(); salArr(); calcTransfer(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
@@ -6591,7 +6593,25 @@
     let jdLook = null; let jdLookSeq = 0;
     const jdNote = () => { const box = $('#lw-jdnote', el); if (!box) return; const want = tpl() && personId && keys().some((k) => JD_KEYS.includes(k));
       box.innerHTML = !want || !jdLook ? '' : jdLook.found ? `<p class="note ok small">${icon('check-circle')}<span>Duties, JD reference and version from the JD Manual: <b>${esc(jdLook.jd_title)}</b> · ${esc(jdLook.jd_reference)} v${esc(jdLook.jd_version)} <span class="muted">(${esc(jdLook.from)})</span></span></p>`
-        : `<p class="note warn small">${icon('help')}<span>No approved JD found for <b>${esc(jdLook.title || 'this job title')}</b> in ${esc(coShort(jdLook.company) || jdLook.company || 'this company')} — the JD fields stay to be filled.</span></p>`; };
+        : `<p class="note warn small">${icon('help')}<span>No approved JD found for <b>${esc(jdLook.title || 'this job title')}</b> in ${esc(coShort(jdLook.company) || jdLook.company || 'this company')} — the JD fields stay to be filled.${editable ? ' <button type="button" class="lnk" data-jd-link>Link to a JD position…</button>' : ''}</span></p>`;
+      $('[data-jd-link]', box)?.addEventListener('click', () => linkJD()); };
+    // the person's JD position (Career Paths); closest titles first ("Mentor" is the old name for "Teacher")
+    const linkJD = async () => {
+      let J; try { J = await API.rpc('cms_letter_jd_positions', { p_person: personId }); } catch (e) { toast(e.message, 'error'); return; }
+      if (!J.can_set) { toast('Linking a JD position needs Career Paths (edit) — ask an Admin.', 'error'); return; }
+      const words = (t) => String(t || '').toLowerCase().replace(/mentor/g, 'teacher').split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+      const mine = new Set(words(J.title)); const score = (p) => words(p.title).filter((w) => mine.has(w)).length - Math.abs(words(p.title).length - mine.size) * 0.1;
+      const best = J.positions.filter((p) => score(p) >= 1).sort((a, b) => score(b) - score(a)).slice(0, 5);
+      const opt = (p) => `<option value="${esc(p.id)}">${esc(p.level || '')} · ${esc(p.title)} · ${esc(p.reference || '')}${p.department ? ` — ${esc(p.department)}` : ''}</option>`;
+      const groups = new Map(); J.positions.forEach((p) => { const g = p.department || 'Other'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(p); });
+      const ok = await modal({ title: 'Link to a JD position', ok: 'Link', wide: true,
+        body: `<p class="muted small">Job title on record: <b>${esc(J.title || '—')}</b>. The JD position is kept in Career Paths and used for this and later letters. It does not change the job title — change the title on the profile if it should match the JD.</p>
+          <div class="grid-2 tight"><label class="fld fld-2"><span>JD position held</span><select name="pos" required><option value="">Choose…</option>
+            ${best.length ? `<optgroup label="Closest matches">${best.map(opt).join('')}</optgroup>` : ''}${[...groups.entries()].map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(opt).join('')}</optgroup>`).join('')}</select></label>
+          <label class="fld"><span>In this position since</span><input type="date" name="since"></label><label class="fld"><span>Note</span><input name="note" maxlength="300"></label></div>`,
+        onOk: async (f) => { if (!f.pos.value) throw new Error('Choose the JD position.'); await API.rpc('cms_person_position_set', { p_person: personId, p_position: f.pos.value, p_since: f.since.value || null, p_note: f.note.value || null }); } });
+      if (ok) { toast('JD position linked'); fillJD(true); }
+    };
     const fillJD = async (force) => {
       const t = tpl(); if (!t || !personId || !editable || !keys().some((k) => JD_KEYS.includes(k))) { jdLook = null; jdNote(); return; }
       const posKey = keys().find((k) => ['new_position', 'revised_position'].includes(k) && String(vals[k] ?? '').trim());
@@ -6657,7 +6677,9 @@
       box.innerHTML = `<label class="fld"><span>Based on letter <small class="muted">fills the promotion letter date and the probation</small></span><select data-basis><option value="">None — type the details</option>${basis.map((b) => `<option value="${esc(b.id)}" ${b.id === cur ? 'selected' : ''}>${esc(b.title)} · ${esc(b.reference || '')} · dated ${dShort(b.letter_date)}${b.origin === 'recorded' ? ' (recorded)' : ''}</option>`).join('')}</select></label>
         ${basis.length ? '' : `<p class="muted small">No promotion or transfer letter for this person yet. If it was issued before the CMS, <button type="button" class="lnk" data-basis-rec>record it first</button>.</p>`}`;
       $('[data-basis]', box).addEventListener('change', (e) => { const b = basis.find((x) => x.id === e.target.value); if (b) { fillBasis(b); toast('Filled from the letter'); } else delete vals._basis; drawFields(); later(); });
-      const sel = basis.find((x) => x.id === cur); if (sel && mval(sel.fields?.confirmation_increment) > 0) box.insertAdjacentHTML('beforeend', `<p class="note small">${icon('help')}<span>That letter pays RM ${esc(sel.fields.confirmation_increment)} of the senior increment after confirmation — it is filled in as the increment here, from the confirmation date. You can change it.</span></p>`);
+      const sel = basis.find((x) => x.id === cur);
+      if (sel) { const f = sel.fields || {}; const st = f.promotion_probation_start || f.effective_date; box.insertAdjacentHTML('beforeend', `<p class="muted small">Probation in the position: <b>${esc(st || '?')} – ${esc(f.promotion_probation_end || '?')}</b>${f.promotion_probation_period ? ` (${esc(f.promotion_probation_period)})` : ''} · letter ${esc(sel.reference || '')}. Confirmed from the day after it ends — change the confirmation date if needed.</p>`); }
+      if (sel && mval(sel.fields?.confirmation_increment) > 0) box.insertAdjacentHTML('beforeend', `<p class="note small">${icon('help')}<span>That letter pays RM ${esc(sel.fields.confirmation_increment)} of the senior increment after confirmation — it is filled in as the increment here, from the confirmation date. You can change it.</span></p>`);
       $('[data-basis-rec]', box)?.addEventListener('click', async () => { const r = await recordPastLetter(L, personId); if (!r) return; toast(r.status === 'issued' ? `Recorded as ${r.reference}` : 'Recorded — waiting for approval'); basisFor = ''; drawBasis(); });
     }
     const loadCtx = async (fresh) => {
@@ -6738,7 +6760,7 @@
       const box = $('#lw-facts', el); if (!box) return;
       if (!facts || !personId || !tpl()) { box.innerHTML = ''; return; }
       const k = new Set(keys());
-      const canIns = (it) => { if (!(editable && it.key && k.has(it.key) && it.insert != null && it.insert !== '' && it.insert !== '—')) return false; if (isRL() && resignC?.ok && it.key in resignC.fields) return false; const p = ph.get(it.key) || {}; return !(p.protected || p.editable === false || p.source === 'calculation'); };
+      const canIns = (it) => { if (!(editable && it.key && k.has(it.key) && it.insert != null && it.insert !== '' && it.insert !== '—')) return false; if (isRL() && resignC?.ok && it.key in resignC.fields) return false; if (vals._basis && ['confirmation_date', 'promotion_probation_end', 'promotion_probation_start'].includes(it.key)) return false; const p = ph.get(it.key) || {}; return !(p.protected || p.editable === false || p.source === 'calculation'); };
       const all = facts.groups.flatMap((g) => g.items).filter(canIns);
       const flagIc = { ok: 'check-circle', warn: 'help', bad: 'help' };
       box.innerHTML = `<details class="lw-facts" open><summary><b>Facts for this letter</b><span class="muted small"> · from the CMS records</span>
