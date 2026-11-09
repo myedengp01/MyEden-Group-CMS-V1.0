@@ -1276,3 +1276,6 @@ table.fp-t select{max-width:130px}
 :root[data-theme="dark"] .lt-cond{color:#d8c8ff;background:#2a2140}
 .lw-opt select{font-weight:600}
 @media print{.lt-cond{display:none}}
+/* v2026.11.09 · letters recorded before the CMS / signed copies */
+.lw-pdf { width: 100%; height: 75vh; min-height: 520px; border: 1px solid var(--line, #ddd); border-radius: 8px; background: #fff; }
+.lw-rec { white-space: pre-wrap; font-size: 12.5px; max-height: 340px; overflow: auto; }

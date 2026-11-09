@@ -6168,7 +6168,7 @@
     const reload = async () => { const y = pageScroller().scrollTop; try { await load(); loadLettersPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
     const tag = (m, s) => { const [l, c] = m[s] || [s, '']; return `<span class="tag ${c} xs">${esc(l)}</span>`; };
     const letterRows = (list, when) => (list.length ? `<div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Person</th><th>Letter</th><th>Status</th><th>${when}</th><th></th></tr></thead><tbody>
-      ${list.map((l) => `<tr data-ws="${esc(l.id)}"><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}${l.format === 'docx' ? ' <span class="tag xs">Word</span>' : ''}</td>
+      ${list.map((l) => `<tr data-ws="${esc(l.id)}"><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}${l.origin === 'recorded' ? ' <span class="tag xs" title="Issued before the CMS; the signed PDF is the letter">Recorded (pre-CMS)</span>' : l.format === 'docx' ? ' <span class="tag xs">Word</span>' : ''}${l.signed_path && l.origin !== 'recorded' ? ' <span class="tag ok xs">Signed</span>' : ''}${l.reference ? `<small class="sub">${esc(l.reference)}${l.letter_date ? ` · dated ${dShort(l.letter_date)}` : ''}</small>` : ''}</td>
         <td>${tag(LET_ST, l.status)}${l.rejected && l.status === 'draft' ? '<small class="sub bad-t">sent back</small>' : ''}</td>
         <td class="nowrap">${dShort(l.issued_at || l.approved_at || l.submitted_at || l.created_at)}<small class="sub">${esc(l.issued_by || l.approved_by_name || l.created_by_name || '')}</small></td>
         <td><button type="button" class="btn sm" data-ws="${esc(l.id)}">Open</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>Nothing here</p></div>');
@@ -6181,7 +6181,7 @@
         <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="${f.tab === 'placeholders' ? 'Placeholder name or label' : f.tab === 'templates' ? 'Template' : 'Name or letter'}" value="${esc(f.q)}" aria-label="Search"></label>
           ${f.tab === 'templates' ? `<label class="chk"><input type="checkbox" id="lret" ${f.retired ? 'checked' : ''}> Show retired</label>${L.can_change ? `<button type="button" class="btn sm" data-imp>${icon('plus')}Import from Word…</button><a class="btn sm" href="#/letters?tpl=new">+ New text template</a>` : ''}`
             : f.tab === 'placeholders' ? (L.can_placeholders ? '<button type="button" class="btn sm primary" data-phnew>+ New placeholder…</button>' : '')
-            : L.can_edit ? '<a class="btn sm primary" href="#/letters?ws=new">+ New letter</a>' : ''}</div><div id="lt-tab"></div></section>
+            : `${L.can_edit || L.can_approve ? `<button type="button" class="btn sm" data-rec>${icon('plus')}Record a past letter…</button>` : ''}${L.can_edit ? '<a class="btn sm primary" href="#/letters?ws=new">+ New letter</a>' : ''}`}</div><div id="lt-tab"></div></section>
         <p class="muted small">HR drafts a letter and sends it for approval; Admin, Super Admin or a Director approves it (never the person who drafted it); then HR, Admin, Super Admin or a Director issues it. The approved wording is what gets issued, and every issued letter is kept in the person's records. New and changed templates need approval too, unless made by someone who can approve.</p>`;
       const box = $('#lt-tab', el);
       if (f.tab === 'todo') {
@@ -6220,6 +6220,7 @@
       $('#lret', el)?.addEventListener('change', (e) => { f.retired = e.target.checked; draw(); });
       $$('[data-ws]', box).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); location.hash = `#/letters?ws=${b.dataset.ws}`; }));
       $('[data-imp]', el)?.addEventListener('click', () => { location.hash = '#/letters?import=new'; });
+      $('[data-rec]', el)?.addEventListener('click', async () => { const r = await recordPastLetter(L); if (!r) return; toast(r.status === 'issued' ? `Recorded as ${r.reference}` : 'Recorded — waiting for approval by an Admin or Director'); state.lettersData = null; loadLettersPending(); location.hash = `#/letters?ws=${r.id}`; });
       $('[data-phnew]', el)?.addEventListener('click', async () => { if (await placeholderWindow(L, null)) draw(); });
       $$('[data-ph]', box).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, L.placeholders.find((p) => p.key === b.dataset.ph))) draw(); }));
       $$('[data-on]', box).forEach((c) => c.addEventListener('change', async () => {
@@ -6237,6 +6238,83 @@
       fitTables();
     };
     draw();
+  }
+
+  // ---------------------------------------------------------------- letters issued before the CMS (v2026.11.09)
+  // The signed PDF is the letter. Admin / Director: recorded at once. HR: an Admin / Director approves it. Key terms are kept so a later
+  // letter (e.g. the senior confirmation) can be filled from it, and "Update records" can set what is missing.
+  const PDF_MAX = 10 * 1024 * 1024;
+  const PROMO_TYPES = ['LOP', 'TRL_LOP', 'TRL'];
+  async function putLetterPdf(path, file) {
+    if (!file) throw new Error('Choose the signed PDF.');
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error('The file must be a PDF.');
+    if (file.size > PDF_MAX) throw new Error('The PDF is larger than 10 MB — scan it at a lower resolution.');
+    const { error } = await srcBucket().upload(path, file, { contentType: 'application/pdf', upsert: false });
+    if (error) throw new Error(API.friendly(error));
+  }
+  async function letterPdfUrl(path) { const { data, error } = await srcBucket().download(path); if (error) throw new Error(API.friendly(error)); return URL.createObjectURL(new Blob([data], { type: 'application/pdf' })); }
+  const isoOf = (v) => { const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/); if (!m) return ''; const mi = MONTHS.findIndex((n) => n.toLowerCase() === m[2].toLowerCase()); return mi < 0 ? '' : `${m[3]}-${String(mi + 1).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; };
+  const addMonthsIso = (iso, n, days = 0) => { const [y, m, d] = iso.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + n, d + days)); return x.toISOString().slice(0, 10); };
+  async function recordPastLetter(L, personId0) {
+    const types = [...new Map(L.templates.filter((t) => t.code !== 'TRL_LOP').map((t) => [t.letter_type, t.type_title])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    let out = null;
+    const ok = await modal({ title: 'Record a letter issued before the CMS', ok: 'Record letter', wide: true,
+      body: `<p class="muted small">For a letter that was issued and signed before the CMS. The signed PDF is the letter — nothing is generated. ${L.can_approve ? 'You can approve letters, so it is recorded at once.' : 'An Admin or Director approves it before it is recorded.'} It takes a letter reference and shows in the person's records as <b>Recorded (pre-CMS)</b>.</p>
+        <div class="grid-2 tight">
+          <label class="fld"><span>Person</span><select name="person" required><option value="">Choose…</option>${L.people.map((p) => `<option value="${esc(p.person_id)}" ${p.person_id === personId0 ? 'selected' : ''}>${esc(p.name)} · ${esc(p.employee_id || 'no ID')}${p.status === 'former' ? ' (former)' : ''}</option>`).join('')}</select></label>
+          <label class="fld"><span>Letter type</span><select name="type" required><option value="">Choose…</option>${types.map(([k, t]) => `<option value="${esc(k)}" ${k === 'LOP' ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Letter date</span><input type="date" name="letter_date" max="${today}" required></label>
+          <label class="fld"><span>Employee signed on <small class="muted">optional</small></span><input type="date" name="signed_on" max="${today}"></label>
+          <label class="fld"><span>Signed for the Company by</span><input name="signatory" maxlength="80" placeholder="Name of who signed" required></label>
+          <label class="fld"><span>Designation</span><input name="designation" maxlength="80" placeholder="e.g. CEO"></label>
+          <label class="fld fld-2"><span>Signed letter (PDF, up to 10 MB)</span><input type="file" name="pdf" accept="application/pdf" required></label></div>
+        <div data-promo><h4 class="sec-h">Key terms in the letter <small class="muted">used to fill a later confirmation letter and to update the records</small></h4>
+          <div class="grid-2 tight">
+            <label class="fld"><span>Previous position</span><input name="current_position" maxlength="120"></label>
+            <label class="fld"><span>New position <small class="muted">as in the CMS</small></span><input name="new_position" maxlength="120"></label>
+            <label class="fld"><span>Takes effect from</span><input type="date" name="effective_date"></label>
+            <label class="fld"><span>Probation (months) <small class="muted">0 if none</small></span><input name="prob_months" inputmode="numeric" value="6"></label>
+            <label class="fld"><span>Probation ends</span><input type="date" name="prob_end"></label>
+            <label class="fld"><span>Performance and salary review every (months)</span><select name="review_cycle"><option value="">Not stated</option><option value="6">6</option><option value="9">9</option><option value="12">12</option></select></label>
+            <label class="fld"><span>Basic before (RM)</span><input name="current_basic" inputmode="decimal" data-money></label>
+            <label class="fld"><span>Increment (RM)</span><input name="basic_increment" inputmode="decimal" data-money></label>
+            <label class="fld"><span>Basic after (RM)</span><input name="revised_basic" inputmode="decimal" readonly></label>
+            <label class="fld"><span>Increment from</span><input type="date" name="increment_from"></label></div></div>
+        <div data-other hidden><label class="fld"><span>Takes effect from <small class="muted">optional</small></span><input type="date" name="effective_other"></label></div>
+        <label class="fld"><span>Note <small class="muted">optional — e.g. what the letter is about, or anything that is not followed any more</small></span><input name="note" maxlength="300"></label>`,
+      onOpen: (w) => {
+        const f = $('form', w); const g = (n) => f.elements[n];
+        const sync = () => { const promo = PROMO_TYPES.includes(g('type').value); $('[data-promo]', w).hidden = !promo; $('[data-other]', w).hidden = promo; };
+        const calcEnd = () => { const s = g('effective_date').value; const n = parseInt(g('prob_months').value, 10); if (s && n > 0 && (!g('prob_end').value || g('prob_end').dataset.auto === g('prob_end').value)) { g('prob_end').value = addMonthsIso(s, n, -1); g('prob_end').dataset.auto = g('prob_end').value; } if (s && !g('increment_from').value) g('increment_from').value = s; };
+        const calcSal = () => { const c = mval(g('current_basic').value); const i = mval(g('basic_increment').value); g('revised_basic').value = c > 0 && i >= 0 && String(g('basic_increment').value).trim() ? m2(c + i) : ''; };
+        const pos = async () => { const pid = g('person').value; if (!pid) return; try { const c = await API.rpc('cms_letter_context', { p_person: pid }); if (pid !== g('person').value) return; if (c.position) g('new_position').value = c.position; } catch (e) { /* typed in */ } };
+        g('type').addEventListener('change', sync); g('person').addEventListener('change', pos);
+        ['effective_date', 'prob_months'].forEach((n) => g(n).addEventListener('change', calcEnd));
+        ['current_basic', 'basic_increment'].forEach((n) => g(n).addEventListener('input', calcSal));
+        g('letter_date').addEventListener('change', () => { if (!g('effective_date').value) { g('effective_date').value = g('letter_date').value; calcEnd(); } });
+        sync(); pos();
+      },
+      onOk: async (f) => {
+        const v = (n) => String(f.elements[n].value || '').trim(); const type = v('type'); const promo = PROMO_TYPES.includes(type);
+        if (!v('person') || !type) throw new Error('Choose the person and the letter type.');
+        if (!v('letter_date')) throw new Error('Give the letter date.');
+        if (!v('signatory')) throw new Error('Give who signed the letter for the Company.');
+        const file = f.elements.pdf.files[0]; if (!file) throw new Error('Choose the signed PDF.');
+        const fields = {};
+        if (promo) {
+          const n = parseInt(v('prob_months'), 10) || 0;
+          Object.assign(fields, { current_position: v('current_position'), new_position: v('new_position'), effective_date: v('effective_date') ? longDate(v('effective_date')) : '',
+            review_cycle: v('review_cycle'), current_basic: v('current_basic') ? m2(mval(v('current_basic'))) : '', basic_increment: v('basic_increment') ? m2(mval(v('basic_increment'))) : '',
+            revised_basic: v('revised_basic'), increment_effective_date: v('revised_basic') && v('increment_from') ? longDate(v('increment_from')) : '' });
+          if (n > 0) Object.assign(fields, { promotion_probation_start: fields.effective_date, promotion_probation_period: `${n} month${n === 1 ? '' : 's'}`, promotion_probation_end: v('prob_end') ? longDate(v('prob_end')) : '' });
+          if (n > 0 && !v('prob_end')) throw new Error('Give the date the probation ends.');
+        } else if (v('effective_other')) fields.effective_date = longDate(v('effective_other'));
+        const id = crypto.randomUUID();
+        await putLetterPdf(`cms/recorded/${id}.pdf`, file);
+        out = await API.rpc('cms_letter_record', { p: { id, person: v('person'), type, letter_date: v('letter_date'), signed_on: v('signed_on') || null, signatory: v('signatory'), designation: v('designation'), note: v('note'), fields } });
+      } });
+    return ok ? out : null;
   }
 
   async function templateHistory(L, code) {
@@ -6286,10 +6364,12 @@
     const tpl = () => L.templates.find((t) => t.code === code); const person = () => L.people.find((p) => p.person_id === personId);
     const choices = L.templates.filter((t) => usable.includes(t) || (t.code === code && (t.code !== 'TRL_LOP' || L.can_jd_test)));
     if (type && !code) toast(`No ${type} template is switched on yet — switch one on under Templates.`, 'err');
+    const recorded = rec?.origin === 'recorded';
     const banner = !rec ? '' : status === 'draft' && rec.rejected ? `<div class="note bad">${icon('help')}<div><b>Sent back by ${esc(rec.rejected.by || '')}</b> · ${dShort(rec.rejected.at)}<br>${esc(rec.rejected.reason)}</div></div>`
-      : status === 'pending_approval' ? `<div class="note warn">${icon('clock')}<div><b>Waiting for approval</b> · sent ${dShort(rec.submitted_at)} by ${esc(rec.created_by_name || '')}${L.can_approve && rec.created_by === L.me ? '<br>You drafted it, so someone else must approve it.' : ''}</div></div>`
+      : status === 'pending_approval' ? `<div class="note warn">${icon('clock')}<div><b>Waiting for approval</b>${recorded ? ` · a letter issued before the CMS, dated ${dShort(rec.letter_date)} — check the key terms against the signed PDF` : ''} · sent ${dShort(rec.submitted_at)} by ${esc(rec.created_by_name || '')}${L.can_approve && rec.created_by === L.me ? '<br>You drafted it, so someone else must approve it.' : ''}</div></div>`
       : status === 'approved' ? `<div class="note ok">${icon('check-circle')}<div><b>Approved</b> by ${esc(rec.approved_by_name || '')} · ${dShort(rec.approved_at)} — ready to issue.</div></div>`
-      : status === 'issued' ? `<div class="note ok">${icon('check-circle')}<div><b>Issued</b> ${dShort(rec.issued_at)} by ${esc(rec.issued_by || '')}${rec.approved_by_name ? ` · approved by ${esc(rec.approved_by_name)}` : ''}. Kept in ${esc(rec.name)}'s records.</div></div>`
+      : status === 'issued' && recorded ? `<div class="note ok">${icon('check-circle')}<div><b>Recorded (pre-CMS)</b> · ${esc(rec.reference || '')} · letter dated ${dShort(rec.letter_date)}, signed for the Company by ${esc([rec.recorded?.signatory, rec.recorded?.designation].filter(Boolean).join(', '))}${rec.signed_on ? `, by the employee on ${dShort(rec.signed_on)}` : ''}.<br><span class="small">Recorded ${dShort(rec.created_at)} by ${esc(rec.created_by_name || '')}${rec.approved_by_name && rec.approved_by_name !== rec.created_by_name ? ` · approved by ${esc(rec.approved_by_name)}` : ''}. The signed PDF on the right is the letter.</span></div></div>`
+      : status === 'issued' ? `<div class="note ok">${icon('check-circle')}<div><b>Issued</b> ${dShort(rec.issued_at)} by ${esc(rec.issued_by || '')}${rec.approved_by_name ? ` · approved by ${esc(rec.approved_by_name)}` : ''}. Kept in ${esc(rec.name)}'s records.${rec.signed_path ? `<br><span class="small"><b>Signed copy</b> uploaded ${dShort(rec.signed_at)} · the employee signed on ${dShort(rec.signed_on)}.</span>` : L.can_issue ? '<br><span class="small">When the employee has signed it, upload the signed copy (PDF).</span>' : ''}</div></div>`
       : status === 'void' ? `<div class="note bad">${icon('x')}<div><b>Cancelled</b>${rec.void_reason ? ` · ${esc(rec.void_reason)}` : ''}</div></div>` : '';
     el.innerHTML = `<div class="lw">
       <div class="lw-bar"><a class="btn ghost sm" href="#/letters">‹ HR Letters</a><div class="lw-title"><b>${rec ? esc(`${rec.title || rec.template} · ${rec.name}`) : 'New HR letter'}</b>${rec ? ` <span class="tag ${(LET_ST[status] || [])[1] || ''} xs">${esc((LET_ST[status] || [status])[0])}</span>` : ''}</div><div class="lw-acts" id="lw-acts"></div></div>
@@ -6301,7 +6381,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-resign"></div><div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-hist"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-basis"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -6411,6 +6491,8 @@
     const preview = async () => {
       postSalary();
       const t = tpl(); if (!t || !personId) { pv.innerHTML = '<div class="empty small"><p>Choose the person and the letter.</p></div>'; st.textContent = ''; return; }
+      if (recorded) { st.textContent = 'signed copy'; if (pv.dataset.pdf === rec.signed_path) return; pv.innerHTML = loading();
+        try { const u = await letterPdfUrl(rec.signed_path); pv.dataset.pdf = rec.signed_path; pv.innerHTML = `<iframe class="lw-pdf" src="${u}" title="Signed letter"></iframe>`; } catch (e) { pv.innerHTML = errorCard(e.message); } return; }
       const miss = missing(); st.textContent = status === 'issued' ? 'as issued' : miss.length ? `${miss.length} field${miss.length === 1 ? '' : 's'} still to fill (red)` : 'all fields filled';
       if (t.format !== 'docx') { view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf)}`; requestAnimationFrame(applyZoom); return; }
       try {
@@ -6497,6 +6579,8 @@
     };
     const drawFields = () => {
       const box = $('#lw-fields', el); const t = tpl(); if (!t || !personId) { box.innerHTML = ''; drawSal(); return; }
+      if (recorded) { box.innerHTML = `<h4 class="sec-h">Recorded letter</h4><pre class="lt-pre lw-rec">${esc(rec.text || '')}</pre>`; return; }
+      drawBasis();
       salArr(); if (!$('#lw-sal [data-sal-mode]', el) || !editable) drawSal();
       if (jdTitlesFor !== personId) { jdTitles = null; loadJdTitles(); }
       box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const op = OPT.get(k);
@@ -6517,6 +6601,32 @@
       $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; calc(); later(); }));
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
     };
+    // a confirmation after a promotion: fill the promotion letter date and probation from that letter (issued in the CMS or recorded)
+    let basis = null; let basisFor = '';
+    const fillBasis = (b) => {
+      const f = b.fields || {}; const set = (k, v) => { if (v != null && v !== '') vals[k] = v; };
+      vals._basis = b.id; set('promotion_letter_date', longDate(String(b.letter_date).slice(0, 10)));
+      set('promotion_probation_start', f.promotion_probation_start || f.effective_date); set('promotion_probation_period', f.promotion_probation_period); set('promotion_probation_end', f.promotion_probation_end);
+      if (f.review_cycle && OPT.get('review_cycle')?.options.some((o) => o.value === f.review_cycle)) vals.review_cycle = f.review_cycle;
+      if (vals.confirmation_date === vals._cd_auto) delete vals.confirmation_date;
+      calc();
+    };
+    async function drawBasis() {
+      const box = $('#lw-basis', el); if (!box) return;
+      if (!editable || !personId || !keys().includes('promotion_letter_date')) { box.innerHTML = ''; return; }
+      if (basisFor !== personId) {
+        basisFor = personId; basis = null; const who = personId;
+        try { basis = (await API.rpc('cms_letter_basis', { p_person: who })) || []; } catch (e) { basis = []; }
+        if (who !== personId) return;
+        if (basis.length && !vals._basis && !String(vals.promotion_letter_date || '').trim()) { fillBasis(basis[0]); drawFields(); later(); return; }
+      }
+      if (!basis) return;
+      const cur = vals._basis || '';
+      box.innerHTML = `<label class="fld"><span>Based on letter <small class="muted">fills the promotion letter date and the probation</small></span><select data-basis><option value="">None — type the details</option>${basis.map((b) => `<option value="${esc(b.id)}" ${b.id === cur ? 'selected' : ''}>${esc(b.title)} · ${esc(b.reference || '')} · dated ${dShort(b.letter_date)}${b.origin === 'recorded' ? ' (recorded)' : ''}</option>`).join('')}</select></label>
+        ${basis.length ? '' : `<p class="muted small">No promotion or transfer letter for this person yet. If it was issued before the CMS, <button type="button" class="lnk" data-basis-rec>record it first</button>.</p>`}`;
+      $('[data-basis]', box).addEventListener('change', (e) => { const b = basis.find((x) => x.id === e.target.value); if (b) { fillBasis(b); toast('Filled from the letter'); } else delete vals._basis; drawFields(); later(); });
+      $('[data-basis-rec]', box)?.addEventListener('click', async () => { const r = await recordPastLetter(L, personId); if (!r) return; toast(r.status === 'issued' ? `Recorded as ${r.reference}` : 'Recorded — waiting for approval'); basisFor = ''; drawBasis(); });
+    }
     const loadCtx = async (fresh) => {
       if (!personId) { ctx = null; drawFields(); drawJD(); preview(); loadFacts(); return; }
       try { ctx = await API.rpc('cms_letter_context', { p_person: personId }); } catch (e) { toast(e.message, 'err'); return; }
@@ -6610,7 +6720,7 @@
     };
     const loadFacts = async () => {
       const t = tpl(); const typ = t ? (t.letter_type || String(t.code).split('_TP')[0]) : '';
-      if (!personId || !t) { facts = null; drawFacts(); return; }
+      if (!personId || !t || recorded) { facts = null; drawFacts(); return; }
       const sig = `${personId}|${typ}`; if (sig === factsFor && facts) { drawFacts(); return; }
       factsFor = sig; $('#lw-facts', el).innerHTML = `<div class="lw-facts muted small">${icon('clock')} Looking up the facts for this letter…</div>`;
       try {
@@ -6627,8 +6737,10 @@
     if (editable) acts.push('<button type="button" class="btn" data-a="save">Save draft</button>', '<button type="button" class="btn primary" data-a="submit">Send for approval</button>');
     if (status === 'pending_approval' && L.can_approve && rec.created_by !== L.me) acts.push('<button type="button" class="btn danger" data-a="back">Send back…</button>', '<button type="button" class="btn primary" data-a="approve">Approve</button>');
     if (status === 'approved' && L.can_issue && !isJD()) acts.push('<button type="button" class="btn primary" data-a="issue">Issue letter…</button>');
-    if (['new', 'draft', 'pending_approval', 'approved'].includes(status)) acts.push(`<button type="button" class="btn ghost" data-a="dprint" title="Prints with the draft watermark; recorded in the letter's history">${icon('download')}Print draft / PDF</button>`);
-    if (status === 'issued') { acts.push(`<button type="button" class="btn primary" data-a="print">${icon('download')}Print / PDF</button>`); if (rec.docx_path) acts.push('<button type="button" class="btn" data-a="word">Download Word</button>'); }
+    if (['new', 'draft', 'pending_approval', 'approved'].includes(status) && !recorded) acts.push(`<button type="button" class="btn ghost" data-a="dprint" title="Prints with the draft watermark; recorded in the letter's history">${icon('download')}Print draft / PDF</button>`);
+    if (recorded && rec.signed_path) acts.push(`<button type="button" class="btn ${status === 'issued' ? 'primary' : ''}" data-a="pdf">${icon('eye')}Open signed PDF</button>`);
+    if (status === 'issued' && !recorded) { acts.push(`<button type="button" class="btn primary" data-a="print">${icon('download')}Print / PDF</button>`); if (rec.docx_path) acts.push('<button type="button" class="btn" data-a="word">Download Word</button>');
+      if (rec.signed_path) acts.push(`<button type="button" class="btn" data-a="pdf">${icon('eye')}Signed copy</button>`); else if (L.can_issue) acts.push(`<button type="button" class="btn" data-a="signed">${icon('plus')}Upload signed copy…</button>`); }
     if (rec && ['draft', 'pending_approval', 'approved', 'issued'].includes(status) && L.can_void) acts.push('<button type="button" class="btn ghost" data-a="void">Cancel letter…</button>');
     $('#lw-acts', el).innerHTML = acts.join('');
     const payload = (submit) => { const t = tpl(); return { id: rec?.id || null, person_id: personId, template: t.code, fields: vals, text: textNow(), company: co ? { ...co, logo: undefined } : null, appraisal_id: appraisal, submit }; };
@@ -6648,8 +6760,14 @@
         if (a === 'submit') { need(); const m = missing(); if (m.length) throw new Error(`Fill in: ${m.map(labelOf).join(', ')}.`);
           if (!(await ask('Send this letter for approval? Admin, Super Admin or a Director approves it; you cannot change it while it waits.', 'Send for approval'))) return;
           const nid = await API.rpc('cms_letter_save', { p: payload(true) }); toast('Sent for approval'); state.lettersData = null; loadLettersPending(); location.hash = `#/letters?ws=${nid}`; return; }
-        if (a === 'approve') { if (!(await ask('Approve this letter exactly as shown? It can then be issued.', 'Approve'))) return; await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: true, p_reason: null }); toast('Approved'); loadLettersPending(); render(); return; }
-        if (a === 'back') { const ok = await modal({ title: 'Send back to the drafter', ok: 'Send back', danger: true, body: '<label class="fld"><span>What should be changed</span><input name="r" required maxlength="300"></label>',
+        if (a === 'pdf') { window.open(await letterPdfUrl(rec.signed_path), '_blank', 'noopener'); return; }
+        if (a === 'signed') { const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10); const iss = String(rec.issued_at || '').slice(0, 10);
+          const ok = await modal({ title: 'Upload the signed copy', ok: 'Upload', body: `<p class="muted small">The letter as signed by ${esc(rec.name)}, scanned to PDF. Once uploaded it cannot be replaced.</p>
+            <label class="fld"><span>The employee signed on</span><input type="date" name="on" min="${esc(iss)}" max="${today}" value="${today}" required></label><label class="fld"><span>Signed letter (PDF, up to 10 MB)</span><input type="file" name="pdf" accept="application/pdf" required></label>`,
+            onOk: async (f) => { if (!f.on.value) throw new Error('Give the date the employee signed.'); await putLetterPdf(`cms/signed/${rec.id}.pdf`, f.pdf.files[0]); await API.rpc('cms_letter_signed', { p_id: rec.id, p_signed_on: f.on.value }); } });
+          if (ok) { toast('Signed copy uploaded'); state.lettersData = null; render(); } return; }
+        if (a === 'approve') { if (!(await ask(recorded ? 'Approve this recorded letter? Check the key terms match the signed PDF. It is then kept in the person\'s records.' : 'Approve this letter exactly as shown? It can then be issued.', 'Approve'))) return; await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: true, p_reason: null }); toast('Approved'); loadLettersPending(); render(); return; }
+        if (a === 'back') { const ok = await modal({ title: recorded ? 'Do not approve this recorded letter' : 'Send back to the drafter', ok: recorded ? 'Do not approve' : 'Send back', danger: true, body: `${recorded ? '<p class="muted small">The recording is cancelled; HR records the letter again with the right details.</p>' : ''}<label class="fld"><span>${recorded ? 'What is wrong' : 'What should be changed'}</span><input name="r" required maxlength="300"></label>`,
           onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Say what should be changed.'); await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: false, p_reason: f.r.value.trim() }); } });
           if (ok) { toast('Sent back'); loadLettersPending(); render(); } return; }
         if (a === 'issue') { if (!(await ask(`Issue this letter to ${rec.name}? It is then locked and kept in their records.`, 'Issue'))) return;
@@ -6680,21 +6798,22 @@
       const sched = (A.scheduled || []).filter((x) => x.status === 'pending');
       if (A.applied) {
         box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>${icon('check-circle')} Records updated from this letter</h3><span class="muted small">${dShort(A.applied.at)}${A.applied.by ? ` · ${esc(A.applied.by)}` : ''}</span></div>
-          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved' }[x.kind] || x.kind)}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
+          <ul class="small">${A.applied.items.map((x) => `<li>${esc({ confirm: 'Confirmed', salary: 'Basic salary', review: 'Next salary review', position: 'Position', settlement: 'Final settlement saved', probation: 'On probation' }[x.kind] || x.kind)}${x.kind === 'settlement' ? ` · net RM ${m2(x.net)}` : x.kind === 'salary' ? ` RM ${m2(x.amount)} from ${esc(new Date(`${x.date}T00:00:00`).toLocaleDateString('en-MY', { month: 'short', year: 'numeric' }))}` : x.kind === 'review' ? ` ${esc(x.next ? dShort(x.next) : '')}` : x.kind === 'position' ? `: ${esc(x.title || '')}${x.level ? ` (${esc(x.level)})` : ''} from ${dShort(x.date)}` : x.kind === 'probation' ? ` until ${dShort(x.end)}` : ` from ${dShort(x.date)}`}${x.scheduled ? ` <span class="tag warn xs">${sched.some((s) => s.kind === x.kind) ? 'scheduled' : (status === 'void' ? 'cancelled' : 'done')}</span>` : ''}</li>`).join('')}</ul>
           ${status === 'void' ? `<p class="note warn small">${icon('help')}<span>This letter is cancelled. Changes not yet due were cancelled; changes already made (salary, review${A.applied.items.some((x) => !x.scheduled && ['confirm', 'position'].includes(x.kind)) ? ', confirmation / position' : ''}) stay — reverse them in Payroll / the profile if they no longer apply.</span></p>` : ''}</section>`;
         return;
       }
       if (status !== 'issued' || !A.items.length) { box.innerHTML = ''; return; }
       const inp = (x, i) => ['settlement', 'note'].includes(x.kind) ? (x.kind === 'settlement' && !x.module_on ? '<small class="muted">Saved now; added to payroll once the Final settlement module is switched on (Settings › Policies).</small>' : '') : x.kind === 'salary' ? `<label class="fld"><span>New basic (RM)</span><input data-i="${i}" data-f="amount" inputmode="decimal" value="${esc(x.amount)}" ${x.allowed ? '' : 'disabled'}></label><label class="fld"><span>From payroll month</span><input type="month" data-i="${i}" data-f="date" value="${esc(String(x.date || '').slice(0, 7))}" ${x.allowed ? '' : 'disabled'}></label>`
+        : x.kind === 'probation' ? `<label class="fld"><span>On probation until</span><input type="date" data-i="${i}" data-f="end" value="${esc(x.end || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : x.kind === 'review' ? `<label class="fld"><span>Review every</span><select data-i="${i}" data-f="interval" ${x.allowed ? '' : 'disabled'}>${(x.intervals || []).map((v) => `<option value="${esc(v.code)}" ${v.code === x.interval ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label><label class="fld"><span>Next review</span><input type="date" data-i="${i}" data-f="next" value="${esc(x.next || '')}" ${x.allowed ? '' : 'disabled'}></label>`
         : `<label class="fld"><span>${x.kind === 'confirm' ? 'Confirmed from' : 'New position from'}</span><input type="date" data-i="${i}" data-f="date" value="${esc(x.date || '')}" ${x.allowed ? '' : 'disabled'}></label>`;
       box.innerHTML = `<section class="card la-card"><div class="pf-sh"><h3>Update records from this letter</h3><span class="muted small">Issuing files the letter; these change ${esc(A.person)}'s records.</span></div>
         <div class="table-wrap"><table class="data la-t"><thead><tr><th></th><th>Change</th><th>Now</th><th>After</th><th></th></tr></thead><tbody>
-        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
+        ${A.items.map((x, i) => `<tr class="${x.allowed ? '' : 'muted'}"><td><input type="checkbox" data-on="${i}" ${x.allowed ? 'checked' : 'disabled'} aria-label="${esc(x.label)}"></td><td><b>${esc(x.label)}</b>${x.allowed || x.kind === 'note' ? '' : x.already ? '<br><small>already in payroll</small>' : '<br><small>needs permission</small>'}</td><td>${esc(x.now || '—')}</td><td>${esc(x.after || '')}</td><td class="la-in">${inp(x, i)}</td></tr>`).join('')}</tbody></table></div>
         <p class="small muted">A date in the future (e.g. confirmation, new position) is scheduled and applied automatically that night; until then the person shows as before. Salary goes into the payroll from the month shown.</p>
         <div class="btn-row"><button type="button" class="btn primary" id="la-go">Apply ticked changes</button></div></section>`;
       $('#la-go', box).addEventListener('click', async () => {
-        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, amount: x.amount, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
+        const items = A.items.map((x, i) => { if (!$(`[data-on="${i}"]`, box)?.checked) return null; const o = { kind: x.kind, date: x.date, end: x.end, amount: x.amount, interval: x.interval, next: x.next, title: x.title, level: x.level, position_id: x.position_id };
           $$(`[data-i="${i}"]`, box).forEach((f) => { o[f.dataset.f] = f.dataset.f === 'date' && f.type === 'month' ? `${f.value}-01` : f.dataset.f === 'amount' ? String(f.value).replace(/,/g, '') : f.value; }); return o; }).filter(Boolean);
         if (!items.length) { toast('Tick at least one change.', 'err'); return; }
         if (!(await ask(`Update ${A.person}'s records from this letter (${items.length} change${items.length === 1 ? '' : 's'})?`, 'Apply'))) return;
