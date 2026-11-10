@@ -1,6 +1,6 @@
 // Leave balances for everyone employed in a year
 import { h, clear, pageHead, openModal, field, toast, failed } from '../ui.js';
-import { loadLeaveYear, balancesFor, peopleInYear } from '../leave-data.js';
+import { loadLeaveYear, balancesFor, peopleInYear, leaveForMonth, LEAVE_LABELS } from '../leave-data.js';
 import { todayIso } from '../engines/employee.js';
 import { eligibleCarry } from '../engines/leave.js';
 import { editKpi } from './kpi.js';
@@ -9,6 +9,7 @@ export async function render(el, ctx, params, query) {
   const thisYear = Number(todayIso().slice(0, 4));
   const year = Number(query.year) || thisYear;
   const D = await loadLeaveYear(ctx.sb, year);
+  if (query.view === 'monthly' || query.view === 'grid') return monthlyReport(el, ctx, D, year, thisYear, query);
   const asOf = year < thisYear ? `${year}-12-31` : todayIso();
   const list = peopleInYear(D.people, year).filter((p) => query.all || p.status.key !== 'former' || year < thisYear);
   const rows = list.map((p) => ({ p, b: balancesFor(p, D, asOf) }));
@@ -25,7 +26,7 @@ export async function render(el, ctx, params, query) {
   const needHours = rows.filter((r) => r.b.AL.needsHours).length;
 
   el.append(pageHead('Leave balances', `Position as at ${asOf}. Annual leave uses your AL calculator rules; sick, hospitalisation, maternity and paternity follow the Employment Act; compassionate leave follows company policy.`,
-    yearSel, h('a', { class: 'btn', href: `#/leave/kpi?year=${year}` }, 'KPI grades'), h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'Export')),
+    yearSel, h('a', { class: 'btn', href: `#/leave/balances?year=${year}&view=monthly` }, 'Monthly report'), h('a', { class: 'btn', href: `#/leave/kpi?year=${year}` }, 'KPI grades'), h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'Export')),
   D.prevClosed === null && D.adjustments.some((a) => a.provisional) ? h('p', { class: 'small muted', style: 'margin-bottom:.8rem' }, `* Carried days from ${year - 1} are provisional: worked out from the 31 Dec ${year - 1} balance and KPI grades until ${year - 1} is closed at Year-end close.`) : null,
   needHours ? h('p', { class: 'setup-warning', style: 'margin-bottom:1rem' }, `${needHours} part-timer${needHours > 1 ? 's have' : ' has'} no weekly hours recorded, so full-time entitlements are shown. Add weekly hours in their Employment tab to pro-rate leave as the Employment Act requires.`) : null,
   h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start' }, search)), body));
@@ -94,3 +95,118 @@ export async function render(el, ctx, params, query) {
     document.body.append(a); a.click(); a.remove();
   }
 }
+
+// ---------------------------------------------------------------- monthly leave records report (v2026.11.10)
+// "Month": every leave record in one month per person, the days by type and the balances at the month end.
+// "Year by month": one leave type, days taken per person in each month of the year.
+const MR_TYPES = ['AL', 'SL', 'RL', 'CPL', 'UPL'];
+const OTHER = (t) => !MR_TYPES.includes(t) && t !== 'UPH';
+const r2m = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+const mEnd = (m) => { const d = new Date(`${m}-01T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); d.setUTCDate(0); return d.toISOString().slice(0, 10); };
+const mLabel = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-MY', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const dShort = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const csvCell = (x) => (/[",\r\n]/.test(String(x ?? '')) ? `"${String(x).replace(/"/g, '""')}"` : (x ?? ''));
+function saveCsv(name, head, lines) {
+  const a = h('a', { href: URL.createObjectURL(new Blob(['\ufeff' + [head, ...lines].map((l) => l.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' })), download: name });
+  document.body.append(a); a.click(); a.remove();
+}
+
+/** Records of one person that start in a month (cancelled ones left out), oldest first. */
+export function monthRecords(D, personId, month) {
+  const end = mEnd(month);
+  return D.records.filter((r) => r.employee_id === personId && r.status !== 'cancelled' && String(r.date_from) >= `${month}-01` && String(r.date_from) <= end)
+    .sort((a, b) => String(a.date_from).localeCompare(String(b.date_from)));
+}
+
+function monthlyReport(el, ctx, D, year, thisYear, query) {
+  const view = query.view;
+  const nowM = new Date().toISOString().slice(0, 7);
+  const month = /^\d{4}-\d{2}$/.test(query.month || '') && query.month.startsWith(String(year)) ? query.month : (year === thisYear ? nowM : `${year}-12`);
+  const type = [...MR_TYPES, 'HPL', 'MTL', 'PTL', 'CCL'].includes(query.type) ? query.type : 'AL';
+  const go = (q) => { location.hash = `#/leave/balances?${new URLSearchParams({ year, view, month, type, ...q })}`; };
+  const yearSel = h('select', { 'aria-label': 'Year', style: 'width:auto' }, [thisYear - 1, thisYear, thisYear + 1].map((y) => h('option', { value: y, selected: y === year }, y)));
+  yearSel.addEventListener('change', () => go({ year: yearSel.value, month: `${yearSel.value}-${month.slice(5)}` }));
+  const tabs = h('div', { class: 'seg-tabs' },
+    h('a', { class: 'btn sm ghost', href: `#/leave/balances?year=${year}` }, 'Balances'),
+    h('button', { type: 'button', class: `btn sm ${view === 'monthly' ? 'primary' : 'ghost'}`, onclick: () => go({ view: 'monthly' }) }, 'Month'),
+    h('button', { type: 'button', class: `btn sm ${view === 'grid' ? 'primary' : 'ghost'}`, onclick: () => go({ view: 'grid' }) }, 'Year by month'));
+  const search = h('input', { type: 'search', placeholder: 'Search name or ID', 'aria-label': 'Search' });
+  const onlyLeave = h('input', { type: 'checkbox' }); onlyLeave.checked = query.all !== '1';
+  const body = h('div', { class: 'table-wrap' });
+  const people = peopleInYear(D.people, year).sort((a, b) => a.full_name.localeCompare(b.full_name));
+  let exportFn = () => {};
+
+  if (view === 'monthly') {
+    const monthIn = h('input', { type: 'month', value: month, min: `${year}-01`, max: `${year}-12`, 'aria-label': 'Month', style: 'width:auto' });
+    monthIn.addEventListener('change', () => { if (monthIn.value) go({ month: monthIn.value, year: monthIn.value.slice(0, 4) }); });
+    el.append(pageHead('Leave balances · monthly report', `Leave records in ${mLabel(month)}, the days by type and each balance at ${fmtD(mEnd(month))}. Cancelled records are left out.`,
+      yearSel, monthIn, h('button', { class: 'btn', type: 'button', onclick: () => exportFn() }, 'Export'), h('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Print')),
+    h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:.6rem;flex-wrap:wrap' }, tabs, search,
+      h('label', { class: 'check-row' }, onlyLeave, 'Only people with leave this month'))), body));
+    const start = `${month}-01`, end = mEnd(month);
+    const rows = people.filter((p) => { const e = p.employment || {}; return (!e.join_date || e.join_date <= end) && (!e.resigned_date || e.resigned_date >= start); })
+      .map((p) => { const recs = monthRecords(D, p.id, month); const lm = leaveForMonth(p, D, start);
+        const by = (t) => r2m(recs.filter((r) => r.leave_type === t).reduce((s, r) => s + Number(r.days), 0));
+        return { p, recs, lm, by, other: r2m(recs.filter((r) => OTHER(r.leave_type)).reduce((s, r) => s + Number(r.days), 0)) }; });
+    const draw = () => {
+      const q = search.value.trim().toLowerCase();
+      const shown = rows.filter((r) => (!onlyLeave.checked || r.recs.length) && (!q || `${r.p.full_name} ${r.p.emp_id}`.toLowerCase().includes(q)));
+      clear(body);
+      if (!shown.length) { body.append(h('div', { class: 'empty-state' }, onlyLeave.checked ? `No leave recorded in ${mLabel(month)}.` : 'No one to show.')); return; }
+      const tot = (f) => r2m(shown.reduce((s, r) => s + f(r), 0));
+      body.append(h('table', { class: 'data bal-table' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Employee'), h('th', {}, 'Leave records this month'), ...MR_TYPES.map((t) => h('th', { class: 'num' }, t)), h('th', { class: 'num', title: 'Hospitalisation, maternity, paternity, company closure' }, 'Other'),
+          h('th', { class: 'num' }, 'AL taken to date'), h('th', { class: 'num' }, 'AL balance'), h('th', { class: 'num' }, 'SL balance'), h('th', { class: 'num' }, 'RL balance'))),
+        h('tbody', {}, shown.map(({ p, recs, lm, by, other }) => h('tr', {},
+          h('td', {}, h('a', { href: `#/employees/${p.id}?tab=leave`, class: 'row-link' }, p.full_name), h('div', { class: 'small muted' }, [p.emp_id, p.department_code].filter(Boolean).join(' · '))),
+          h('td', { class: 'small' }, recs.length ? h('ul', { class: 'plain', style: 'margin:0;padding-left:1rem' }, recs.map((r) => h('li', {},
+            `${LEAVE_LABELS[r.leave_type] || r.leave_type} · ${r.source === 'import' ? 'month total (workbook)' : r.date_from === r.date_to ? dShort(r.date_from) : `${dShort(r.date_from)} – ${dShort(r.date_to)}`} · `,
+            h('b', {}, r.leave_type === 'UPH' ? `${Number(r.hours || 0)} h` : `${Number(r.days)} d`), r.half_day && r.half_day !== 'none' ? ` (${r.half_day.toUpperCase()})` : '',
+            r.note ? h('span', { class: 'muted' }, ` — ${r.note}`) : null))) : h('span', { class: 'muted' }, '—')),
+          ...MR_TYPES.map((t) => h('td', { class: 'num' }, by(t) || '')), h('td', { class: 'num' }, other || ''),
+          h('td', { class: 'num' }, lm.AL.toDate || ''), h('td', { class: `num strong ${lm.AL.balance < 0 ? 'neg' : ''}` }, lm.AL.balance),
+          h('td', { class: `num ${lm.SL.balance < 0 ? 'neg' : ''}` }, lm.SL.balance), h('td', { class: `num ${lm.RL.balance < 0 ? 'neg' : ''}` }, lm.RL.balance || '')))),
+        h('tfoot', {}, h('tr', {}, h('th', {}, `${shown.length} people`), h('th', {}, `${tot((r) => r.recs.length)} record(s)`), ...MR_TYPES.map((t) => h('th', { class: 'num' }, tot((r) => r.by(t)) || '')),
+          h('th', { class: 'num' }, tot((r) => r.other) || ''), h('th', {}), h('th', {}), h('th', {}), h('th', {})))));
+      exportFn = () => saveCsv(`leave-${month}.csv`, ['Employee ID', 'Name', 'Department', 'Leave type', 'From', 'To', 'Days', 'Hours', 'Note', 'AL balance at month end', 'SL balance at month end', 'RL balance at month end'],
+        shown.flatMap(({ p, recs, lm }) => (recs.length ? recs : [null]).map((r) => [p.emp_id || '', p.full_name, p.department_code || '', r ? (LEAVE_LABELS[r.leave_type] || r.leave_type) : '', r?.date_from || '', r?.date_to || '',
+          r ? Number(r.days) : '', r?.hours || '', r?.note || '', lm.AL.balance, lm.SL.balance, lm.RL.balance])));
+    };
+    search.addEventListener('input', draw); onlyLeave.addEventListener('change', draw); draw();
+    return;
+  }
+
+  // year by month
+  const typeSel = h('select', { 'aria-label': 'Leave type', style: 'width:auto' }, [...MR_TYPES, 'HPL', 'MTL', 'PTL', 'CCL'].map((t) => h('option', { value: t, selected: t === type }, LEAVE_LABELS[t] || t)));
+  typeSel.addEventListener('change', () => go({ type: typeSel.value }));
+  el.append(pageHead('Leave balances · year by month', `${LEAVE_LABELS[type] || type} leave taken in each month of ${year}, by the month the leave starts. Cancelled records are left out.`,
+    yearSel, typeSel, h('button', { class: 'btn', type: 'button', onclick: () => exportFn() }, 'Export'), h('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Print')),
+  h('section', { class: 'panel' }, h('div', { class: 'panel-head filters' }, h('div', { class: 'filter-row', style: 'justify-content:flex-start;gap:.6rem;flex-wrap:wrap' }, tabs, search,
+    h('label', { class: 'check-row' }, onlyLeave, 'Only people with this leave'))), body));
+  const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const rows = people.map((p) => {
+    const recs = D.records.filter((r) => r.employee_id === p.id && r.status !== 'cancelled' && r.leave_type === type);
+    const per = months.map((m) => r2m(recs.filter((r) => String(r.date_from).slice(0, 7) === m).reduce((s, r) => s + Number(r.days), 0)));
+    const b = balancesFor(p, D, year < thisYear ? `${year}-12-31` : new Date().toISOString().slice(0, 10));
+    return { p, per, total: r2m(per.reduce((s, x) => s + x, 0)), bal: b[type]?.balance ?? null };
+  });
+  const draw = () => {
+    const q = search.value.trim().toLowerCase();
+    const shown = rows.filter((r) => (!onlyLeave.checked || r.total) && (!q || `${r.p.full_name} ${r.p.emp_id}`.toLowerCase().includes(q)));
+    clear(body);
+    if (!shown.length) { body.append(h('div', { class: 'empty-state' }, 'No one to show.')); return; }
+    const mShort = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-MY', { month: 'short', timeZone: 'UTC' });
+    body.append(h('table', { class: 'data bal-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Employee'), ...months.map((m) => h('th', { class: 'num' }, h('a', { href: `#/leave/balances?year=${year}&view=monthly&month=${m}`, title: `Records in ${mLabel(m)}` }, mShort(m)))),
+        h('th', { class: 'num' }, 'Total'), h('th', { class: 'num' }, 'Balance now'))),
+      h('tbody', {}, shown.map(({ p, per, total, bal }) => h('tr', {},
+        h('td', {}, h('a', { href: `#/employees/${p.id}?tab=leave`, class: 'row-link' }, p.full_name), h('div', { class: 'small muted' }, [p.emp_id, p.department_code].filter(Boolean).join(' · '))),
+        ...per.map((x) => h('td', { class: 'num' }, x || '')), h('td', { class: 'num strong' }, total || ''), h('td', { class: `num ${bal < 0 ? 'neg' : ''}` }, bal ?? '')))),
+      h('tfoot', {}, h('tr', {}, h('th', {}, `${shown.length} people`), ...months.map((_, i) => h('th', { class: 'num' }, r2m(shown.reduce((s, r) => s + r.per[i], 0)) || '')),
+        h('th', { class: 'num' }, r2m(shown.reduce((s, r) => s + r.total, 0)) || ''), h('th', {})))));
+    exportFn = () => saveCsv(`leave-${type}-${year}-by-month.csv`, ['Employee ID', 'Name', 'Department', ...months, 'Total', 'Balance'],
+      shown.map(({ p, per, total, bal }) => [p.emp_id || '', p.full_name, p.department_code || '', ...per, total, bal ?? '']));
+  };
+  search.addEventListener('input', draw); onlyLeave.addEventListener('change', draw); draw();
+}
+const fmtD = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });

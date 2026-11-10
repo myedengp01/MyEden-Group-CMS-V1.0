@@ -3,7 +3,7 @@ import { fetchAll, loadRef } from './data.js';
 import { leaveBalances, closeYearFor } from './engines/leave.js';
 import { employmentStatus, todayIso } from './engines/employee.js';
 
-export const LEAVE_LABELS = { AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', MTL: 'Maternity', PTL: 'Paternity', RL: 'Replacement', CPL: 'Compassionate', UPL: 'Unpaid', UPH: 'Unpaid hours' };
+export const LEAVE_LABELS = { AL: 'Annual', SL: 'Sick', HPL: 'Hospitalisation', MTL: 'Maternity', PTL: 'Paternity', RL: 'Replacement', CPL: 'Compassionate', UPL: 'Unpaid', UPH: 'Unpaid hours', CCL: 'Company closure (paid)' };
 
 /** Every employee with their latest employment period, status and display fields. */
 export async function loadPeople(sb, ref) {
@@ -25,7 +25,15 @@ export async function loadHolidaySet(sb, years) {
   const ys = [...new Set(years)].sort();
   const { data } = await sb.from('eppd_holidays').select('holiday_date').eq('is_active', true)
     .gte('holiday_date', `${ys[0]}-01-01`).lte('holiday_date', `${ys[ys.length - 1]}-12-31`);
-  return new Set((data || []).map((h) => h.holiday_date));
+  const set = new Set((data || []).map((h) => h.holiday_date));
+  // company closure days (applied): everyone in scope already has a closure record (free, AL or unpaid) for them, so personal leave
+  // across a closure does not count those days again (v2026.11.10)
+  try {
+    const { data: cl } = await sb.from('cms_closures').select('date_from,date_to').eq('status', 'applied')
+      .lte('date_from', `${ys[ys.length - 1]}-12-31`).gte('date_to', `${ys[0]}-01-01`);
+    for (const c of cl || []) for (let t = Date.parse(`${c.date_from}T00:00:00Z`); t <= Date.parse(`${c.date_to}T00:00:00Z`); t += 864e5) set.add(new Date(t).toISOString().slice(0, 10));
+  } catch (e) { /* closures not readable: public holidays only */ }
+  return set;
 }
 
 /** Leave records, adjustments, KPI grades and the close of one year. */

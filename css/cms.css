@@ -1279,3 +1279,26 @@ table.fp-t select{max-width:130px}
 /* v2026.11.09 · letters recorded before the CMS / signed copies */
 .lw-pdf { width: 100%; height: 75vh; min-height: 520px; border: 1px solid var(--line, #ddd); border-radius: 8px; background: #fff; }
 .lw-rec { white-space: pre-wrap; font-size: 12.5px; max-height: 340px; overflow: auto; }
+
+/* v2026.11.10 · holiday calendars, Upcoming card, company closure days */
+.up-card { margin-bottom: 18px; }
+.up-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.up-list li { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.up-list li:last-child { border-bottom: 0; }
+.up-list b { display: block; } .up-list small { color: var(--mute); font-size: 12.5px; }
+.up-when { font-size: 12px; font-weight: 800; color: var(--blue); text-transform: uppercase; letter-spacing: .02em; }
+.up-list li.k-holiday .up-when { color: #b4232f; } .up-list li.k-closure .up-when { color: #5b3ee0; }
+.cal-month { margin: 18px 0 6px; font-size: 14px; color: var(--mute); text-transform: uppercase; letter-spacing: .04em; }
+.cal-table td:first-child { width: 220px; } .cal-table td:nth-child(3) { width: 140px; } .cal-table td.actions { width: 170px; text-align: right; }
+.cal-table tr.k-holiday td:first-child { box-shadow: inset 3px 0 0 #dc3545; } .cal-table tr.k-term_break td:first-child { box-shadow: inset 3px 0 0 #ef7a1a; }
+.cal-table tr.k-closure td:first-child { box-shadow: inset 3px 0 0 #7c5cff; } .cal-table tr.k-event td:first-child { box-shadow: inset 3px 0 0 #1f7ae0; }
+.toolbar .grow { flex: 1; }
+.myp .cl-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.myp .cl-day { display: grid; gap: 1px; min-width: 84px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.myp .cl-day small { color: var(--mute); font-size: 11.5px; } .myp .cl-day span { font-size: 11.5px; font-weight: 700; }
+.myp .cl-day.free { background: rgba(52,210,123,.14); border-color: rgba(52,210,123,.5); } .myp .cl-day.free span { color: #1d8a45; }
+.myp .cl-day.al { background: rgba(44,134,240,.10); border-color: rgba(44,134,240,.45); } .myp .cl-day.al span { color: #1f6fd6; }
+.myp .cl-day.off { opacity: .55; cursor: default; } .myp .cl-day:disabled { cursor: default; }
+.myp .cl-scope { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; margin: .3rem 0; }
+.myp .cl-scope > b { min-width: 7rem; font-size: .85rem; }
+@media (max-width: 640px) { .up-list li { grid-template-columns: 1fr auto; } .up-when { grid-column: 1 / -1; } .cal-table td:first-child, .cal-table td:nth-child(3) { width: auto; } }

@@ -399,6 +399,7 @@
     const byEmp = d.active_by_employer || {}; const byPay = d.active_by_payer || {};
     const snap = d.snapshot;
     $('#dash-rest', el).innerHTML = `
+      <div id="dash-up"></div>
       <div class="sec-head"><h2>${icon('sparkle')}Quick actions</h2><span class="muted">Shortcuts to the work you do most</span></div>
       <section class="qas">
         ${qa('users', 'View people', 'Search the Employee Master', 'people', 'blue')}
@@ -434,6 +435,105 @@
           ${snap ? `<div><dt>Structure snapshot</dt><dd>${dShort(snap.taken_at)} · ${num(snap.summary?.tables)} tables, ${num(snap.summary?.functions)} functions</dd></div>` : ''}
           <div><dt>Version</dt><dd>${esc(window.CMS_VERSION)} · ${esc(window.CMS_STAGE)}</dd></div></dl></section>
       </div>`;
+    drawUpcoming($('#dash-up', el));
+  }
+
+  // ================================================================ Holiday calendars and "Upcoming" reminders (v2026.11.10)
+  // Staff public holidays are the payroll list (leave counting, PH overtime); the staff calendar adds events and company closures.
+  // Students – E10, Tadika Genius Eden (E3) and Tadika Happy Dino (E3+) are for reference. The dashboard shows the next N days
+  // (default 7, set by Admin / Director); staff see the staff calendar and their own department's student calendar.
+  const CALS = [['staff', 'Staff'], ['e10', 'Students · E10'], ['e3', 'Tadika Genius Eden · E3'], ['e3p', 'Tadika Happy Dino · E3+']];
+  const CAL_NAME = Object.fromEntries(CALS);
+  const CAL_KIND = { holiday: ['Holiday', 'bad'], term_break: ['Term break', 'warn'], event: ['Event', 'blue'], closure: ['Company closure', 'joint'] };
+  const isoD = (d) => String(d).slice(0, 10);
+  const dDay = (d) => new Date(`${isoD(d)}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
+  const dDM = (d) => new Date(`${isoD(d)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const calWhen = (a, b) => (isoD(a) === isoD(b) ? `${dDay(a)} ${dDM(a)}` : `${dDay(a)} ${dDM(a)} – ${dDay(b)} ${dDM(b)}`);
+  const daysFrom = (d) => Math.round((Date.parse(`${isoD(d)}T00:00:00Z`) - Date.parse(`${new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10)}T00:00:00Z`)) / 864e5);
+  // payroll holidays → one entry per run of consecutive days with the same name
+  function groupHolidays(rows) {
+    const out = [];
+    for (const r of rows) {
+      const last = out[out.length - 1];
+      if (last && last.title === r.name && Date.parse(`${r.date}T00:00:00Z`) - Date.parse(`${last.date_to}T00:00:00Z`) === 864e5) last.date_to = r.date;
+      else out.push({ calendar: 'staff', kind: 'holiday', date_from: r.date, date_to: r.date, title: r.name, payroll: true });
+    }
+    return out;
+  }
+  async function drawUpcoming(box) {
+    if (!box) return;
+    let u; try { u = await API.rpc('cms_upcoming'); } catch (e) { return; }
+    if (!u) return;
+    const items = u.items || [];
+    const when = (it) => { const n = daysFrom(it.date_from); return n <= 0 ? (daysFrom(it.date_to) >= 0 ? 'Now' : '') : n === 1 ? 'Tomorrow' : `In ${n} days`; };
+    box.innerHTML = `<section class="card up-card"><div class="card-head"><h3>${icon('calendar')}Upcoming · next ${num(u.days)} days</h3>${canRoute('calendar') ? `<a href="#/calendar" class="link">Calendars ${icon('arrow')}</a>` : ''}</div>
+      ${items.length ? `<ul class="up-list">${items.map((it) => `<li class="k-${esc(it.kind)}"><span class="up-when">${esc(when(it))}</span><div><b>${esc(it.title)}</b><small>${esc(calWhen(it.date_from, it.date_to))} · ${esc(CAL_NAME[it.calendar] || it.calendar)}${it.note ? ` · ${esc(it.note)}` : ''}</small></div><span class="tag ${CAL_KIND[it.kind]?.[1] || ''} xs">${esc(CAL_KIND[it.kind]?.[0] || it.kind)}</span></li>`).join('')}</ul>`
+        : `<div class="empty small">${icon('calendar')}<p>Nothing in the next ${num(u.days)} days</p><span>Holidays, term breaks, events and company closures show here.</span></div>`}</section>`;
+  }
+
+  async function calendarPage(item, el) {
+    const q = Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''));
+    const f = { year: Number(q.year) || new Date().getFullYear(), cal: CAL_NAME[q.cal] ? q.cal : 'staff' };
+    el.innerHTML = `${pageHead(item)}<div id="cal-body">${loading()}</div>`;
+    const box = $('#cal-body', el);
+    let D;
+    const load = async () => { try { D = await API.rpc('cms_calendar', { p_year: f.year }); draw(); } catch (e) { box.innerHTML = errorCard(e.message); wireRetry(el); } };
+    const draw = () => {
+      const list = (f.cal === 'staff' ? [...groupHolidays(D.holidays || []), ...(D.entries || []).filter((e) => e.calendar === 'staff')] : (D.entries || []).filter((e) => e.calendar === f.cal))
+        .sort((a, b) => String(a.date_from).localeCompare(String(b.date_from)) || String(a.title).localeCompare(String(b.title)));
+      const months = [...new Set(list.map((x) => String(x.date_from).slice(0, 7)))];
+      const workDays = (it) => { let n = 0; for (let t = Date.parse(`${isoD(it.date_from)}T00:00:00Z`); t <= Date.parse(`${isoD(it.date_to)}T00:00:00Z`); t += 864e5) { const w = new Date(t).getUTCDay(); if (w && w !== 6) n += 1; } return n; };
+      const row = (it) => `<tr class="k-${esc(it.kind)}"><td class="nowrap"><b>${esc(calWhen(it.date_from, it.date_to))}</b>${isoD(it.date_to) !== isoD(it.date_from) ? `<small class="sub">${Math.round((Date.parse(isoD(it.date_to)) - Date.parse(isoD(it.date_from))) / 864e5) + 1} days · ${workDays(it)} weekday(s)</small>` : ''}</td>
+        <td>${esc(it.title)}${it.note ? `<small class="sub">${esc(it.note)}</small>` : ''}</td><td><span class="tag ${CAL_KIND[it.kind]?.[1] || ''}">${esc(CAL_KIND[it.kind]?.[0] || it.kind)}</span></td>
+        <td class="actions">${it.payroll ? (canRoute('settings/holidays') ? '<a class="btn sm ghost" href="#/settings/holidays" title="Staff public holidays are the payroll list">Public holidays</a>' : '<small class="muted">payroll list</small>')
+          : it.kind === 'closure' ? (canRoute('leave/closures') ? `<a class="btn sm ghost" href="#/leave/closures?id=${esc(it.closure_id)}">Closure</a>` : '')
+          : D.can_edit ? `<button type="button" class="btn sm" data-ed="${esc(it.id)}">Edit</button><button type="button" class="btn sm ghost" data-rm="${esc(it.id)}">Remove</button>` : ''}</td></tr>`;
+      const counts = (c) => (c === 'staff' ? groupHolidays(D.holidays || []).length + (D.entries || []).filter((e) => e.calendar === 'staff').length : (D.entries || []).filter((e) => e.calendar === c).length);
+      box.innerHTML = `<section class="card"><div class="toolbar">
+          <select id="cal-year" aria-label="Year">${[f.year - 1, f.year, f.year + 1].map((y) => `<option ${y === f.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <div class="seg">${CALS.map(([k, l]) => `<button type="button" data-cal="${k}" class="${f.cal === k ? 'on' : ''}">${esc(l)} <span>${counts(k)}</span></button>`).join('')}</div>
+          <span class="grow"></span>
+          ${D.can_settings ? `<button type="button" class="btn sm ghost" id="cal-rem">${icon('clock')}Reminders: ${num(D.reminder_days)} days</button>` : `<small class="muted">Dashboard reminders: ${num(D.reminder_days)} days ahead</small>`}
+          ${D.can_edit && f.cal !== 'staff' ? '<button type="button" class="btn sm" id="cal-copy">Copy staff holidays</button>' : ''}
+          ${D.can_edit ? `<button type="button" class="btn sm primary" id="cal-add">${icon('plus')}Add ${f.cal === 'staff' ? 'event' : 'entry'}</button>` : ''}
+          ${f.cal === 'staff' && canRoute('leave/closures') ? '<a class="btn sm" href="#/leave/closures">Company closures</a>' : ''}</div>
+        <p class="muted small">${f.cal === 'staff' ? 'Staff public holidays come from the payroll holiday list (used for leave counting and public-holiday overtime); add or change them on the Public holidays page. Events and company closures are added here.'
+          : f.cal === 'e10' ? 'Students of Eden Childcare Center (E10), for reference. Term breaks: only childcare-service students attend.' : 'For reference. Term breaks: only childcare-service students attend.'}</p>
+        ${list.length ? months.map((m) => `<h4 class="cal-month">${new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</h4>
+          <div class="table-wrap"><table class="data cal-table"><tbody>${list.filter((x) => String(x.date_from).slice(0, 7) === m).map(row).join('')}</tbody></table></div>`).join('')
+          : `<div class="empty small">${icon('calendar')}<p>Nothing on this calendar for ${f.year}</p><span>${f.cal === 'staff' ? 'Add the year’s holidays on the Public holidays page.' : D.can_edit ? 'Copy the staff holidays, then add term breaks and events.' : ''}</span></div>`}</section>`;
+      $('#cal-year', box).addEventListener('change', (e) => { f.year = Number(e.target.value); load(); });
+      $$('[data-cal]', box).forEach((b) => b.addEventListener('click', () => { f.cal = b.dataset.cal; draw(); }));
+      $('#cal-add', box)?.addEventListener('click', () => edit(null));
+      $$('[data-ed]', box).forEach((b) => b.addEventListener('click', () => edit((D.entries || []).find((x) => x.id === b.dataset.ed))));
+      $$('[data-rm]', box).forEach((b) => b.addEventListener('click', () => { const it = (D.entries || []).find((x) => x.id === b.dataset.rm);
+        confirmBox('Remove entry', `Remove <b>${esc(it.title)}</b> (${esc(calWhen(it.date_from, it.date_to))}) from ${esc(CAL_NAME[it.calendar])}?`, 'Remove', true, async () => { await API.rpc('cms_calendar_save', { p: { id: it.id, active: false } }); toast('Removed'); load(); }); }));
+      $('#cal-copy', box)?.addEventListener('click', () => confirmBox('Copy staff holidays', `Add the ${f.year} staff public holidays to <b>${esc(CAL_NAME[f.cal])}</b>? Holidays already there are skipped; change or remove any that differ afterwards.`, 'Copy', false,
+        async () => { const n = await API.rpc('cms_calendar_copy_holidays', { p_calendar: f.cal, p_year: f.year }); toast(`${n} holiday(s) added`); load(); }));
+      $('#cal-rem', box)?.addEventListener('click', () => modal({ title: 'Dashboard reminders', ok: 'Save',
+        body: `<label class="fld"><span>Show what is coming up in the next … days</span><input type="number" name="d" min="1" max="90" value="${esc(String(D.reminder_days))}" required></label><p class="muted small">Everyone sees the Upcoming card on their dashboard: the staff calendar, plus their own department's student calendar.</p>`,
+        onOk: async (form) => { await API.rpc('cms_calendar_settings_set', { p_days: Number(form.d.value) }); toast('Saved'); load(); } }));
+    };
+    const edit = (it) => {
+      const staff = f.cal === 'staff';
+      modal({ title: it ? 'Edit entry' : `Add to ${CAL_NAME[f.cal]}`, ok: it ? 'Save' : 'Add',
+        body: `<div class="grid-2 tight">
+          <label class="fld"><span>Calendar</span><select name="calendar">${CALS.map(([k, l]) => `<option value="${k}" ${(it?.calendar || f.cal) === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Type</span><select name="kind">${(staff && !it ? ['event'] : ['holiday', 'term_break', 'event']).map((k) => `<option value="${k}" ${(it?.kind || (staff ? 'event' : 'holiday')) === k ? 'selected' : ''}>${CAL_KIND[k][0]}</option>`).join('')}</select></label>
+          <label class="fld"><span>From</span><input type="date" name="from" required value="${esc(it ? isoD(it.date_from) : '')}"></label>
+          <label class="fld"><span>To</span><input type="date" name="to" value="${esc(it ? isoD(it.date_to) : '')}"></label>
+</div>
+          <label class="fld"><span>Title</span><input name="title" required value="${esc(it?.title || '')}" placeholder="e.g. Term Break 1, Parent's Day"></label>
+          <label class="fld"><span>Note (optional)</span><input name="note" value="${esc(it?.note || '')}" placeholder="e.g. Only childcare-service students attend"></label>
+          <p class="muted small">Staff public holidays are kept on the Public holidays page; the staff calendar here takes events only.</p>`,
+        onOk: async (form) => {
+          if (!form.from.value || !form.elements.title.value.trim()) throw new Error('Give the date and a title.');
+          if (form.to.value && form.to.value < form.from.value) throw new Error('“To” is before “From”.');
+          await API.rpc('cms_calendar_save', { p: { id: it?.id || null, calendar: form.calendar.value, kind: form.kind.value, date_from: form.from.value, date_to: form.to.value || form.from.value, title: form.elements.title.value.trim(), note: form.elements.note.value.trim() } });
+          toast('Saved'); load();
+        } });
+    };
+    load();
   }
 
   // ================================================================ PEOPLE
@@ -7344,6 +7444,9 @@
     'leave/kpi': { file: 'modules/kpi.js', edit: () => can('leave', 'E') },
     'leave/year-end': { file: 'modules/yearclose.js', edit: () => can('leave', 'E') },
     'leave/import': { file: 'modules/leaveimportpage.js', edit: () => isSuper() },
+    // v2026.11.10 company closure days and holiday checks; 'boss' = Admin / Director (closure shortfall made free or borrowed)
+    'leave/closures': { file: 'modules/closures.js', edit: () => can('leave', 'E'), can: (roles) => (roles?.[0] === 'boss' ? isDirectorOrAdmin() || isSuper() : can('leave', 'E')) },
+    'leave/holiday-check': { file: 'modules/holidaycheck.js', edit: () => can('leave', 'E') },
     time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
     'payroll/loans': { file: 'modules/loans.js', edit: () => can('payroll.prepare') },
     'payroll/settlement': { file: 'modules/settlements.js', edit: () => can('payroll.prepare') },
@@ -8244,7 +8347,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

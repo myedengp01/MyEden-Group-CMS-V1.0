@@ -512,3 +512,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   each form app shows a notice ("New claims are now made in the MyEden Group CMS → My Claims") with a link, then becomes read-only
   (view / print old claims) or redirects to the CMS (PRI-010 F3). Options considered: notice only, shared sign-in, read-only.
 - **Until then:** staff make SCF claims in the CMS (F1); office work is in the Action Center; the form apps keep working side by side.
+
+## PRI-021 · Compulsory annual leave during company closures — handbook / LOEC clause — recorded 2026-11-10
+- **Today:** company closure days (e.g. 10–14 Feb 2027, when students are still on the CNY holiday after the staff holidays) are part free
+  (company paid leave) and part taken from annual leave, with a shortfall as unpaid leave (Admin / Director may make it free or borrowed
+  from next year's AL). Built in v2026.11.10 (Time & Leave › Company Closure Days). The Employee Handbook does not say yet that the company
+  may require annual leave to be taken on closure days.
+- **To do:** add a clause to the Employee Handbook (next revision) and to future LOECs: the company may close on set days and require
+  annual leave to be used for some of them, with notice; how a shortfall is treated (unpaid by default). CLC: proceed with the feature now.
