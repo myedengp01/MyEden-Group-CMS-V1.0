@@ -7447,6 +7447,7 @@
     // v2026.11.10 company closure days and holiday checks; 'boss' = Admin / Director (closure shortfall made free or borrowed)
     'leave/closures': { file: 'modules/closures.js', edit: () => can('leave', 'E'), can: (roles) => (roles?.[0] === 'boss' ? isDirectorOrAdmin() || isSuper() : can('leave', 'E')) },
     'leave/holiday-check': { file: 'modules/holidaycheck.js', edit: () => can('leave', 'E') },
+    'leave/parental': { file: 'modules/parental.js', edit: () => can('leave', 'E') },
     time: { file: 'modules/overtime.js', edit: () => can('payroll', 'E') },
     'payroll/loans': { file: 'modules/loans.js', edit: () => can('payroll.prepare') },
     'payroll/settlement': { file: 'modules/settlements.js', edit: () => can('payroll.prepare') },

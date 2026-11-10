@@ -1302,3 +1302,17 @@ table.fp-t select{max-width:130px}
 .myp .cl-scope { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; margin: .3rem 0; }
 .myp .cl-scope > b { min-width: 7rem; font-size: .85rem; }
 @media (max-width: 640px) { .up-list li { grid-template-columns: 1fr auto; } .up-when { grid-column: 1 / -1; } .cal-table td:first-child, .cal-table td:nth-child(3) { width: auto; } }
+
+/* v2026.11.10 · maternity & paternity checker */
+.myp .pc-verdict { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); margin-bottom: 14px; }
+.myp .pc-verdict.ok { background: rgba(52,210,123,.12); border-color: rgba(52,210,123,.5); }
+.myp .pc-verdict.bad { background: rgba(220,53,69,.08); border-color: rgba(220,53,69,.45); }
+.myp .pc-verdict b { font-size: 16px; }
+.myp .pc-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+.myp .pc-grid h3, .myp .pc-out h3 { margin: 6px 0 8px; font-size: 15px; }
+.myp .pc-cond { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.myp .pc-cond li { display: flex; gap: 8px; align-items: baseline; }
+.myp .pc-warn { margin: 14px 0; padding: 10px 12px; border-radius: 10px; background: rgba(239,122,26,.10); border: 1px solid rgba(239,122,26,.45); }
+.myp .pc-warn ul { margin: 4px 0 0; padding-left: 18px; }
+.myp .pc-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+@media (max-width: 760px) { .myp .pc-grid { grid-template-columns: 1fr; } }

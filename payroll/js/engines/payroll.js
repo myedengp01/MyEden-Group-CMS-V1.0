@@ -162,6 +162,8 @@ export function buildAutoItems(ctx) {
   // ---- maternity (EA s.37): monthly salary continues; not monthly-paid → allowance at ORP for each day; not eligible → the days are unpaid ----
   for (const m of ctx.maternity || []) {
     const cal = win?.calDays || daysInMonth(period);
+    // v2026.11.10: allowances chosen as not paid in the maternity checker — a reminder; HR adjusts the allowance lines
+    if (m.allowance !== 'unpaid' && (m.notPaid || []).length) warnings.push({ level: 'warn', text: `Maternity leave ${m.from} – ${m.to} (${m.days} day(s)): not paying ${m.notPaid.map((x) => `${x.name} (RM${fmt(x.amount)} a month)`).join(', ')} during the leave, as chosen in the checker. Adjust those allowance lines for the ${m.days} day(s) (÷ ${cal}).` });
     if (m.allowance === 'unpaid') {
       if (R.basis === 'monthly') add('UNPAID_LEAVE', { key: `MTL_UNPAID:${m.from}`, label: 'Maternity leave (no allowance)', amount: (R.full / cal) * m.days, qty: m.days, unit: 'days', rate: R.full / cal,
         note: `${m.days} day(s) ${m.from} – ${m.to} × RM${fmt(R.full)} ÷ ${cal} (not eligible for the allowance)` });
@@ -399,7 +401,8 @@ export function buildRun(D) {
       .map((r) => ({ date: r.date_from, hours: Number(r.hours) || 0 }));
     const maternity = (D.leave || []).filter((r) => r.employee_id === p.id && r.leave_type === 'MTL' && r.status !== 'cancelled' && r.date_from <= pEnd && (r.date_to || r.date_from) >= period)
       .map((r) => { const a = r.date_from > period ? r.date_from : period; const b = (r.date_to || r.date_from) < pEnd ? (r.date_to || r.date_from) : pEnd;
-        return { days: Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) + 1, allowance: r.details?.allowance || 'paid', orp: Number(r.details?.orp) || 0, from: a, to: b }; });
+        return { days: Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) + 1, allowance: r.details?.allowance || 'paid', orp: Number(r.details?.orp) || 0, from: a, to: b,
+          notPaid: (r.details?.allowances || []).filter((x) => x && x.pay === false) }; });
     const buybacks = isJan ? (D.buybacks || []).filter((b) => b.employee_id === p.id && Number(b.close_year) === Number(period.slice(0, 4)) - 1) : [];
     const age = ageForPeriod(p.dob, period);
 
