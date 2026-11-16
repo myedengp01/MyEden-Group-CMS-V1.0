@@ -538,6 +538,29 @@
 
   // ================================================================ PEOPLE
   const STATUS = [['active', 'Active'], ['notice', 'Serving notice'], ['onboarding', 'Onboarding'], ['applicant', 'Applicants'], ['former', 'Former'], ['all', 'All']];
+  // Length of service as nY nM nD (CLC 16 Nov 2026): the start day counts as day 1, so a full calendar month (1–30 Nov) is 0Y 1M 0D;
+  // whole months are counted without clamping month ends (31 Jan – 28 Feb = 0Y 0M 29D). end = last working day, or today.
+  const svcYMD = (start, end) => {
+    const iso = (x) => String(x || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso(start))) return '';
+    const [sy, sm, sd] = iso(start).split('-').map(Number);
+    const endIso = /^\d{4}-\d{2}-\d{2}$/.test(iso(end)) ? iso(end) : new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    const e = Date.parse(`${endIso}T00:00:00Z`) + 864e5;                 // exclusive end: the day after
+    const s0 = Date.UTC(sy, sm - 1, sd);
+    if (e <= s0) return '';
+    let k = (new Date(e).getUTCFullYear() - sy) * 12 + new Date(e).getUTCMonth() - (sm - 1);
+    while (k > 0 && Date.UTC(sy, sm - 1 + k, sd) > e) k -= 1;
+    const d = Math.round((e - Date.UTC(sy, sm - 1 + k, sd)) / 864e5);
+    return `${Math.floor(k / 12)}Y ${k % 12}M ${d}D`;
+  };
+  const svcCell = (r) => {
+    const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
+    if (!r.start_date) return '';
+    if (String(r.start_date).slice(0, 10) > today) { const n = Math.round((Date.parse(String(r.start_date).slice(0, 10)) - Date.parse(today)) / 864e5); return `<small class="sub svc">starts in ${n}D</small>`; }
+    if (r.status === 'applicant') return '';
+    const t = svcYMD(r.start_date, r.status === 'former' ? r.last_day : null);
+    return t ? `<small class="sub svc" title="Length of service${r.status === 'former' ? ' to the last working day' : ''} (start day counted)">${t}</small>` : '';
+  };
   const inStatus = (r, k) => k === 'all' || (k === 'notice' ? !!r.serving_notice && r.status !== 'former' : r.status === k);
   const CONF = { UP: 'Under probation', C: 'Confirmed', CT: 'Contract', PT: 'Part time', INT: 'Internship', R: 'Resigned', TR: 'Terminated', DM: 'Dismissed' };
   const confCell = (r) => !r.confirmation ? '<span class="muted">—</span>'
@@ -1040,7 +1063,7 @@
         <td>${paidByCell(r)}</td>
         <td>${esc(r.unit_code || '—')}${r.department && r.unit_code && String(r.department).toUpperCase() !== String(r.unit_code).toUpperCase() ? ` <span class="tag warn xs" title="The profile department (${esc(r.department)}) differs from the payroll centre (${esc(r.unit_code)}). Letters print the profile department.">profile ${esc(r.department)}</span>` : ''}</td>
         <td>${esc(r.job_title || '—')}${r.level ? ` <span class="muted">${esc(r.level)}</span>` : ''}</td>
-        <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
+        <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span>${svcCell(r)}</td>
         <td class="nowrap">${dShort(r.start_date)}</td>
         <td class="nowrap">${confCell(r)}</td>${incCol ? `<td class="nowrap">${reviewCell(incBy.get(r.id))}</td>` : ''}<td class="nowrap">${noticeCell(r)}</td>
         <td class="nowrap">${lastDayCell(r)}</td>${hbCol ? `<td class="nowrap">${r.status === 'former' ? '<span class="muted">—</span>' : hbCell(hbBy.get(r.id) || { })}</td>` : ''}</tr>`).join('')
@@ -7728,7 +7751,7 @@
     const kv = (rows) => `<dl class="pf-kv">${rows.filter(Boolean).map(([k, x]) => `<dt>${esc(k)}</dt><dd>${x}</dd>`).join('')}</dl>`;
     const locked = (what) => `<div class="note">${icon('lock')}<div>${esc(what)} needs the “${esc(what === 'Personal details' ? 'See personal details' : what)}” permission. Ask an Admin.</div></div>`;
     const age = (dob) => { if (!dob) return ''; const b = new Date(dob); const n = new Date(); let y = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) y -= 1; return isNaN(y) ? '' : ` (${y})`; };
-    const svc = (a) => { if (!a) return ''; const d0 = new Date(a); const n = new Date(); let m = (n.getFullYear() - d0.getFullYear()) * 12 + n.getMonth() - d0.getMonth(); if (n.getDate() < d0.getDate()) m -= 1; if (m < 0) return ''; return m < 12 ? `${m} mo` : `${Math.floor(m / 12)} y ${m % 12} mo`; };
+    const svc = (a) => svcYMD(a, H.status === 'former' ? H.last_day : null);
     const stTag = { active: 'ok', onboarding: 'warn', former: '' }[H.status] ?? '';
     const addr = (a) => (a ? [a.line1, a.line2, a.line3, a.postcode_town, a.state].filter(Boolean).map(esc).join('<br>') : '');
     const go = (t) => { tab = t; const u = new URLSearchParams(location.hash.split('?')[1] || ''); u.set('tab', t); history.replaceState(null, '', `#/person?${u}`); draw(); };
@@ -7741,7 +7764,7 @@
           <p class="pf-sub">${esc(H.title || 'Position not set')}${H.level ? ` · ${esc(H.level)}` : ''}</p>
           <div class="pf-tags"><code>${esc(H.employee_id || 'No Employee ID')}</code><span class="tag ${stTag}">${esc(H.status || '')}</span>
             ${H.confirmation ? `<span class="tag">${esc(H.confirmation === 'confirmed' ? 'Confirmed' : H.confirmation === 'probation' ? 'On probation' : H.confirmation)}</span>` : ''}
-            <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)} (${svc(H.start)})` : ''}</span></div>
+            <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)}${svc(H.start) ? ` (${svc(H.start)})` : ''}${H.status === 'former' && H.last_day ? ` to ${dShort(H.last_day)}` : ''}` : ''}</span></div>
           <p class="small">${H.boss ? `Reports to <a href="#/person?id=${esc(H.boss_id)}"><b>${esc(H.boss)}</b></a>` : '<span class="muted">Reports to: not set</span>'}${D.edited ? ` <span class="muted">· details last changed by ${esc(D.edited.by || '')} ${dShort(D.edited.at)}</span>` : ''}</p>
         </div>
         <div class="pf-acts"><span id="pf-inv"></span>${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
