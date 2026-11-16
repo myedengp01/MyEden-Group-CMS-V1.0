@@ -520,3 +520,11 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   may require annual leave to be taken on closure days.
 - **To do:** add a clause to the Employee Handbook (next revision) and to future LOECs: the company may close on set days and require
   annual leave to be used for some of them, with notice; how a shortfall is treated (unpaid by default). CLC: proceed with the feature now.
+
+## PRI-022 · Learning game centre for students (game-based learning) — recorded 2026-11-16
+- **Idea (CLC):** a game-based learning platform for MyEden's childcare, kindergarten and education-event students: Maths, English,
+  Bahasa Malaysia, Chinese, Science and more. Each student has an account, plays educational games, earns points and moves up levels of
+  difficulty; plays alone or in teams, at a centre or at home. Separate from the CMS but connected to it.
+- **Status:** concept / plan stage (ebp). Key points from the first plan: kept as its own app and database because it holds children's
+  data (the CMS keeps no children's names); parent consent and PDPA 2010 handling; no free chat between children; teachers and centres
+  linked from the CMS (staff, centres, classes) and progress summaries flowing back to the CMS.
