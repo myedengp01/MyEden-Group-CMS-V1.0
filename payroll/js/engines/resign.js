@@ -82,7 +82,10 @@ export function resignCalc(input, policy) {
   if (!N) { out.errors.push(!input.joinDate ? 'No date joined on record.' : 'Enter the resignation letter date.'); return out; }
   if (input.letterDate < input.joinDate) out.errors.push('The letter date is before the date joined.');
   const H = input.holidays || new Set(); const WD = input.workDays || [1, 2, 3, 4, 5];
-  const noticeEnd = input.noticeEnd || N.end;
+  // v2026.11.17: a longer notice stated in the employee's letter — the Company's decision (accepted → that date is the notice end)
+  const reqLast = input.requestedLast || null; const decision = input.extensionDecision || null;
+  const noticeEnd = input.noticeEnd || (decision === 'accepted' && reqLast && reqLast > N.end ? reqLast : N.end);
+  if (reqLast && reqLast > N.end && !decision && !input.noticeEnd) out.errors.push('The employee asked for a later last day than the notice allows. Choose whether the Company accepts the longer notice she stated.');
   const alUse0 = input.alUse || 'payout';
   // v2026.11.17: notice running into the next leave year (e.g. a longer notice accepted, 11 Nov 2026 → 3 Feb 2027). The current year's
   // balance is not carried forward: it is cleared by 31 Dec or paid in the January payroll (CLC 17 Nov 2026). The final-salary leave
@@ -107,7 +110,7 @@ export function resignCalc(input, policy) {
     }
   }
   const last = input.lastPhysical || back?.last || noticeEnd;
-  if (last > noticeEnd) out.errors.push('The last physical working day is after the end of the notice. Change the agreed notice end instead.');
+  if (last > noticeEnd) out.errors.push('The last physical working day is after the end of the notice. If the employee asked for a longer notice, enter it under "Notice stated in the letter" and choose Accepted.');
   if (last < input.letterDate) out.errors.push('The last physical working day is before the letter date.');
   const alUse = input.alUse || 'payout'; const payer = input.payer || 'employee';
   const sal = input.salary || null; const basic = Number(sal?.amount) || 0; const hourly = sal?.pay_basis === 'hourly';
@@ -159,7 +162,7 @@ export function resignCalc(input, policy) {
     short: { from: shortFrom, to: shortFrom ? noticeEnd : null, calendar: shortCal, working: shortWork, parts: P ? P.parts : [] }, noticeAmount, noticeSigned, net, lastMonthBasic, finalEst,
     owed: finalEst !== null && finalEst < 0 ? r2(-finalEst) : 0,
     arrangement: alUse === 'offset' && W.days > 0 ? (end < noticeEnd ? 'in_lieu' : 'offset') : (end < noticeEnd ? 'in_lieu' : 'full'),
-    split, yearCurrent: yS, alPrev: alPrev ? { ...alPrev, balance: r2(alPrev.balance) } : null,
+    split, yearCurrent: yS, requestedLast: reqLast, requestedNotice: input.requestedNotice || null, extensionDecision: decision, alPrev: alPrev ? { ...alPrev, balance: r2(alPrev.balance) } : null,
   });
   if (split && alPrev) out.notes.push(`The notice runs into ${Number(yS) + 1}: the ${yS} balance (${num(r2(alPrev.balance))} day(s)) is cleared by 31 Dec ${yS} or paid in the January ${Number(yS) + 1} payroll; the final salary covers ${Number(yS) + 1} leave only.`);
   out.fields = letterFields(out, input);
@@ -186,7 +189,10 @@ export function letterFields(c, input) {
     notice_in_lieu_terms: noticeTerms(c),
     // v2026.11.17: longer notice proposed by the employee (accepted / declined) and leave across two years
     contract_last_date: longDate(c.noticeEndPolicy), contract_last_day: dayName(c.noticeEndPolicy),
-    ...(c.noticeEnd !== c.noticeEndPolicy ? { requested_last_date: longDate(c.noticeEnd), requested_last_day: dayName(c.noticeEnd),
+    ...(c.requestedLast && c.requestedLast > c.noticeEndPolicy
+      ? { requested_last_date: longDate(c.requestedLast), requested_last_day: dayName(c.requestedLast),
+          requested_notice_period: c.requestedNotice || periodText(c.noticeStart, c.requestedLast), ...(c.extensionDecision ? { notice_extension: c.extensionDecision } : {}) }
+      : c.noticeEnd !== c.noticeEndPolicy ? { requested_last_date: longDate(c.noticeEnd), requested_last_day: dayName(c.noticeEnd),
       requested_notice_period: periodText(c.noticeStart, c.noticeEnd), ...(c.noticeEnd > c.noticeEndPolicy ? { notice_extension: 'accepted' } : {}) } : {}),
     al_split: c.split ? 'yes' : 'no',
     ...(c.split ? { al_year_current: c.yearCurrent, al_year_next: String(Number(c.yearCurrent) + 1), al_balance_current: c.alPrev ? num(c.alPrev.balance) : '',
