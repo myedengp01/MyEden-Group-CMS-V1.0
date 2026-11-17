@@ -1316,3 +1316,14 @@ table.fp-t select{max-width:130px}
 .myp .pc-warn ul { margin: 4px 0 0; padding-left: 18px; }
 .myp .pc-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 @media (max-width: 760px) { .myp .pc-grid { grid-template-columns: 1fr; } }
+
+/* v2026.11.17 · notice period calculator */
+.myp .nc-head { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.myp .nc-head > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.myp .nc-big { font-size: 20px; font-variant-numeric: tabular-nums; }
+.myp .nc-rules { display: grid; gap: 6px; }
+.myp .nc-rule { display: grid; grid-template-columns: auto minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.myp .nc-rule.on { border-color: var(--blue, #2c86f0); background: rgba(44,134,240,.06); }
+.myp .nc-w { font-weight: 700; display: flex; gap: 6px; align-items: center; }
+.myp .nc-last { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; }
+@media (max-width: 640px) { .myp .nc-rule { grid-template-columns: auto 1fr; } }
