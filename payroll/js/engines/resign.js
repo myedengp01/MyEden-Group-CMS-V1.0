@@ -84,6 +84,15 @@ export function resignCalc(input, policy) {
   const H = input.holidays || new Set(); const WD = input.workDays || [1, 2, 3, 4, 5];
   const noticeEnd = input.noticeEnd || N.end;
   const alUse0 = input.alUse || 'payout';
+  // v2026.11.17: notice running into the next leave year (e.g. a longer notice accepted, 11 Nov 2026 → 3 Feb 2027). The current year's
+  // balance is not carried forward: it is cleared by 31 Dec or paid in the January payroll (CLC 17 Nov 2026). The final-salary leave
+  // figures then cover the next year only (pro-rated to the end, without any carry-forward).
+  const yS = String(N.start).slice(0, 4);
+  const split = !!input.alAt && String(noticeEnd).slice(0, 4) > yS;
+  const alRaw = input.alAt;
+  const alAtX = !split ? alRaw : (d) => { const a = alRaw(d); if (!a || String(d).slice(0, 4) === yS) return a; return { ...a, balance: r2(a.balance - (a.carried || 0)), carried: 0 }; };
+  if (split) input = { ...input, alAt: alAtX };
+  const alPrev = split ? alRaw(`${yS}-12-31`) : null;
   // offset with no earlier last day chosen: the leave fills the last working days of the notice, counted back from its end
   let back = null;
   if (alUse0 === 'offset' && !input.lastPhysical && input.alAt) {
@@ -150,7 +159,9 @@ export function resignCalc(input, policy) {
     short: { from: shortFrom, to: shortFrom ? noticeEnd : null, calendar: shortCal, working: shortWork, parts: P ? P.parts : [] }, noticeAmount, noticeSigned, net, lastMonthBasic, finalEst,
     owed: finalEst !== null && finalEst < 0 ? r2(-finalEst) : 0,
     arrangement: alUse === 'offset' && W.days > 0 ? (end < noticeEnd ? 'in_lieu' : 'offset') : (end < noticeEnd ? 'in_lieu' : 'full'),
+    split, yearCurrent: yS, alPrev: alPrev ? { ...alPrev, balance: r2(alPrev.balance) } : null,
   });
+  if (split && alPrev) out.notes.push(`The notice runs into ${Number(yS) + 1}: the ${yS} balance (${num(r2(alPrev.balance))} day(s)) is cleared by 31 Dec ${yS} or paid in the January ${Number(yS) + 1} payroll; the final salary covers ${Number(yS) + 1} leave only.`);
   out.fields = letterFields(out, input);
   return out;
 }
@@ -173,7 +184,19 @@ export function letterFields(c, input) {
     short_notice_days: String(c.short.calendar || 0), notice_in_lieu_amount: rm(c.noticeAmount),
     net_settlement: `${c.net < 0 ? '−' : ''}${rm(Math.abs(c.net))}`,
     notice_in_lieu_terms: noticeTerms(c),
+    // v2026.11.17: longer notice proposed by the employee (accepted / declined) and leave across two years
+    contract_last_date: longDate(c.noticeEndPolicy), contract_last_day: dayName(c.noticeEndPolicy),
+    ...(c.noticeEnd !== c.noticeEndPolicy ? { requested_last_date: longDate(c.noticeEnd), requested_last_day: dayName(c.noticeEnd),
+      requested_notice_period: periodText(c.noticeStart, c.noticeEnd), ...(c.noticeEnd > c.noticeEndPolicy ? { notice_extension: 'accepted' } : {}) } : {}),
+    al_split: c.split ? 'yes' : 'no',
+    ...(c.split ? { al_year_current: c.yearCurrent, al_year_next: String(Number(c.yearCurrent) + 1), al_balance_current: c.alPrev ? num(c.alPrev.balance) : '',
+      al_current_payout_month: `January ${Number(c.yearCurrent) + 1}`, al_next_period: `1 January ${Number(c.yearCurrent) + 1} to ${longDate(c.employmentEnd)}` } : {}),
   };
+}
+/** "12 weeks" when the notice is whole weeks (start + 7 × n), else "N days". */
+export function periodText(start, end) {
+  const d = Math.round((isoToMs(end) - isoToMs(start)) / DAY);
+  return d > 0 && d % 7 === 0 ? `${d / 7} weeks` : `${d} days`;
 }
 /** The sentence on the notice not served, for the letter. */
 export function noticeTerms(c) {

@@ -6692,6 +6692,14 @@
         if (k.has('letter_date') && ld && +ld < +today) w.push(`The letter date (${esc(vals.letter_date)}) is before today — a letter is normally dated the day it is issued.`);
         if (k.has('handover_date') && vals.has_handover !== 'no' && ho && ef && +ho > +ef) w.push(`The handover date (${esc(vals.handover_date)}) is after the effective date (${esc(vals.effective_date)}).`);
         if (k.has('handover_date') && vals.has_handover !== 'no' && ho && ld && +ho < +ld) w.push(`The handover date (${esc(vals.handover_date)}) is before the letter date — switch “Handover of current duties” off or change the date.`);
+        if (k.has('notice_extension') && ['accepted', 'declined'].includes(vals.notice_extension)) {
+          const ln = String(vals.last_notice_date || '').trim(); const rq = String(vals.requested_last_date || '').trim(); const cl = String(vals.contract_last_date || '').trim();
+          if (!String(vals.requested_notice_period || '').trim()) w.push('Enter the notice the employee proposed (e.g. 12 weeks) — the letter quotes it.');
+          if (vals.notice_extension === 'accepted' && rq && ln && ln !== rq)
+            w.push(`Accepted, but the last day in the letter (${esc(ln)}) is not the proposed date (${esc(rq)}). Change the resignation on the profile: set the agreed notice end to ${esc(rq)}, so payroll and leave follow, then fill the letter again.`);
+          if (vals.notice_extension === 'declined' && cl && ln && ln !== cl)
+            w.push(`Declined, but the last day in the letter (${esc(ln)}) is not the contractual date (${esc(cl)}). Change the resignation on the profile back to the contractual notice, then fill the letter again.`);
+        }
         if (ctx?._dept_profile && ctx?._dept_payroll && String(ctx._dept_profile).toUpperCase() !== String(ctx._dept_payroll).toUpperCase() && keys().some((x) => ['department', 'current_department'].includes(x)))
           w.push(`Profile department <b>${esc(ctx._dept_profile)}</b> differs from the payroll centre <b>${esc(ctx._dept_payroll)}</b> — the letter uses the profile department.`);
       }
@@ -6757,7 +6765,16 @@
       const n = parseInt(vals.review_cycle, 10); const base = yes && vals.review_from === 'increment' ? parseLong(vals.increment_effective_date) : conf;
       if (k.has('next_review_date') && n && base) follow('next_review_date', longDate(isoUTC(plusMonths(base, n))), '_nr_auto');
     }
-    const calc = () => { calcAssess(); salArr(); calcTransfer(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
+    // resignation acceptance (v2026.11.17): the notice the employee proposed → the proposed last day (start + weeks), with weekdays
+    const WD_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const calcNoticeExt = () => {
+      const k = new Set(keys()); if (!k.has('requested_last_date') || !editable) return;
+      const st = anyDate(vals.notice_start_date); const m = String(vals.requested_notice_period || '').match(/(\d+)\s*(week|day)/i);
+      if (st && m) follow('requested_last_date', longDate(isoUTC(addDays(st, Number(m[1]) * (/week/i.test(m[2]) ? 7 : 1)))), '_rq_auto');
+      [['requested_last_date', 'requested_last_day'], ['contract_last_date', 'contract_last_day'], ['last_notice_date', 'lastnotice_day']].forEach(([dk, wk]) => {
+        const d = anyDate(vals[dk]); if (d && k.has(wk)) { const w = WD_NAMES[d.getUTCDay()]; if (vals[wk] !== w) { vals[wk] = w; const i = $(`[data-k="${wk}"]`, el); if (i) i.value = w; } } });
+    };
+    const calc = () => { calcAssess(); salArr(); calcTransfer(); calcNoticeExt(); if (hasSal() || (!('basic_increment' in vals) && !keys().includes('basic_increment'))) return; const cur = mval(vals.current_basic); const inc = mval(vals.basic_increment);
       if (cur > 0 && !isNaN(inc) && String(vals.basic_increment ?? '').trim() !== '') { vals.basic_increment_pct = (inc / cur * 100).toFixed(2); vals.revised_basic = m2(cur + inc);
         ['basic_increment_pct', 'revised_basic'].forEach((k) => { const i = $(`[data-k="${k}"]`, el); if (i) i.value = vals[k]; }); }
       calcTransfer(); };
