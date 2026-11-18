@@ -20,6 +20,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-013 | 2026-11-02 | Pay calculation methods recorded (daily / calendar-day / hourly rates, unpaid leave, overtime, rest day, public holiday, AL payout and buy-back, notice in lieu, leave entitlements, statutory) with 8 open points to decide; idea: a "How pay is worked out" page in the CMS | Recorded — waiting for CLC's decisions on the open points |
 | PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | **Built in v2026.11.03-17:55** |
 | PRI-020 | 2026-11-07 | Retire the form apps' own sign-in together: once every form (SCF, OTCF, MTCF, PRFAF, TEC) is made in the CMS and stable, all form apps at once get the CMS notice / redirect and become read-only (F3) | Recorded; waits until all forms are stable in the CMS |
+| PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | Recorded — plan given (ebp), waiting for CLC's decisions |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -528,3 +529,20 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Status:** concept / plan stage (ebp). Key points from the first plan: kept as its own app and database because it holds children's
   data (the CMS keeps no children's names); parent consent and PDPA 2010 handling; no free chat between children; teachers and centres
   linked from the CMS (staff, centres, classes) and progress summaries flowing back to the CMS.
+
+## PRI-023 · Probation assessment on the JD KPIs, with a scoring rubric, PIP and a Probation Reviews page — recorded 2026-11-18
+- **Idea (CLC):** every newcomer passes probation on the KPIs of their JD. Each KPI is scored 1–5 by a rubric of 5 small checks (1 point
+  each, with the reason for each point). Total = sum of scores; % = total ÷ (number of criteria × 5) × 100 (e.g. 40 ÷ 45 = 88.89 % → S).
+  Grade bands (proposed): E 90–100, S 75–89.99, A 60–74.99, I 45–59.99, U below 45. Pass = S or better → recommend confirmation and offer
+  the confirmation letter. Below S → probation extended 3 months with a PIP, reviewed monthly; passing → as above; still below after the
+  extension → notice to end the contract, or another probation period (management decision).
+- **Build (when started):** auto total, % and grade in the review window (grade no longer chosen by hand; override only with a reason);
+  recommendation and letter suggested from the result; a dedicated Probation Reviews page (everyone on probation or extended, due dates,
+  reminders) for HOD / manager / HR / Director with their own permissions; the result written to the employee record (probation status,
+  latest %, grade, history).
+- **Case that raised it:** LIM ZHI YEE (Infant Childcare Associate, probation end 15 Oct 2026, review in progress since 21 Oct 2026,
+  9 criteria: 6 from the JD + 3 general ones, two of which repeat JD areas).
+- **Open decisions:** see the plan given on 18 Nov 2026 (bands, must-pass child-safety rule, score 0 or minimum 1, early confirmation
+  during the PIP, who scores / checks / approves, the general criteria, the rubric wording for the 228 distinct JD KPI areas, the
+  missing extension / PIP / non-confirmation letter templates).
+
