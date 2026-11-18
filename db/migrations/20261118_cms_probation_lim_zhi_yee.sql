@@ -1,0 +1,4 @@
+-- LIM ZHI YEE (M0726F0173): probation extension done outside the CMS (letter 14 Oct 2026, extension 15 Oct – 14 Nov 2026, 1 month);
+-- she passed the extension (assessed outside the CMS) → follow-up review recorded as "Passed → Confirm" (confirmation 14 Nov 2026),
+-- waiting for the Director's approval in the CMS (CLC 18 Nov 2026, option b). Applied once on 18 Nov 2026 (guarded).
+-- (see the applied migration cms_probation_lim_zhi_yee_outside in Supabase for the exact statements)

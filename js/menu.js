@@ -100,6 +100,7 @@ window.CMS_MENU = [
     ] },
     { group: 'Performance & Growth', icon: 'trend', items: [
       { route: 'careers', label: 'Career Paths', phase: 5, live: true, desc: 'Every employee on their JD level: time in level, salary against the cap, and the next level with its cap. MyEden salary caps are set here beside the JD (market) ranges; each person\'s timeline from application to today.' },
+      { route: 'performance/probation', label: 'Probation Reviews', phase: 5, live: true, desc: 'Everyone on probation: reviews scored on the JD KPIs (5 checks per KPI, 1 point each), the average of every reviewer, % and grade worked out, must-pass areas; HR checks and a Director approves. Below the pass: extension with a PIP reviewed monthly. Halfway check-ins, reviews started 30 days before the end, settings and KPI checks.' },
       { route: 'performance', label: 'KPI & Appraisal', phase: 5, live: true, desc: 'Probation reviews and annual appraisals: scored on the JD KPIs by the person they report to, approved by HR / Admin or a director. Approving confirms probation, sets the KPI grade in payroll (annual-leave carry forward) and can promote to the next JD level.' },
       { route: 'training', label: 'Training & Certificates', phase: 5, live: true, desc: 'First aid, PERMATA / KAAK, ECCE, SKM, food handler, typhoid and other certificates per person, with expiry reminders, required certificates, training sessions and certificates sent by staff for HR to verify.' },
     ] },
@@ -150,7 +151,7 @@ window.CMS_SOURCES = {
 window.CMS_MODULE_OF = {
   'people/add': 'people', 'people/directory': 'directory', person: 'people', 'people/selfservice': 'selfservice', 'people/tutors': 'tutors', tutor: 'tutor_self', positions: 'recruitment', applications: 'recruitment', interviews: 'recruitment', loec: 'recruitment', 'reports/movement': 'reports', handbook: 'people',
   'leave/balances': 'leave', 'leave/requests': 'leave', 'forms/scf': 'scf', 'forms/mtcf': 'mtcf', 'forms/tec': 'tec', 'forms/prfaf': 'prfaf', purchasing: 'purchasing', 'purchasing/pr': 'purchasing', 'purchasing/events': 'purchasing', 'purchasing/books': 'purchasing.finance', 'purchasing/reports': 'purchasing.finance', 'purchasing/settings': 'purchasing.settings',
-  'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
+  'payroll/reports': 'payroll', 'payroll/companies': 'payroll.paying', 'payroll/increments': 'payroll.increments', 'performance/probation': 'performance.probation', 'payroll/loans': 'payroll', 'payroll/settlement': 'payroll', 'payroll/import': 'payroll',
   'people/former': 'people', 'people/notice-calculator': 'people', 'people/ids': 'people', 'people/import': 'people',
   'leave/al-calculator': 'leave', calendar: 'leave', 'leave/closures': 'leave', 'leave/holiday-check': 'leave', 'leave/parental': 'leave', 'leave/year-end': 'leave', 'leave/import': 'leave', 'leave/audit': 'leave', 'leave/kpi': 'leave', time: 'payroll', 'time/part-time': 'payroll', 'time/hours': 'people',
   'settings/org': 'payroll.settings', 'settings/lists': 'payroll.settings', 'settings/payment-types': 'payroll.settings',

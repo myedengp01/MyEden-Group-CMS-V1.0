@@ -5468,11 +5468,12 @@
   const PROB_SRC = { recorded: 'set on the record', offer: 'from the offer (probation months)', assumed: 'assumed 3 months — set it when starting the review' };
   const SELF_Q = [['achievements', 'What went well / what you achieved'], ['challenges', 'What was difficult'], ['goals', 'Your goals for the next period'], ['support', 'Support or training you need'], ['comment', 'Anything else']];
   const apTag = (a) => `<span class="tag ${AP_ST[a.status][1]} xs">${AP_ST[a.status][0]}</span>${a.status === 'approved' && a.recommendation === 'extend' && !a.letter_issued_at ? ' <span class="tag bad xs">extension letter to issue</span>' : ''}${a.follow_up ? ' <span class="tag xs">after extension</span>' : ''}${a.self_requested ? (a.self_done ? ' <span class="tag ok xs">self-assessment in</span>' : ' <span class="tag xs">self-assessment pending</span>') : ''}`;
-  const apName = (a) => (a.kind === 'annual' ? `Annual appraisal ${a.year}` : 'Probation review');
+  const apName = (a) => (a.kind === 'annual' ? `Annual appraisal ${a.year}` : a.kind === 'checkin' ? 'Probation check-in' : `Probation review${a.pip_month ? ` · PIP month ${a.pip_month} of ${a.pip_months}` : ''}`);
   const gradeTag = (g, L = GRADE_LBL) => (g ? `<span class="tag ${g === 'E' || g === 'S' ? 'ok' : g === 'A' ? 'blue' : 'bad'} xs">${esc(g)} · ${esc(L[g] || '')}</span>` : '—');
 
   async function appraisalWindow(id, after) {
     let A; try { A = await API.rpc('cms_appraisal', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+    if ((A.kind === 'probation' || A.kind === 'checkin') && A.role !== 'self') return probationWindow(id, after);   // v2026.11.18: scored on the JD KPI checks
     const L = { ...GRADE_LBL, ...(A.grade_labels || {}) };
     if (A.role === 'self') {
       const canSelf = A.self_requested && A.status === 'open' && !A.self_done; const R = A.result;
@@ -5616,6 +5617,259 @@
       <section class="card"><div class="card-head"><h3>My appraisals</h3></div>${D.mine.length ? rows(D.mine, false) : '<div class="empty small"><p>No appraisal for you yet</p></div>'}</section>`;
     $$('[data-a]', el).forEach((r) => r.querySelector('button').addEventListener('click', () => appraisalWindow(r.dataset.a, () => { refreshSelf(); loadApprPending(); render(); })));
   }
+  // ================================================================ 5c · PROBATION REVIEWS (PRI-023, v2026.11.18)
+  // Scored on the JD KPIs: 5 checks per area (1 point each, minimum 1), the average of every reviewer per area, total ÷ (areas × 5) × 100,
+  // grade from the bands in Settings, must-pass areas; HR checks, a Director approves. Below the pass → extension with a PIP reviewed monthly.
+  const PB_REC = { confirm: 'Confirm (passed)', extend: 'Extend probation with a PIP', continue: 'Continue the PIP (next month)', end: 'Do not confirm (end employment)' };
+  const PB_ST = (r) => (!r ? '' : r.outside ? 'Recorded outside the CMS' : r.status === 'reviewed' ? 'Waiting for the Director' : r.complete ? 'Scored · waiting for HR' : 'Being scored');
+  const pctTxt = (v) => (v == null || v === '' ? '—' : `${Number(v).toFixed(2)}%`);
+  const prGrade = (S, pct) => { if (pct == null) return null; const b = S.bands || {}; return pct >= b.E ? 'E' : pct >= b.S ? 'S' : pct >= b.A ? 'A' : pct >= b.I ? 'I' : 'U'; };
+  const gRank = (g) => ({ E: 5, S: 4, A: 3, I: 2, U: 1 }[g] || 0);
+  const mustFail = (S, rows) => rows.filter((x) => x.score != null && (S.must_pass || []).some((m) => String(x.area || '').toLowerCase().includes(String(m.match).toLowerCase()) && Number(x.score) < Number(m.min)));
+  const addMonths = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); const day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(day, last)); return d.toISOString().slice(0, 10); };
+
+  async function probationWindow(id, after) {
+    let A; try { A = await API.rpc('cms_probation_review', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
+    if (A.kind === 'checkin') return checkinWindow(A, after);
+    const S = A.settings || {}; const L = { ...GRADE_LBL, ...(A.grade_labels || {}) }; const scores = A.scores || []; const R = A.result || {};
+    const meRev = (A.reviewers || []).find((r) => r.me) || null;
+    const pipTxt = A.pip_month ? `PIP month ${A.pip_month} of ${A.pip_months}` : '';
+    const revChips = (A.reviewers || []).map((r) => `<span class="tag ${r.submitted_at ? 'ok' : ''} xs" title="${r.level ? `JD L${r.level}` : 'no JD level'}">${esc(r.name)}${r.lead ? ' · lead' : ''}${r.submitted_at ? ' ✓' : ''}</span>`).join(' ') || '<span class="muted small">no reviewer yet — HR sets the reviewers</span>';
+    const multi = (A.reviewers || []).filter((r) => r.sheet && r.submitted_at);
+    const spread = (i) => { const v = multi.map((r) => Number(r.sheet?.[i]?.score)).filter((n) => !Number.isNaN(n)); return v.length > 1 ? Math.max(...v) - Math.min(...v) : 0; };
+    const resultBox = () => (A.outside ? `<div class="warn-box"><b>Assessed outside the CMS.</b> ${esc(A.outside_note || '')}${A.outside_letter_date ? ` · letter ${dShort(A.outside_letter_date)}` : ''}</div>`
+      : `<div class="table-wrap"><table class="data compact"><thead><tr><th>KPI area</th><th class="num">Score${multi.length > 1 ? ' (average)' : ''}</th><th>Comments</th></tr></thead><tbody>
+        ${scores.map((s, i) => `<tr><td><b>${esc(s.area)}</b><small class="sub">${esc(s.measure || '')}</small></td><td class="num">${s.score != null ? Number(s.score).toFixed(2).replace(/\.00$/, '') : '—'}${spread(i) >= 2 ? ' <span class="tag warn xs" title="Reviewers are 2 or more points apart">differs</span>' : ''}</td><td class="small">${esc(s.comment || '')}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td><b>Total</b></td><td class="num"><b>${R.complete ? `${Number(R.total).toFixed(2).replace(/\.00$/, '')} / ${R.max}` : `${R.scored || 0} of ${R.criteria || scores.length} scored`}</b></td><td>${R.complete ? `<b>${pctTxt(R.pct)}</b> → ${gradeTag(R.grade, L)} ${R.pass ? '<span class="tag ok xs">passed</span>' : '<span class="tag bad xs">not passed</span>'}` : ''}</td></tr></tfoot></table></div>
+        ${R.must_fail?.length ? `<div class="err-box"><b>Must-pass area below its minimum:</b> ${R.must_fail.map((m) => `${esc(m.area)} (${m.score} — needs ${m.min})`).join(', ')}</div>` : ''}
+        ${multi.length > 1 ? `<details><summary class="small">Each reviewer's scores</summary><div class="table-wrap"><table class="data compact"><thead><tr><th>KPI area</th>${multi.map((r) => `<th class="num">${esc(r.name)}</th>`).join('')}</tr></thead><tbody>
+          ${scores.map((s, i) => `<tr><td>${esc(s.area)}</td>${multi.map((r) => `<td class="num">${r.sheet?.[i]?.score ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : ''}`);
+    // my score sheet (a reviewer): 5 checks per area, score = ticks (minimum 1)
+    const own = A.can_score ? meRev?.sheet || null : null;
+    const sheetHtml = () => `<h4 class="sec-h">Your scores <small class="muted">tick what the person shows; the score is the number of ticks (minimum 1). A comment is needed for 2 or lower, and for 5.</small></h4>
+      ${scores.map((s, i) => { const o = own?.[i] || {}; const t = o.ticks || []; return `<div class="card pr-area" data-i="${i}"><div class="pr-head"><b>${esc(s.area)}</b><span class="tag xs" data-sc>${Math.max(1, t.filter(Boolean).length)}</span></div>
+        <small class="sub">${esc(s.measure || '')}</small>
+        ${(s.checks || []).map((c, k) => `<label class="chk"><input type="checkbox" name="t${i}_${k}" ${t[k] ? 'checked' : ''}> <span><b>${k + 1}.</b> ${esc(c)}</span></label>`).join('')}
+        <div class="grid-2 tight"><label class="fld"><span>Comment</span><input name="c${i}" maxlength="400" value="${esc(o.comment || '')}"></label>
+        <label class="fld"><span>Evidence <small class="muted">— optional: record, photo or document name / link</small></span><input name="e${i}" maxlength="300" value="${esc(o.evidence || '')}"></label></div></div>`; }).join('')}
+      <p class="small" id="pr-live"></p>
+      <div class="btn-row"><button type="button" class="btn" data-save>Save draft</button><button type="button" class="btn primary" data-send>Send my scores</button></div>`;
+    // HR check form
+    const failNow = R.complete && !R.pass;
+    const recDefault = A.recommendation || (A.outside ? '' : !R.complete ? '' : R.pass ? 'confirm' : A.pip_month && A.pip_month < A.pip_months ? 'continue' : A.pip_month ? 'end' : 'extend');
+    const recOpts = ['confirm', ...(A.pip_month && A.pip_month < A.pip_months ? ['continue'] : []), 'extend', 'end'];
+    const pend = A.probation_end || A.due || '';
+    const targets = A.pip_targets || scores.filter((s) => s.score != null && Number(s.score) <= 3).map((s) => ({ area: s.area, score: s.score, action: '', support: '' }));
+    const capDate = A.join_date ? addMonths(A.join_date, Number(S.cap_months || 12)) : null;
+    const checkHtml = () => `<h4 class="sec-h">HR check → Director</h4><div class="grid-2 tight">
+        <label class="fld"><span>Recommendation</span><select name="rec">${recOpts.map((r) => `<option value="${r}" ${recDefault === r ? 'selected' : ''}>${esc(PB_REC[r])}</option>`).join('')}</select></label>
+        ${A.outside ? '' : `<label class="fld"><span>Overall grade <small class="muted">— automatic: ${R.grade ? `${R.grade} (${pctTxt(R.pct)})` : '—'}</small></span><select name="rating">${['E', 'S', 'A', 'I', 'U'].map((g) => `<option value="${g}" ${(A.rating || R.grade) === g ? 'selected' : ''}>${g} · ${esc(L[g])}</option>`).join('')}</select></label>
+        <label class="fld fld-2" data-why hidden><span>Reason for changing the grade</span><input name="why" maxlength="300" value="${esc(A.rating_reason || '')}"></label>`}
+        <label class="fld" data-r="confirm"><span>Confirmation date <small class="muted">= probation end; earlier than ${dShort(pend)} = early confirmation</small></span><input type="date" name="con" value="${esc(A.confirm_on || (A.pip_month ? A.due || pend : pend))}"></label>
+        <label class="fld" data-r="extend"><span>PIP length</span><select name="pipm">${[1, 2, 3, 4, 5, 6].map((n) => `<option value="${n}" ${Number(A.next_pip_months || S.pip_months || 3) === n ? 'selected' : ''}>${n} month${n === 1 ? '' : 's'}${n === Number(S.pip_months || 3) ? ' (default)' : ''}</option>`).join('')}</select></label>
+        <label class="fld" data-r="extend"><span>New probation end date</span><input type="date" name="ext" value="${esc(A.rec_extend_to || (pend ? addMonths(pend, Number(A.next_pip_months || S.pip_months || 3)) : ''))}"></label>
+        <label class="fld fld-2" data-cap hidden><span>Beyond the ${esc(S.cap_months || 12)}-month cap (${capDate ? dShort(capDate) : '—'}): the Director's reason</span><input name="capwhy" maxlength="300"></label>
+        <div class="fld fld-2" data-r="extend continue"><span>PIP targets <small class="muted">— areas scored 3 or lower; what to do and the support given</small></span>
+          ${targets.length ? targets.map((t, k) => `<div class="grid-3 tight"><b class="small">${esc(t.area)}${t.score != null ? ` (${t.score})` : ''}</b><input name="pa${k}" placeholder="Action / target" maxlength="300" value="${esc(t.action || '')}"><input name="ps${k}" placeholder="Support given" maxlength="300" value="${esc(t.support || '')}"></div>`).join('') : '<p class="muted small">No area at 3 or lower.</p>'}</div>
+        <label class="fld fld-2"><span>Strengths</span><textarea name="str" rows="2">${esc(A.strengths || '')}</textarea></label>
+        <label class="fld fld-2"><span>To improve</span><textarea name="imp" rows="2">${esc(A.improvements || '')}</textarea></label></div>
+        ${failNow ? `<p class="small muted">Below the pass (${esc(S.pass_grade || 'S')} or better${(S.must_pass || []).length ? ', and every must-pass area at its minimum' : ''}): confirmation is not possible unless the grade is changed with a reason.</p>` : ''}
+        <div class="btn-row"><button type="button" class="btn primary" data-check>Send to the Director</button>${A.status === 'open' ? '<button type="button" class="btn" data-revs>Set reviewers…</button>' : ''}<button type="button" class="btn ghost" data-out>Result reached outside the CMS…</button></div>`;
+    const decided = A.status === 'approved';
+    const body = `<p class="muted small">${esc([A.employee_id, A.title, coShort(A.company)].filter(Boolean).join(' · '))}${A.position ? ` · JD ${esc(A.position.level)} ${esc(A.position.title)}` : ''} ${apTag(A)}</p>
+      <p class="small">Probation ends: <b>${dShort(pend)}</b>${pipTxt ? ` · <span class="tag warn xs">${esc(pipTxt)}</span>` : ''}${A.due ? ` · review due ${dShort(A.due)}` : ''} · reviewers ${revChips}</p>
+      ${A.pip_targets?.length && A.pip_month ? `<details class="card"><summary><b>PIP targets</b></summary>${A.pip_targets.map((t) => `<p class="small"><b>${esc(t.area)}</b>${t.action ? ` — ${esc(t.action)}` : ''}${t.support ? ` <span class="muted">(support: ${esc(t.support)})</span>` : ''}</p>`).join('')}</details>` : ''}
+      ${['hr', 'director'].includes(A.role) || decided ? resultBox() : ''}
+      ${A.can_score ? sheetHtml() : ''}
+      ${A.can_check && A.status === 'open' ? checkHtml() : ''}
+      ${A.status === 'reviewed' ? `<div class="warn-box"><b>Recommended: ${esc(PB_REC[A.recommendation] || A.recommendation || '')}</b>${A.rating ? ` · grade ${gradeTag(A.rating, L)}` : ''}${A.rating_reason ? ` <span class="small">(changed from ${esc(A.rating_auto || '—')}: ${esc(A.rating_reason)})</span>` : ''}
+        ${A.recommendation === 'confirm' && A.confirm_on ? `<br>Confirmation date ${dShort(A.confirm_on)}` : ''}${A.recommendation === 'extend' ? `<br>New probation end ${dShort(A.rec_extend_to)} · PIP ${A.next_pip_months} month(s), reviewed monthly` : ''}
+        <br><small class="muted">Checked by ${esc(A.reviewed_by || '')} ${A.reviewed_at ? dShort(A.reviewed_at) : ''}</small></div>
+        ${A.can_check ? `<details><summary class="small">Change the HR check</summary>${checkHtml()}</details>` : ''}` : ''}
+      ${A.can_approve ? `<div class="btn-row"><button type="button" class="btn primary" data-appr>Approve and apply…</button><button type="button" class="btn" data-ret>Return…</button></div>
+        <p class="muted small">Approving applies it: confirmation in payroll and the Employee Master; or the new probation end date and the first PIP review; or the next PIP month.</p>` : ''}
+      ${decided ? `<div class="warn-box"><b>Approved</b> by ${esc(A.approved_by || '')} · ${dShort(A.approved_at)}${A.outcome ? `<br>${esc(Object.entries(A.outcome).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · '))}` : ''}</div>
+        ${A.role === 'hr' && A.recommendation === 'confirm' ? '<div class="btn-row"><button type="button" class="btn sm" data-loc>Issue confirmation letter…</button><button type="button" class="btn sm" data-locloi>Issue confirmation and increment letter…</button></div>' : ''}
+        ${A.role === 'hr' && A.recommendation === 'extend' && !A.letter_issued_at ? '<div class="btn-row"><button type="button" class="btn sm" data-letter>Extension letter issued: mark it…</button></div>' : ''}
+        ${A.letter_issued_at ? `<p class="small">Extension letter issued ${dShort(A.letter_issued_at)}${A.letter_ref ? ` · ${esc(A.letter_ref)}` : ''}</p>` : ''}` : ''}`;
+    await modal({ title: `Probation review · ${A.name}`, ok: null, cancel: 'Close', wide: true, body,
+      onOpen: (w) => {
+        const f = $('form', w); const reopen = () => { $('[data-x]', w).click(); after?.(); setTimeout(() => probationWindow(id, after), 50); };
+        // live score of my own sheet
+        const live = () => { if (!A.can_score) return; let tot = 0;
+          scores.forEach((s, i) => { const n = Math.max(1, (s.checks || []).filter((c, k) => f[`t${i}_${k}`]?.checked).length); tot += n; const t = $(`[data-i="${i}"] [data-sc]`, w); if (t) t.textContent = n; });
+          const pct = Math.round((tot / (scores.length * 5)) * 10000) / 100; const g = prGrade(S, pct);
+          const mf = mustFail(S, scores.map((s, i) => ({ area: s.area, score: Math.max(1, (s.checks || []).filter((c, k) => f[`t${i}_${k}`]?.checked).length) })));
+          $('#pr-live', w).innerHTML = `Your total <b>${tot} / ${scores.length * 5}</b> = <b>${pctTxt(pct)}</b> → ${gradeTag(g, L)} ${gRank(g) >= gRank(S.pass_grade) && !mf.length ? '<span class="tag ok xs">passes</span>' : '<span class="tag bad xs">below the pass</span>'}${mf.length ? ` <span class="small">(${mf.map((m) => esc(m.area)).join(', ')} below the must-pass minimum)</span>` : ''}`; };
+        if (A.can_score) { $$('input[type=checkbox]', w).forEach((c) => c.addEventListener('change', live)); live(); }
+        const sheet = () => scores.map((s, i) => ({ ticks: (s.checks || []).map((c, k) => !!f[`t${i}_${k}`]?.checked), comment: f[`c${i}`].value, evidence: f[`e${i}`].value }));
+        const sendScores = async (submit) => { try { await API.rpc('cms_appraisal_score', { p_id: id, p: { items: sheet(), submit } }); toast(submit ? 'Scores sent' : 'Draft saved'); reopen(); } catch (e) { toast(e.message, 'err'); } };
+        $('[data-save]', w)?.addEventListener('click', () => sendScores(false));
+        $('[data-send]', w)?.addEventListener('click', () => sendScores(true));
+        // HR check
+        const sync = () => { const r = f.rec?.value; $$('[data-r]', w).forEach((x) => { x.hidden = !x.dataset.r.split(' ').includes(r); });
+          if (f.rating) $('[data-why]', w).hidden = !(R.grade && f.rating.value !== R.grade);
+          if (f.ext && capDate) $('[data-cap]', w).hidden = !(r === 'extend' && f.ext.value && f.ext.value > capDate); };
+        if (f.rec) { f.rec.addEventListener('change', sync); f.rating?.addEventListener('change', sync); f.ext?.addEventListener('change', sync);
+          f.pipm?.addEventListener('change', () => { if (pend) f.ext.value = addMonths(pend, Number(f.pipm.value)); sync(); }); sync(); }
+        const checkPayload = () => ({ recommendation: f.rec.value, rating: f.rating?.value || null, rating_reason: f.why?.value || null, confirm_on: f.con?.value || null,
+          rec_extend_to: f.ext?.value || null, pip_months: f.pipm?.value || null, cap_reason: f.capwhy?.value || null,
+          pip_targets: targets.map((t, k) => ({ area: t.area, score: t.score, action: f[`pa${k}`]?.value || null, support: f[`ps${k}`]?.value || null })),
+          strengths: f.str?.value || '', improvements: f.imp?.value || '' });
+        $('[data-check]', w)?.addEventListener('click', async () => { try { await API.rpc('cms_probation_check', { p_id: id, p: checkPayload() }); toast('Sent to the Director'); reopen(); } catch (e) { toast(e.message, 'err'); } });
+        $('[data-revs]', w)?.addEventListener('click', async () => { $('[data-x]', w).click(); await reviewersWindow(A); after?.(); probationWindow(id, after); });
+        $('[data-out]', w)?.addEventListener('click', async () => { $('[data-x]', w).click(); await outsideWindow(A); after?.(); probationWindow(id, after); });
+        const act = async (ret) => { $('[data-x]', w).click();
+          const done = await modal({ title: `${ret ? 'Return' : 'Approve'} · ${A.name}`, ok: ret ? 'Return' : 'Approve',
+            body: `<label class="fld"><span>${ret ? 'What should be changed' : 'Note (optional)'}</span><input name="note" maxlength="300"></label>`,
+            onOk: async (fm) => { if (ret && !fm.note.value.trim()) throw new Error('Say what should be changed.');
+              const out = await API.rpc('cms_appraisal_approve', { p_id: id, p_note: fm.note.value || null, p_return: ret });
+              if (!ret && out) toast(Object.entries(out).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ') || 'Approved'); } });
+          if (done) { after?.(); if (!ret) probationWindow(id, after); } };
+        $('[data-appr]', w)?.addEventListener('click', () => act(false));
+        $('[data-ret]', w)?.addEventListener('click', () => act(true));
+        const issue = (code) => { $('[data-x]', w).click(); location.hash = `#/letters?ws=new&person=${encodeURIComponent(A.person_id)}&type=${code}`; };
+        $('[data-loc]', w)?.addEventListener('click', () => issue('LOC'));
+        $('[data-locloi]', w)?.addEventListener('click', () => issue('LOC_LOI'));
+        $('[data-letter]', w)?.addEventListener('click', async () => { $('[data-x]', w).click();
+          const ok = await modal({ title: `Extension letter · ${A.name}`, ok: 'Mark as issued', body: '<label class="fld"><span>Letter reference (optional)</span><input name="ref" maxlength="80"></label>',
+            onOk: async (fm) => { await API.rpc('cms_appraisal_letter', { p_id: id, p_ref: fm.ref.value || null }); } });
+          if (ok) { toast('Extension letter recorded'); after?.(); } });
+      } });
+  }
+
+  async function reviewersWindow(A) {
+    let C; try { C = await API.rpc('cms_probation_reviewer_choices'); } catch (e) { toast(e.message, 'err'); return; }
+    const cur = (A.reviewers || []).map((r) => r.id);
+    const ok = await modal({ title: `Reviewers · ${A.name}`, ok: 'Save reviewers', wide: true,
+      body: `<p class="small muted">JD level L${esc(A.settings?.min_reviewer_level || 3)} and above. More than one reviewer: each scores on their own; the review shows the average per KPI. The first ticked is the lead. A reviewer also needs the "Probation Reviews" score permission (Users &amp; Roles).</p>
+        <label class="search-in">${icon('search')}<input id="rvq" type="search" placeholder="Name"></label>
+        <div class="pr-revs">${C.filter((c) => c.id !== A.person_id).map((c) => `<label class="chk" data-n="${esc(c.name.toLowerCase())}"><input type="checkbox" name="r" value="${esc(c.id)}" ${cur.includes(c.id) ? 'checked' : ''}> ${esc(c.name)} <small class="muted">L${c.level} · ${esc(c.title || '')} · ${esc(coShort(c.company) || '')}</small></label>`).join('')}</div>`,
+      onOpen: (w) => { $('#rvq', w).addEventListener('input', (e) => { const t = e.target.value.toLowerCase(); $$('[data-n]', w).forEach((x) => { x.hidden = !!t && !x.dataset.n.includes(t); }); }); },
+      onOk: async (f) => { const ids = [...cur.filter((x) => $$('input[name=r]:checked', f).some((c) => c.value === x)), ...$$('input[name=r]:checked', f).map((c) => c.value).filter((x) => !cur.includes(x))];
+        await API.rpc('cms_probation_reviewers', { p_id: A.id, p_ids: ids }); } });
+    if (ok) toast('Reviewers saved');
+  }
+
+  async function outsideWindow(A) {
+    const pend = A.probation_end || A.due || '';
+    const ok = await modal({ title: `Result reached outside the CMS · ${A.name}`, ok: 'Send to the Director', wide: true,
+      body: `<p class="small muted">For an assessment done on paper or before the CMS. The Director approves it like any other review; approving applies it.</p><div class="grid-2 tight">
+        <label class="fld fld-2"><span>How and when it was assessed</span><input name="note" maxlength="400" required placeholder="e.g. Assessed by the centre manager on paper, 12 Nov 2026"></label>
+        <label class="fld"><span>Result</span><select name="rec">${['confirm', 'extend', 'end'].map((r) => `<option value="${r}">${esc(PB_REC[r])}</option>`).join('')}</select></label>
+        <label class="fld"><span>Grade <small class="muted">— optional</small></span><select name="rating"><option value="">—</option>${['E', 'S', 'A', 'I', 'U'].map((g) => `<option>${g}</option>`).join('')}</select></label>
+        <label class="fld" data-r="confirm"><span>Confirmation date</span><input type="date" name="con" value="${esc(pend)}"></label>
+        <label class="fld" data-r="extend"><span>New probation end date</span><input type="date" name="ext"></label>
+        <label class="fld" data-r="extend"><span>PIP length (months)</span><input type="number" name="pipm" min="1" max="12" value="${esc(A.settings?.pip_months || 3)}"></label>
+        <label class="fld"><span>Letter date <small class="muted">— if a letter was already given</small></span><input type="date" name="ld"></label>
+        <label class="fld"><span>Letter reference</span><input name="lref" maxlength="80"></label></div>`,
+      onOpen: (w) => { const f = $('form', w); const s = () => $$('[data-r]', w).forEach((x) => { x.hidden = x.dataset.r !== f.rec.value; }); f.rec.addEventListener('change', s); s(); },
+      onOk: async (f) => { await API.rpc('cms_probation_outside', { p_id: A.id, p: { note: f.note.value, recommendation: f.rec.value, rating: f.rating.value || null, confirm_on: f.con.value || null,
+        rec_extend_to: f.ext.value || null, pip_months: f.pipm.value || null, letter_date: f.ld.value || null, letter_ref: f.lref.value || null } }); } });
+    if (ok) toast('Sent to the Director');
+  }
+
+  async function checkinWindow(A, after) {
+    const edit = A.status === 'open' && ['hr', 'director', 'reviewer', 'manager'].includes(A.role);
+    const ok = await modal({ title: `Probation check-in · ${A.name}`, ok: edit ? 'Save check-in' : null, cancel: 'Close',
+      body: `<p class="small muted">Halfway through probation (ends ${dShort(A.probation_end)}): an early warning, not scored. "At risk" lets HR and the person act before the review.</p>
+        <div class="grid-2 tight"><label class="fld"><span>How is it going?</span><select name="st" ${edit ? '' : 'disabled'}><option value="on_track" ${A.recommendation === 'on_track' ? 'selected' : ''}>On track</option><option value="at_risk" ${A.recommendation === 'at_risk' ? 'selected' : ''}>At risk</option></select></label>
+        <label class="fld fld-2"><span>Note</span><textarea name="note" rows="2" ${edit ? '' : 'disabled'}>${esc(A.strengths || '')}</textarea></label>
+        <label class="fld fld-2"><span>Actions agreed <small class="muted">— optional</small></span><textarea name="act" rows="2" ${edit ? '' : 'disabled'}>${esc(A.improvements || '')}</textarea></label></div>`,
+      onOk: async (f) => { await API.rpc('cms_probation_checkin', { p_id: A.id, p: { status: f.st.value, note: f.note.value, actions: f.act.value } }); } });
+    if (ok) { toast('Check-in saved'); after?.(); }
+  }
+
+  async function probationPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="pr-body">${loading()}</div>`;
+    let D; const load = async () => { D = await API.rpc('cms_probation_list'); D.rows.forEach((r) => upKeys(r, 'name')); };
+    try { await load(); } catch (e) { $('#pr-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const f = { tab: 'due', q: '' }; const L = { ...GRADE_LBL };
+    const reload = async () => { try { await load(); loadApprPending(); } catch (e) { toast(e.message, 'err'); } draw(); };
+    const dl = (r) => (r.probation_end ? daysTo(r.probation_end) : null);
+    const isDecided = (r) => ['Confirmed', 'Not confirmed'].includes(r.status);
+    const draw = () => {
+      const S = D.settings; const t = f.q.trim().toLowerCase(); const match = (r) => !t || `${r.name} ${r.employee_id || ''} ${r.title || ''}`.toLowerCase().includes(t);
+      const G = {
+        due: D.rows.filter((r) => !isDecided(r) && !r.review && dl(r) != null && dl(r) <= Number(S.start_days_before || 30)),
+        scoring: D.rows.filter((r) => r.review?.status === 'open'),
+        director: D.rows.filter((r) => r.review?.status === 'reviewed'),
+        pip: D.rows.filter((r) => r.review?.pip_month),
+        checkin: D.rows.filter((r) => r.checkin?.status === 'open'),
+        decided: D.rows.filter(isDecided),
+        all: D.rows.filter((r) => !isDecided(r)) };
+      const T = [['due', 'Due soon'], ['scoring', 'Being scored'], ['director', 'Waiting for the Director'], ['pip', 'On PIP'], ['checkin', 'Check-ins'], ['decided', 'Decided (60 days)'], ['all', 'All on probation']];
+      const rows = G[f.tab].filter(match);
+      $('#pr-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${T.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l} <span>${G[k].length}</span></button>`).join('')}</div>
+        <div class="toolbar"><label class="search-in">${icon('search')}<input id="prq" type="search" placeholder="Name or Employee ID" value="${esc(f.q)}" aria-label="Search"></label>
+          ${D.can.settings ? '<button type="button" class="btn sm" data-set>Settings &amp; KPI checks…</button>' : D.can.hr ? '<button type="button" class="btn sm" data-set>KPI checks…</button>' : ''}</div>
+        ${rows.length ? `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Person</th><th>Probation ends</th><th>Status</th><th>Review</th><th>Reviewers</th><th class="num">Score</th><th></th></tr></thead><tbody>
+          ${rows.map((r) => { const v = r.review; const d = dl(r); return `<tr><td><b>${esc(r.name)}</b><small class="sub">${esc([r.employee_id, r.title, coShort(r.company)].filter(Boolean).join(' · '))}</small></td>
+            <td class="nowrap">${dShort(r.probation_end)}${r.probation_source === 'assumed' ? ' <small class="muted">assumed</small>' : ''}${d != null && !isDecided(r) ? (d < 0 ? ` <span class="tag bad xs">${-d} days over</span>` : d <= 30 ? ` <span class="tag warn xs">${d} days</span>` : '') : ''}</td>
+            <td>${esc(r.status)}${r.checkin?.result ? `<small class="sub">check-in: ${r.checkin.result === 'at_risk' ? '<span class="tag bad xs">at risk</span>' : 'on track'}</small>` : ''}${!r.placed ? '<small class="sub"><span class="tag bad xs">not on a JD position</span></small>' : ''}</td>
+            <td>${v ? `${esc(PB_ST(v))}${v.due ? `<small class="sub">due ${dShort(v.due)}</small>` : ''}` : r.last ? `<small>${esc(PB_REC[r.last.recommendation] || r.last.recommendation || '')} · ${dShort(r.last.approved_at)}</small>${r.last.letter_due ? '<small class="sub"><span class="tag bad xs">extension letter to issue</span></small>' : ''}` : '<span class="muted small">not started</span>'}</td>
+            <td class="small">${v?.reviewers ? v.reviewers.map((x) => `${esc(x.name)}${x.done ? ' ✓' : ''}${x.me ? ' <span class="tag xs">you</span>' : ''}`).join('<br>') : '—'}</td>
+            <td class="num">${v?.pct != null ? `${pctTxt(v.pct)}<small class="sub">${gradeTag(v.grade, L)}</small>` : r.last?.pct != null ? pctTxt(r.last.pct) : '—'}</td>
+            <td class="nowrap">${v ? `<button type="button" class="btn sm ${v.reviewers?.some((x) => x.me && !x.done) || (D.can.approve && v.status === 'reviewed') ? 'primary' : ''}" data-open="${esc(v.id)}">Open</button>` : r.last ? `<button type="button" class="btn sm" data-open="${esc(r.last.id)}">Open</button>` : ''}
+              ${r.checkin?.status === 'open' ? `<button type="button" class="btn sm" data-open="${esc(r.checkin.id)}">Check-in</button>` : ''}
+              ${D.can.hr && !v && !isDecided(r) ? `<button type="button" class="btn sm primary" data-start="${esc(r.person_id)}" ${r.placed ? '' : 'disabled title="Place the person on a JD position first (Career Paths)"'}>Start…</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`
+        : '<div class="empty small"><p>Nothing here</p></div>'}</section>
+        <p class="muted small">Pass: grade ${esc(S.pass_grade)} or better (E ${S.bands.E}–100 · S ${S.bands.S}–${(S.bands.E - 0.01).toFixed(2)} · A ${S.bands.A}–${(S.bands.S - 0.01).toFixed(2)} · I ${S.bands.I}–${(S.bands.A - 0.01).toFixed(2)} · U below ${S.bands.I})${(S.must_pass || []).length ? `, and ${(S.must_pass || []).map((m) => `"${esc(m.match)}" at least ${m.min}`).join(', ')}` : ''}.
+          Below the pass: extension with a ${esc(S.pip_months)}-month PIP (length per case), reviewed monthly; confirmation as soon as the pass is reached. Reviews start ${esc(S.start_days_before)} days before probation ends; reviewers JD L${esc(S.min_reviewer_level)} and above; HR checks; a Director approves.</p>`;
+      $$('[data-tab]', el).forEach((b) => b.addEventListener('click', () => { f.tab = b.dataset.tab; draw(); }));
+      $('#prq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); const i = $('#prq', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $$('[data-open]', el).forEach((b) => b.addEventListener('click', () => probationWindow(b.dataset.open, reload)));
+      $$('[data-start]', el).forEach((b) => b.addEventListener('click', () => startWin(D.rows.find((r) => r.person_id === b.dataset.start))));
+      $('[data-set]', el)?.addEventListener('click', () => settingsWin());
+      fitTables();
+    };
+    const startWin = async (r) => {
+      let C; try { C = await API.rpc('cms_probation_reviewer_choices'); } catch (e) { toast(e.message, 'err'); return; }
+      const ok = await modal({ title: `Probation review · ${r.name}`, ok: 'Start', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld"><span>Probation ends (= confirmation date)</span><input name="pend" type="date" value="${esc(r.probation_end || '')}"><small class="muted">${esc(PROB_SRC[r.probation_source] || '')}</small></label>
+          <label class="fld"><span>Review due by</span><input name="due" type="date" value="${esc(r.probation_end || '')}"></label></div>
+          <p class="small"><b>Reviewers</b> <small class="muted">JD L${esc(D.settings.min_reviewer_level)} and above; the first ticked is the lead; each scores on their own and the review shows the average.</small></p>
+          <label class="search-in">${icon('search')}<input id="rvq" type="search" placeholder="Name"></label>
+          <div class="pr-revs">${C.filter((c) => c.id !== r.person_id).map((c) => `<label class="chk" data-n="${esc(c.name.toLowerCase())}"><input type="checkbox" name="r" value="${esc(c.id)}"> ${esc(c.name)} <small class="muted">L${c.level} · ${esc(c.title || '')} · ${esc(coShort(c.company) || '')}</small></label>`).join('')}</div>
+          <label class="chk"><input type="checkbox" name="self"> Ask for a self-assessment (My Appraisal; the person needs a linked login)</label>`,
+        onOpen: (w) => { $('#rvq', w).addEventListener('input', (e) => { const t = e.target.value.toLowerCase(); $$('[data-n]', w).forEach((x) => { x.hidden = !!t && !x.dataset.n.includes(t); }); }); },
+        onOk: async (fm) => { const ids = $$('input[name=r]:checked', fm).map((c) => c.value); if (!ids.length) throw new Error('Choose at least one reviewer.');
+          await API.rpc('cms_appraisal_start', { p: { person_id: r.person_id, kind: 'probation', due: fm.due.value || null, probation_end: fm.pend.value || null, reviewer_id: ids[0], reviewers: ids.slice(1), self_requested: fm.self.checked } }); } });
+      if (ok) { toast('Probation review started'); f.tab = 'scoring'; reload(); }
+    };
+    const settingsWin = async () => {
+      const S = D.settings; const R = D.rubrics || []; const canSet = D.can.settings;
+      const ok = await modal({ title: 'Probation assessment settings', ok: canSet ? 'Save settings' : null, cancel: 'Close', wide: true,
+        body: `${canSet ? `<h4 class="sec-h">Grades and pass</h4><div class="grid-3 tight">${['E', 'S', 'A', 'I'].map((g) => `<label class="fld"><span>${g} from (%)</span><input type="number" step="0.01" name="b${g}" value="${esc(S.bands[g])}"></label>`).join('')}
+            <label class="fld"><span>Pass grade</span><select name="pass">${['E', 'S', 'A', 'I'].map((g) => `<option ${S.pass_grade === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+            <label class="fld"><span>PIP default (months)</span><input type="number" name="pip" min="1" max="12" value="${esc(S.pip_months)}"></label>
+            <label class="fld"><span>Probation cap (months)</span><input type="number" name="cap" min="3" max="36" value="${esc(S.cap_months)}"></label>
+            <label class="fld"><span>Reviewers from JD level</span><input type="number" name="lvl" min="1" max="9" value="${esc(S.min_reviewer_level)}"></label>
+            <label class="fld"><span>Start the review (days before the end)</span><input type="number" name="days" min="7" max="90" value="${esc(S.start_days_before)}"></label>
+            <label class="fld"><span>&nbsp;</span><label class="chk"><input type="checkbox" name="ew" ${S.early_warning !== false ? 'checked' : ''}> Halfway check-in (early warning)</label></label></div>
+          <h4 class="sec-h">Must-pass areas <small class="muted">— a KPI area whose name contains the words, and the lowest score allowed</small></h4>
+          <div id="mp">${(S.must_pass || []).concat([{ match: '', min: 4 }]).map((m, k) => `<div class="grid-3 tight"><input name="mm${k}" placeholder="e.g. child safety" value="${esc(m.match)}"><input type="number" name="mn${k}" min="1" max="5" value="${esc(m.min)}"><span></span></div>`).join('')}</div>` : ''}
+          <h4 class="sec-h">KPI checks (5 per area, 1 point each)</h4>
+          <p class="small muted">An area without its own checks uses the general ladder. Checks are frozen into a review when it starts. Phase 2 adds checks for every JD KPI area.</p>
+          ${R.map((x) => `<details class="card"><summary><b>${esc(x.key === '*' ? 'General ladder' : x.area)}</b></summary>${x.checks.map((c, k) => `<p class="small">${k + 1}. ${esc(c)}</p>`).join('')}${D.can.hr ? `<button type="button" class="btn sm" data-rub="${esc(x.key)}">Edit…</button>` : ''}</details>`).join('')}
+          ${D.can.hr ? '<button type="button" class="btn sm" data-rub="">Add checks for a KPI area…</button>' : ''}`,
+        onOpen: (w) => { $$('[data-rub]', w).forEach((b) => b.addEventListener('click', async () => { $('[data-x]', w).click(); await rubricWin(R.find((x) => x.key === b.dataset.rub)); reload(); })); },
+        onOk: async (fm) => { const mp = []; for (let k = 0; fm[`mm${k}`]; k += 1) if (fm[`mm${k}`].value.trim()) mp.push({ match: fm[`mm${k}`].value.trim().toLowerCase(), min: Number(fm[`mn${k}`].value) || 4 });
+          D.settings = await API.rpc('cms_probation_settings_save', { p: { bands: { E: Number(fm.bE.value), S: Number(fm.bS.value), A: Number(fm.bA.value), I: Number(fm.bI.value) }, pass_grade: fm.pass.value,
+            must_pass: mp, pip_months: Number(fm.pip.value), cap_months: Number(fm.cap.value), min_reviewer_level: Number(fm.lvl.value), start_days_before: Number(fm.days.value), early_warning: fm.ew.checked } }); } });
+      if (ok) { toast('Settings saved'); draw(); }
+    };
+    const rubricWin = async (x) => {
+      const ok = await modal({ title: x ? `KPI checks · ${x.key === '*' ? 'General ladder' : x.area}` : 'Add checks for a KPI area', ok: 'Save checks', wide: true,
+        body: `${x ? '' : '<label class="fld"><span>KPI area (exactly as in the JD)</span><input name="area" maxlength="200" required></label>'}
+          ${[0, 1, 2, 3, 4].map((k) => `<label class="fld"><span>Check ${k + 1} (${k + 1} point${k ? 's' : ''} when ticked up to here)</span><input name="c${k}" maxlength="300" value="${esc(x?.checks?.[k] || '')}"></label>`).join('')}
+          <p class="small muted">From knowing the standard (1) to going beyond it (5). 4 = fully meets the standard for a newcomer.</p>`,
+        onOk: async (fm) => { await API.rpc('cms_kpi_rubric_save', { p: { key: x?.key || null, area: x ? x.area : fm.area.value, checks: [0, 1, 2, 3, 4].map((k) => fm[`c${k}`].value.trim()) } }); } });
+      if (ok) toast('Checks saved');
+    };
+    draw();
+  }
+
   async function loadApprPending() { try { state.apprPending = await API.rpc('cms_appraisals_pending'); drawBell(); } catch (e) { /* reminders only */ } }
   function apprTasks() {
     const x = state.apprPending; const t = []; if (!x) return t;
@@ -5623,6 +5877,8 @@
     if (x.to_review) t.push({ ic: 'trend', tone: 'violet', title: `${num(x.to_review)} appraisal${x.to_review === 1 ? '' : 's'} for you to review`, sub: 'People who report to you', href: selfOn('appraisal') ? '#/me/appraisal' : '#/performance' });
     if (x.to_approve) t.push({ ic: 'check-circle', tone: 'green', title: `${num(x.to_approve)} appraisal${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'KPI & Appraisal', href: '#/performance' });
     if (x.letters_due) t.push({ ic: 'mail', tone: 'rose', title: `${num(x.letters_due)} probation extension letter${x.letters_due === 1 ? '' : 's'} to issue`, sub: 'KPI & Appraisal › Approved', href: '#/performance' });
+    if (x.to_check) t.push({ ic: 'check-circle', tone: 'violet', title: `${num(x.to_check)} probation review${x.to_check === 1 ? '' : 's'} scored · HR check`, sub: 'Probation Reviews', href: '#/performance/probation' });
+    if (x.probation_review_soon) t.push({ ic: 'trend', tone: 'orange', title: `${num(x.probation_review_soon)} probation review${x.probation_review_soon === 1 ? '' : 's'} to score within 14 days`, sub: 'Probation Reviews', href: '#/performance/probation' });
     if (x.probation_due) t.push({ ic: 'trend', tone: 'orange', title: `${num(x.probation_due)} probation review${x.probation_due === 1 ? '' : 's'} due`, sub: 'Ending within 30 days or overdue', href: '#/performance' });
     return t;
   }
@@ -8423,7 +8679,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

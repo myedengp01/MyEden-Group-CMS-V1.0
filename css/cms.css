@@ -1327,3 +1327,12 @@ table.fp-t select{max-width:130px}
 .myp .nc-w { font-weight: 700; display: flex; gap: 6px; align-items: center; }
 .myp .nc-last { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; }
 @media (max-width: 640px) { .myp .nc-rule { grid-template-columns: auto 1fr; } }
+/* v2026.11.18 · Probation Reviews (PRI-023) */
+.pr-area { padding: 10px 12px; margin: 8px 0; }
+.pr-area .pr-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pr-area .chk { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; font-size: 13px; }
+.pr-area .chk input { margin-top: 3px; }
+.pr-revs { max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin: 6px 0 10px; }
+.pr-revs .chk { display: block; margin: 4px 0; }
+.grid-3.tight { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; margin: 4px 0; }
+@media (max-width: 640px) { .grid-3.tight { grid-template-columns: 1fr; } }

@@ -20,7 +20,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-013 | 2026-11-02 | Pay calculation methods recorded (daily / calendar-day / hourly rates, unpaid leave, overtime, rest day, public holiday, AL payout and buy-back, notice in lieu, leave entitlements, statutory) with 8 open points to decide; idea: a "How pay is worked out" page in the CMS | Recorded — waiting for CLC's decisions on the open points |
 | PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | **Built in v2026.11.03-17:55** |
 | PRI-020 | 2026-11-07 | Retire the form apps' own sign-in together: once every form (SCF, OTCF, MTCF, PRFAF, TEC) is made in the CMS and stable, all form apps at once get the CMS notice / redirect and become read-only (F3) | Recorded; waits until all forms are stable in the CMS |
-| PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | Recorded — plan given (ebp), waiting for CLC's decisions |
+| PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -545,4 +545,13 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Open decisions:** see the plan given on 18 Nov 2026 (bands, must-pass child-safety rule, score 0 or minimum 1, early confirmation
   during the PIP, who scores / checks / approves, the general criteria, the rubric wording for the 228 distinct JD KPI areas, the
   missing extension / PIP / non-confirmation letter templates).
+- **Decisions (CLC 18 Nov 2026):** settings as defaults, editable; child safety must-pass (≥ 4); minimum score 1; early confirmation during the PIP;
+  HOD / manager (any by permission, JD L3 and above, more than one allowed, scores averaged) score, HR checks, a Director approves;
+  duplicate general rows removed; evidence optional; halfway early-warning check-in; PIP length per case (default 3 months).
+- **Built in v2026.11.18-18:35 (phase 1):** Probation Reviews page, score sheets with 5 checks per area, averaging, automatic %, grade and
+  must-pass, HR check, Director approval, PIP flow (extend / continue / confirm early / end), outside-the-CMS results, daily start and
+  check-ins, settings and KPI-check editor, permission module `performance.probation`. LIM ZHI YEE recorded (extension outside the CMS,
+  passed → confirm 14 Nov 2026, waiting for the Director).
+- **Phase 2 to do:** 5-check wording for all 228 JD KPI areas (for HR review); letter templates: extension with PIP, PIP review notice,
+  non-confirmation of employment.
 
