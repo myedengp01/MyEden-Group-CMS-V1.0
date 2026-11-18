@@ -2339,7 +2339,7 @@
   };
 
   /** The letter's data, as MEG-EAF V2 gatherLoceData builds it (values escaped once here). */
-  function loecData(G, T, co) {
+  function loecData(G, T, co, es) {
     const A = G.applicant || {}; const c = (G.companies || []).find((x) => x.eaf === co) || {};
     const icRaw = [A.ic1, A.ic2, A.ic3].filter((x) => x).join('-'); const ic = icRaw.replace(/-/g, '') ? icRaw : (A.passport || '');
     const addr = [A.addr1, A.addr2, A.addr3, A.postcode_town, A.state].filter((x) => x && String(x).trim()).map(esc);
@@ -2363,6 +2363,7 @@
       jdReference: esc(T.v2JdReference || ''), jdLevel: esc(loecLevel(T.jobTitleLevel)),
       workingDays: esc(T.v2WorkingDays || ''), workingScheduleNote: esc(T.v2WorkingScheduleNote || ''), workingHoursText: parts.join(' and '),
       weeklyHours: T.cmsWeeklyHours ? esc(T.cmsWeeklyHours) : '',
+      signerName: esc(T.cmsSignatoryName || ''), signerDesig: esc(T.cmsSignatoryDesignation || ''), esign: es || null,
       clauses: { ot: lxClause(T.cmsClauseOt), alProrate: lxClause(T.cmsClauseAlProrate), alExcess: lxClause(T.cmsClauseAlExcess) }, appendix1: T.appendix1Text || '', appendices: Array.isArray(T.v2Appendices) ? T.v2Appendices : [],
     };
   }
@@ -2511,7 +2512,7 @@
     add('19.2', 'This Contract shall be stamped in accordance with applicable Malaysian stamp duty requirements within the required timeframe.');
     // acceptance and manual signing (Build 16)
     out.push(`<div class="lx-sign"><p class="lx-h" style="margin-top:4mm">ACCEPTANCE AND MANUAL SIGNING</p><p>By signing below, the Employee confirms that the complete Letter of Offer &amp; Contract of Employment and all included Appendices have been reviewed, the offer is accepted, and the employment contract is agreed at the same time.</p>
-      <table class="lx-sigtable"><tr><td>For and on behalf of the Employer<div class="lx-sigspace"></div>.....................................................<br>Name:<br>Designation:<br>Date:</td>
+      <table class="lx-sigtable"><tr><td>For and on behalf of the Employer<div class="lx-sigspace">${d.esign?.sig ? `<img class="lt-sig-img" src="${esc(d.esign.sig)}" alt="Signature">` : ''}${d.esign?.stamp ? `<img class="lt-stamp-img" src="${esc(d.esign.stamp)}" alt="Company stamp">` : ''}</div>.....................................................<br>Name:${d.signerName ? ` ${d.signerName}` : ''}<br>Designation:${d.signerDesig ? ` ${d.signerDesig}` : ''}<br>Date:</td>
       <td>Accepted and Signed by the Employee<div class="lx-sigspace"></div>.....................................................<br>Name:<br>NRIC/Passport No.:<br>Date:</td></tr></table></div>`);
     // Appendix 1 — Job Description (MEG-EAF buildLoceAppendixBlocks + the JD reference line)
     const ap = [`<h3 class="lx-ap">APPENDIX 1 — JOB DESCRIPTION</h3>`, `<p style="font-size:8.5pt;color:#555">${d.jdReference ? `JD Reference: <strong>${d.jdReference}</strong>${d.jdLevel ? ` · Level ${d.jdLevel}` : ''}` : ''}</p>`, `<p style="font-weight:700">Position: ${d.jobTitle}</p>`];
@@ -2554,7 +2555,8 @@
     el.innerHTML = `${pageHead(item)}<div id="lx-body">${loading()}</div>`;
     if (!appId) { $('#lx-body', el).innerHTML = errorCard('Open the offer letter from an application.'); return; }
     let G, J = null;
-    try { [G] = await Promise.all([API.rpc('cms_loec_get', { p_application: appId })]); try { J = await API.rpc('cms_jd'); } catch (e) { /* the JD list is optional */ } }
+    let SGL = { signatories: [], stamps: [] };
+    try { [G] = await Promise.all([API.rpc('cms_loec_get', { p_application: appId })]); try { J = await API.rpc('cms_jd'); } catch (e) { /* the JD list is optional */ } try { SGL = await signatoriesData(true); } catch (e) { /* signatory list optional */ } }
     catch (e) { $('#lx-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const recs = G.records || []; const open = recs.find((r) => r.status === 'draft');
     const live = recs.find((r) => !['draft', 'cancelled', 'superseded'].includes(r.status));
@@ -2603,7 +2605,8 @@
       return '';
     };
     const stamp = () => (rec && rec.status !== 'draft' ? '' : rec?.approved_at ? 'APPROVED — NOT YET ISSUED' : 'DRAFT — NOT ISSUED');
-    const sheetNow = () => loecSheet(loecData(G, T, co), rec?.document_id);
+    let esImgs = null; let sgOther = false;   // the issued letter's own e-signature / stamp pictures; "someone else" chosen
+    const sheetNow = () => loecSheet(loecData(G, T, co, esImgs), rec?.document_id);
     const ents = J ? Object.fromEntries(J.entities.map((x) => [x.id, x])) : {};
     const jdList = () => (J ? J.positions.filter((p2) => (ents[p2.entity_id]?.code || '').toUpperCase() === LOEC_CMS[co]) : []);
     const fieldsHtml = () => {
@@ -2643,6 +2646,10 @@
         <label class="fld"><span>Reporting to (title)</span><input data-k="reportingTitle" value="${v('reportingTitle')}"></label>
         <label class="fld"><span>OT / additional work category</span><select data-k="v2OtCategory">${o([['', 'HR determination required…'], ...LOEC_OT], T.v2OtCategory)}</select></label>
         <label class="fld"><span>Handbook</span><input data-k="v2Handbook" value="${v('v2Handbook')}"></label>
+        ${(() => { const list = SGL.signatories.filter((x) => x.active && (!x.companies.length || x.companies.includes(LOEC_CMS[co]))); const cur = list.find((x) => x.id === T.cmsSignatoryId);
+          const val = cur ? cur.id : T.cmsSignatoryName || sgOther ? 'other' : '';
+          return `<label class="fld fld-2"><span>Signed for the Employer <small class="muted">— fills the Name and Designation; the e-signature can be applied when it is issued</small></span><select data-sg><option value="">Choose…</option>${list.map((x) => `<option value="${esc(x.id)}" ${x.id === val ? 'selected' : ''}>${esc(x.name)}${x.designation ? ` · ${esc(x.designation)}` : ''}${x.sig ? ' ✎' : ''}</option>`).join('')}<option value="other" ${val === 'other' ? 'selected' : ''}>Someone else — type the name</option></select></label>
+            ${val ? `<label class="fld ${val !== 'other' ? 'ro' : ''}"><span>Name</span><input data-k="cmsSignatoryName" value="${v('cmsSignatoryName')}" ${val !== 'other' ? 'readonly' : ''}></label><label class="fld ${val !== 'other' ? 'ro' : ''}"><span>Designation</span><input data-k="cmsSignatoryDesignation" value="${v('cmsSignatoryDesignation')}" ${val !== 'other' ? 'readonly' : ''}></label>` : ''}`; })()}
         <fieldset class="fld fld-2"><legend>Optional clauses <small class="muted">— ticked by default on a new letter</small></legend>
           <label class="chk"><input type="checkbox" data-k="cmsClauseOt" ${lxClause(T.cmsClauseOt) ? 'checked' : ''}> 5.5 Overtime rule (authorised in advance, 1.5× / 2× / 3×, hourly rate on up to 8 hours a day)</label>
           <label class="chk"><input type="checkbox" data-k="cmsClauseAlProrate" ${lxClause(T.cmsClauseAlProrate) ? 'checked' : ''}> 7.4 Annual leave pro-rated in the joining / leaving year</label>
@@ -2675,7 +2682,7 @@
     $('#lx-body', el).innerHTML = `
       <section class="card"><div class="card-head"><h3>${esc(A.name || '')}</h3><span class="muted small">${esc(coShort(G.company))} · ${appStageTag(G.stage)}${G.decision ? ` · decision: ${esc(G.decision)}` : ''}</span></div>
         <div id="lx-status">${statusHtml()}</div>
-        <p class="muted small">Combined Letter of Offer &amp; Contract of Employment, Version 2.0 (the MEG-EAF V2 letter). HR / Admin prepares, an Admin or Director approves, then it is issued. Changing a draft after it was sent or approved needs approval again. Signed copy, verification and stamp duty stay in MEG-EAF V2 and show on Offers &amp; Onboarding.</p>
+        <p class="muted small">Combined Letter of Offer &amp; Contract of Employment, Version 2.0. HR / Admin prepares, an Admin or Director approves, then it is issued — with the signatory's e-signature and the company stamp if chosen. Changing a draft after it was sent or approved needs approval again. It is listed in HR Letters with every other letter; the signed copy, verification and stamp duty are recorded in the application window and show on Offers &amp; Onboarding.</p>
         <div class="btn-row" id="lx-btns">${btns()}</div><p class="form-err" id="lx-err" hidden></p></section>
       <div class="lt-split lx-split">${editable ? `<section class="card"><div class="card-head"><h3>Offer terms</h3><span class="muted small">Saved to the application too, so MEG-EAF V2 shows the same.</span></div><div id="lx-fields">${fieldsHtml()}</div><div id="lx-check"></div></section>` : ''}
         <section class="card"><div class="card-head"><h3>Letter</h3>${stamp() ? `<span class="tag warn xs">${esc(stamp())}</span>` : ''}</div><div class="lt-prev lx-prev" id="lx-prev"></div></section></div>`;
@@ -2687,12 +2694,16 @@
       ch.innerHTML = `${m.length ? `<p class="warn-box small"><b>Needed before sending for approval:</b> ${esc(m.join(', '))}.</p>` : '<p class="small ok-txt">All the terms the letter needs are filled in.</p>'}${w ? `<p class="warn-box small">${esc(w)}</p>` : ''}`;
     };
     drawPrev();
+    if (rec?.esign && (rec.esign.sig_path || rec.esign.stamp_path)) {
+      Promise.all([esignImg(rec.esign.sig_path), esignImg(rec.esign.stamp_path)]).then(([a, c]) => { esImgs = { sig: a, stamp: c }; drawPrev(); }).catch((x) => toast(`The e-signature picture could not be loaded: ${x.message}`, 'err'));
+    }
     if (editable) {
       const box = $('#lx-fields', el);
       const onInput = (e) => {
-        const t = e.target; dirty = true;
+        const t = e.target; if (!t.isConnected) return; dirty = true;
         if (t.dataset.k) {
-          const k = t.dataset.k; T[k] = t.type === 'checkbox' ? t.checked : t.value;
+          const k = t.dataset.k; if (/^cmsSignatory(Name|Designation)$/.test(k) && T.cmsSignatoryId) return;   // picked from the list: not typed
+          T[k] = t.type === 'checkbox' ? t.checked : t.value;
           if (k === 'finalSalaryWords') wordsEdited = !!t.value && t.value !== lxWords(T.finalSalary);
           if (k === 'finalSalary' && !wordsEdited) { T.finalSalaryWords = t.value ? lxWords(t.value) : ''; const w = $('[data-k="finalSalaryWords"]', box); if (w) w.value = T.finalSalaryWords; }
           if (['v2EmploymentType', 'v2PayBasis', 'v2Session2Enabled'].includes(k) && e.type === 'change') { box.innerHTML = fieldsHtml(); }
@@ -2700,6 +2711,12 @@
           const orig = G.terms.workLocation || '';
           if (t.value === orig && !lxOn(G.terms.workLocationOther)) { T.workLocation = orig; T.workLocationOther = false; T.workLocationOtherText = ''; }
           else { T.workLocationOther = true; T.workLocationOtherText = t.value; }
+        } else if (t.hasAttribute('data-sg') && e.type === 'change') {
+          const x = SGL.signatories.find((y) => y.id === t.value);
+          if (x) Object.assign(T, { cmsSignatoryId: x.id, cmsSignatoryName: x.name, cmsSignatoryDesignation: x.designation });
+          else { const keep = t.value === 'other' && !T.cmsSignatoryId; Object.assign(T, { cmsSignatoryId: '', cmsSignatoryName: keep ? T.cmsSignatoryName || '' : '', cmsSignatoryDesignation: keep ? T.cmsSignatoryDesignation || '' : '' }); }
+          sgOther = t.value === 'other';
+          box.innerHTML = fieldsHtml();
         } else if (t.hasAttribute('data-co') && e.type === 'change') {
           const old = coOf(co).handbook; co = t.value; if (!T.v2Handbook || T.v2Handbook === old) T.v2Handbook = coOf(co).handbook || ''; box.innerHTML = fieldsHtml();
         } else if (t.hasAttribute('data-jd') && e.type === 'change' && t.value) {
@@ -2746,9 +2763,11 @@
         }
         if (act === 'issue') {
           if (dirty) { b.disabled = false; err('Save the changes first (they need approval again).'); return; }
-          const ok = await confirmBox(`Issue ${rec.document_id}`, 'The terms are frozen and the application moves to <b>Offer issued</b>. Print the letter for signing; the signed copy, verification and stamp duty are recorded in MEG-EAF V2.', 'Issue', false,
-            async () => { await API.rpc('cms_loec_issue', { p_loec: rec.id }); });
-          b.disabled = false; if (ok) { toast(`${rec.document_id} issued`); loadLoecPending(); reload(); } return;
+          const ch = await esignAsk({ fields: { _signatory_id: T.cmsSignatoryId, authorized_signatory: String(T.cmsSignatoryName || '').trim() }, company: LOEC_CMS[co], person: A.name, title: `Issue ${rec.document_id}`,
+            intro: `<p>The terms are frozen and the application moves to <b>Offer issued</b>. Print the letter for signing; the signed copy, verification and stamp duty are recorded in the application window. It is kept in HR Letters with the other letters.</p>` });
+          if (!ch) { b.disabled = false; return; }
+          await esignApply(rec.id, ch); await API.rpc('cms_loec_issue', { p_loec: rec.id });
+          b.disabled = false; toast(`${rec.document_id} issued${ch.sig || ch.stamp ? ` with ${[ch.sig && 'e-signature', ch.stamp && 'company stamp'].filter(Boolean).join(' and ')}` : ''}`); loadLoecPending(); state.lettersData = null; reload(); return;
         }
         if (act === 'revise') {
           const ok = await modal({ title: `New revision · ${live.document_id}`, ok: 'Start new revision', danger: true,
@@ -6183,6 +6202,33 @@
   async function esignBlob(path) { const { data, error } = await esignBucket().download(path); if (error) throw new Error(error.message || 'The picture could not be loaded.'); return data; }
   const esignImgCache = new Map();
   function esignImg(path) { if (!path) return Promise.resolve(null); if (!esignImgCache.has(path)) { const p = esignBlob(path).then(blobToDataUrl); esignImgCache.set(path, p); p.catch(() => esignImgCache.delete(path)); } return esignImgCache.get(path); }
+  // issuing (HR letters and the offer letter): the e-signature of the letter's signatory and the company stamp, only what this person
+  // may apply; resolves { sig, stamp } (null = not applied) or null when cancelled
+  async function esignAsk({ fields, company, person, title = 'Issue letter', intro = '', ok = 'Issue' }) {
+    let S; try { S = await signatoriesData(true); } catch (e) { S = { signatories: [], stamps: [] }; }
+    const f0 = fields || {}; const co0 = company;
+    const x = S.signatories.find((y) => y.id === f0._signatory_id) || (!f0._signatory_id ? S.signatories.find((y) => y.active && y.name.trim().toLowerCase() === String(f0.authorized_signatory || '').trim().toLowerCase()) : null);
+    const coOk = x && (!x.companies.length || x.companies.includes(co0));
+    const sigWhy = !x ? `${esc(f0.authorized_signatory || 'The signatory')} is not on the signatory list` : !coOk ? `${esc(x.name)} does not sign for ${esc(co0)}` : !x.sig ? `${esc(x.name)} has no e-signature yet` : !x.can_use ? `You are not allowed to apply ${esc(x.name)}'s e-signature` : '';
+    const stp = S.stamps.find((y) => y.company === co0 && y.path);
+    let out = null;
+    const done = await modal({ title, ok,
+      body: `${intro || `<p>Issue this letter to <b>${esc(person || '')}</b>? It is then locked and kept in their records.</p>`}
+        <label class="chk"><input type="checkbox" name="sig" ${sigWhy ? 'disabled' : 'checked'}> Apply ${x ? `<b>${esc(x.name)}</b>'s` : 'the'} e-signature</label>${sigWhy ? `<p class="muted small">${sigWhy} — the letter is signed by pen.</p>` : `<p class="muted small">${x.is_mine ? 'Your own signature.' : `${esc(x.name)} gets a notice in the CMS.`}</p>`}
+        ${stp ? `<label class="chk"><input type="checkbox" name="stamp"> Apply the ${esc(coShort(co0) || co0)} company stamp <small class="muted">optional</small></label>` : ''}
+        <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`,
+      onOk: (fm) => { out = { sig: !sigWhy && fm.sig.checked ? x : null, stamp: stp && fm.stamp?.checked ? stp : null }; } });
+    return done ? out : null;
+  }
+  // copies of the chosen pictures kept with the letter, then recorded on it (before the letter is issued); returns the picture files
+  async function esignApply(letterId, ch) {
+    const pics = {}; let sigPath = null; let stampPath = null;
+    if (ch?.sig) { const b = await esignBlob(ch.sig.sig.path); sigPath = await esignPut(`issued/${letterId}/${crypto.randomUUID()}.png`, b); pics.sig = b; }
+    if (ch?.stamp) { const b = await esignBlob(ch.stamp.path); stampPath = await esignPut(`issued/${letterId}/${crypto.randomUUID()}.png`, b); pics.stamp = b; }
+    await API.rpc('cms_letter_esign', { p_id: letterId, p_sig_path: sigPath, p_stamp_path: stampPath });
+    esignImgCache.clear(); return pics;
+  }
+  const esignPicture = async (blob) => { let w = 600; let h = 200; try { const bm = await createImageBitmap(blob); w = bm.width; h = bm.height; bm.close?.(); } catch (e) { /* default shape */ } return { data: await blob.arrayBuffer(), w, h }; };
   async function esignPut(path, blob) { const { error } = await esignBucket().upload(path, blob, { contentType: 'image/png', upsert: false }); if (error) throw new Error(error.message || 'The picture could not be saved.'); return path; }
   const LETTERHEADS = { MEG: 'assets/letterheads/MEG.jpg', HD: 'assets/letterheads/HD.jpg', ABP: 'assets/letterheads/ABP.jpg', MEH: 'assets/letterheads/MEH.jpg' };
   const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -6756,7 +6802,7 @@
     const reload = async () => { const y = pageScroller().scrollTop; try { await load(); loadLettersPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
     const tag = (m, s) => { const [l, c] = m[s] || [s, '']; return `<span class="tag ${c} xs">${esc(l)}</span>`; };
     const letterRows = (list, when) => (list.length ? `<div class="table-wrap fill"><table class="data freeze2 click"><thead><tr><th>Person</th><th>Letter</th><th>Status</th><th>${when}</th><th></th></tr></thead><tbody>
-      ${list.map((l) => `<tr data-ws="${esc(l.id)}"><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}${l.origin === 'recorded' ? ' <span class="tag xs" title="Issued before the CMS; the signed PDF is the letter">Recorded (pre-CMS)</span>' : l.format === 'docx' ? ' <span class="tag xs">Word</span>' : ''}${l.signed_path && l.origin !== 'recorded' ? ' <span class="tag ok xs">Signed</span>' : ''}${l.reference ? `<small class="sub">${esc(l.reference)}${l.letter_date ? ` · dated ${dShort(l.letter_date)}` : ''}</small>` : ''}</td>
+      ${list.map((l) => `<tr data-ws="${esc(l.id)}"><td><b>${esc(l.name)}</b><small class="sub">${esc(l.employee_id || '')}</small></td><td>${esc(l.title || l.template)}${l.template === 'LOEC' ? ` <span class="tag blue xs" title="Prepared from the application">Offer</span>` : ''}${l.origin === 'recorded' ? ' <span class="tag xs" title="Issued before the CMS; the signed PDF is the letter">Recorded (pre-CMS)</span>' : l.format === 'docx' ? ' <span class="tag xs">Word</span>' : ''}${l.signed_path && l.origin !== 'recorded' ? ' <span class="tag ok xs">Signed</span>' : ''}${l.reference ? `<small class="sub">${esc(l.reference)}${l.letter_date ? ` · dated ${dShort(l.letter_date)}` : ''}</small>` : ''}</td>
         <td>${tag(LET_ST, l.status)}${l.rejected && l.status === 'draft' ? '<small class="sub bad-t">sent back</small>' : ''}</td>
         <td class="nowrap">${dShort(l.issued_at || l.approved_at || l.submitted_at || l.created_at)}<small class="sub">${esc(l.issued_by || l.approved_by_name || l.created_by_name || '')}</small></td>
         <td><button type="button" class="btn sm" data-ws="${esc(l.id)}">Open</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty small"><p>Nothing here</p></div>');
@@ -6788,13 +6834,13 @@
             <td><b>${esc(x.title)}</b> <small class="muted">${esc(x.code)}</small> ${x.format === 'docx' ? '<span class="tag xs">Word</span>' : '<span class="tag xs">Text</span>'}${x.company ? ` <span class="tag xs">${esc(coShort(x.company) || x.company)}</span>` : ''}
               <small class="sub">${tplKeys(x.body).length} field${tplKeys(x.body).length === 1 ? '' : 's'}${x.created_by_name ? ` · by ${esc(x.created_by_name)}` : ''}${x.reviewed_by_name ? ` · approved by ${esc(x.reviewed_by_name)}` : ''}</small></td>
             <td>${tag(TPL_ST, x.status)}${x.pending?.submitted_at ? '<small class="sub">change waiting for approval</small>' : x.pending ? `<small class="sub">${x.pending.rejected ? 'change sent back' : 'change in draft'}</small>` : ''}${x.retire_request ? '<small class="sub">retirement asked</small>' : ''}${x.status === 'rejected' && x.review_note ? `<small class="sub">${esc(x.review_note)}</small>` : ''}</td>
-            <td>${x.status === 'published' ? (L.can_switch ? `<label class="switch" title="Switch on to use for letters"><input type="checkbox" data-on="${esc(x.code)}" ${x.active ? 'checked' : ''}><span></span></label>` : (x.active ? '<span class="tag ok xs">On</span>' : '<span class="tag xs">Off</span>')) : '—'}</td>
+            <td>${x.code === 'LOEC' ? '<small class="muted">from the application</small>' : x.status === 'published' ? (L.can_switch ? `<label class="switch" title="Switch on to use for letters"><input type="checkbox" data-on="${esc(x.code)}" ${x.active ? 'checked' : ''}><span></span></label>` : (x.active ? '<span class="tag ok xs">On</span>' : '<span class="tag xs">Off</span>')) : '—'}</td>
             <td class="num">${num(x.used || 0)}</td>
-            <td class="nowrap">${x.status === 'published' && x.active && L.can_edit ? `<a class="btn sm" href="#/letters?ws=new&template=${encodeURIComponent(x.code)}">Use</a> ` : ''}
+            <td class="nowrap">${x.code === 'LOEC' ? '<span class="muted small">Prepared on the Offer letter page of the application (Recruitment › Applications)</span>' : `${x.status === 'published' && x.active && L.can_edit ? `<a class="btn sm" href="#/letters?ws=new&template=${encodeURIComponent(x.code)}">Use</a> ` : ''}
               ${L.can_publish && (x.status === 'pending' || x.pending?.submitted_at || x.retire_request) ? `<button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button> ` : ''}
               ${L.can_change && x.status !== 'retired' ? `<a class="btn sm ghost" href="#/letters?${x.format === 'docx' ? 'import' : 'tpl'}=${encodeURIComponent(x.code)}">Edit</a> ` : ''}
               <button type="button" class="btn sm ghost" data-hist="${esc(x.code)}">History</button>
-              ${L.can_change && x.status !== 'retired' && !x.retire_request ? ` <button type="button" class="btn sm ghost" data-retire="${esc(x.code)}">Retire…</button>` : ''}</td></tr>`).join('')}`).join('')}</tbody></table></div>` : '<div class="empty small"><p>No templates</p></div>';
+              ${L.can_change && x.status !== 'retired' && !x.retire_request ? ` <button type="button" class="btn sm ghost" data-retire="${esc(x.code)}">Retire…</button>` : ''}`}</td></tr>`).join('')}`).join('')}</tbody></table></div>` : '<div class="empty small"><p>No templates</p></div>';
       } else {
         const list = L.placeholders.filter((p) => !t || `${p.key} ${p.label}`.toLowerCase().includes(t));
         box.innerHTML = `<div class="table-wrap fill"><table class="data freeze2"><thead><tr><th>Placeholder</th><th>Label</th><th>Type</th><th>Filled</th><th>Used in</th><th></th></tr></thead><tbody>
@@ -6954,6 +7000,7 @@
     const OPT = new Map((L.options || []).map((o) => [o.key, o]));
     const id = q.get('ws') === 'new' ? null : q.get('ws'); const rec = id ? L.letters.find((x) => x.id === id) : null;
     if (id && !rec) { el.innerHTML = errorCard('This letter was not found, or you cannot see it.'); return; }
+    if (rec && rec.template === 'LOEC') { location.replace(`#/loec?app=${encodeURIComponent(rec.fields?.application_id || '')}`); return; }   // the offer letter has its own page
     const usable = L.templates.filter((t) => (t.status === 'published' && t.active && t.code !== 'TRL_LOP') || (L.can_jd_test && t.code === 'TRL_LOP' && t.status !== 'retired'));
     const type = q.get('type');
     let code = rec?.template || q.get('template') || (type ? (usable.find((t) => t.code === type) || usable.find((t) => t.letter_type === type))?.code : '') || '';
@@ -7502,31 +7549,11 @@
     $('#lw-acts', el).innerHTML = acts.join('');
     const payload = (submit) => { const t = tpl(); return { id: rec?.id || null, person_id: personId, template: t.code, fields: vals, text: textNow(), company: co ? { ...co, logo: undefined } : null, appraisal_id: appraisal, submit }; };
     const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
-    // issue: choose whether to apply the e-signature / company stamp (only what this person may apply), then issue
-    const issueChoices = async () => {
-      let S; try { S = await signatoriesData(true); SG = S; } catch (e) { S = { signatories: [], stamps: [] }; }
-      const f0 = rec.fields || vals; const co0 = coCode || co?.code || rec.company;
-      const x = (S.signatories || []).find((y) => y.id === f0._signatory_id) || (!f0._signatory_id ? (S.signatories || []).find((y) => y.active && y.name.trim().toLowerCase() === String(f0.authorized_signatory || '').trim().toLowerCase()) : null);
-      const coOk = x && (!x.companies.length || x.companies.includes(co0));
-      const sigWhy = !x ? `${esc(f0.authorized_signatory || 'The signatory')} is not on the signatory list` : !coOk ? `${esc(x.name)} does not sign for ${esc(co0)}` : !x.sig ? `${esc(x.name)} has no e-signature yet` : !x.can_use ? `You are not allowed to apply ${esc(x.name)}'s e-signature` : '';
-      const stp = (S.stamps || []).find((y) => y.company === co0 && y.path);
-      let out = null;
-      const ok = await modal({ title: 'Issue letter', ok: 'Issue',
-        body: `<p>Issue this letter to <b>${esc(rec.name)}</b>? It is then locked and kept in their records.</p>
-          <label class="chk"><input type="checkbox" name="sig" ${sigWhy ? 'disabled' : 'checked'}> Apply ${x ? `<b>${esc(x.name)}</b>'s` : 'the'} e-signature</label>${sigWhy ? `<p class="muted small">${sigWhy} — the letter is signed by pen.</p>` : `<p class="muted small">${x.is_mine ? 'Your own signature.' : `${esc(x.name)} gets a notice in the CMS.`}</p>`}
-          ${stp ? `<label class="chk"><input type="checkbox" name="stamp"> Apply the ${esc(coShort(co0) || co0)} company stamp <small class="muted">optional</small></label>` : ''}
-          <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`,
-        onOk: (fm) => { out = { sig: !sigWhy && fm.sig.checked ? x : null, stamp: stp && fm.stamp?.checked ? stp : null }; } });
-      return ok ? out : null;
-    };
-    const imgOf = async (blob) => { let w = 600; let h = 200; try { const bm = await createImageBitmap(blob); w = bm.width; h = bm.height; bm.close?.(); } catch (e) { /* default shape */ } return { data: await blob.arrayBuffer(), w, h }; };
+    const issueChoices = () => esignAsk({ fields: rec.fields || vals, company: coCode || co?.code || rec.company, person: rec.name });
     const doIssue = async (ch) => {
-      const t = tpl(); let path = null; const pics = {}; let sigPath = null; let stampPath = null;
-      if (ch?.sig) { const b = await esignBlob(ch.sig.sig.path); sigPath = await esignPut(`issued/${rec.id}/${crypto.randomUUID()}.png`, b); pics.sig = b; }
-      if (ch?.stamp) { const b = await esignBlob(ch.stamp.path); stampPath = await esignPut(`issued/${rec.id}/${crypto.randomUUID()}.png`, b); pics.stamp = b; }
-      await API.rpc('cms_letter_esign', { p_id: rec.id, p_sig_path: sigPath, p_stamp_path: stampPath });
+      const t = tpl(); let path = null; const pics = await esignApply(rec.id, ch);
       if (t.format === 'docx') { const f0 = rec.fields || vals; const src = await getDocx(t.source_path);
-        const imgs = pics.sig || pics.stamp ? { sig: pics.sig ? await imgOf(pics.sig) : null, stamp: pics.stamp ? await imgOf(pics.stamp) : null } : null;
+        const imgs = pics.sig || pics.stamp ? { sig: pics.sig ? await esignPicture(pics.sig) : null, stamp: pics.stamp ? await esignPicture(pics.stamp) : null } : null;
         const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs), f0.authorized_signatory, f0.authorized_designation), f0, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
