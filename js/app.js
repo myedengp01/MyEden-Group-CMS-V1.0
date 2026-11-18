@@ -3093,10 +3093,10 @@
     if (!r) return '<span class="muted">—</span>';
     const s = hbState(r); if (!s) return '<span class="muted small">not assigned</span>';
     const late = s !== 'acknowledged' && r.due_at && daysTo(r.due_at) < 0;
-    return `<span class="tag ${HB[s][1]} xs">${HB[s][0]}</span>${s === 'acknowledged' ? `<small class="sub">${dShort(r.acknowledged_at)}</small>` : r.progress != null ? `<small class="sub ${late ? 'bad-txt' : ''}">${r.progress}% read${r.due_at ? ` · due ${dShort(r.due_at)}` : ''}</small>` : ''}`;
+    return `${r.assignment_id && can('handbook') ? `<a href="${esc(asset(`handbook/?review=${encodeURIComponent(r.assignment_id)}`))}" target="_blank" rel="noopener" title="Open the handbook read only" class="tag ${HB[s][1]} xs">${HB[s][0]}</a>` : `<span class="tag ${HB[s][1]} xs">${HB[s][0]}</span>`}${s === 'acknowledged' ? `<small class="sub">${dShort(r.acknowledged_at)}</small>` : r.progress != null ? `<small class="sub ${late ? 'bad-txt' : ''}">${r.progress}% read${r.due_at ? ` · due ${dShort(r.due_at)}` : ''}</small>` : ''}`;
   };
   async function handbookPage(item, el) {
-    el.innerHTML = `${pageHead(item, `<button type="button" class="btn sm" id="hb-set">${icon('shield')}Handbooks &amp; reading rules</button>`)}<div id="hb-body">${loading()}</div>`;
+    el.innerHTML = `${pageHead(item, `<a class="btn sm primary" href="${esc(asset('handbook/?library=1'))}" target="_blank" rel="noopener">${icon('file-check')}Read the handbooks</a><button type="button" class="btn sm" id="hb-set">${icon('shield')}Handbooks &amp; reading rules</button>`)}<div id="hb-body">${loading()}</div>`;
     $('#hb-set', el).addEventListener('click', () => handbookSettings(() => handbookPage(item, el)));
     const hbE = can('handbook', 'E');
     let rows;
@@ -3113,17 +3113,17 @@
           <select id="hco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap fill"><table class="data freeze2" id="htable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Centre</th><th>Handbook</th><th>Assigned</th><th>Progress</th>${hbE ? '<th></th>' : ''}</tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="htable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Centre</th><th>Handbook</th><th>Assigned</th><th>Progress</th><th></th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="hcount"></p>
-        <p class="muted small">Active and onboarding staff with their handbook. Hiring assigns the employer's handbook automatically; staff read and acknowledge it in the CMS (My Handbook). Here HR assigns it, takes it back (with a reason), and sets a person's own days to read and how much must be read; <b>Handbooks &amp; reading rules</b> sets them for everyone on a handbook.</p>
+        <p class="muted small">Active and onboarding staff with their handbook. Hiring assigns the employer's handbook automatically; staff read and acknowledge it in the CMS (My Handbook). <b>View</b> opens a person's handbook read only, with every section marked read or not read and a printable reading report. Here HR assigns it, takes it back (with a reason), and sets a person's own days to read and how much must be read; <b>Handbooks &amp; reading rules</b> sets them for everyone on a handbook. <b>Read the handbooks</b> opens every handbook in English, 中文 and Bahasa Malaysia.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
       const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co) && (!t || `${r.name} ${r.employee_id || ''} ${r.unit || ''}`.toLowerCase().includes(t)));
       $('#htable tbody', el).innerHTML = list.length ? list.map((r) => `<tr><td class="nowrap"><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td>
           <td>${esc(coShort(r.company))}</td><td>${esc(r.unit || '—')}</td><td>${esc(r.version || '—')}</td><td class="nowrap">${dShort(r.assigned_at)}</td><td class="nowrap">${hbCell(r)}</td>
-          ${hbE ? `<td class="nowrap">${r.assignment_id ? `<button type="button" class="btn sm ghost" data-hrule="${esc(r.person_id)}">Rules…</button> <button type="button" class="btn sm ghost" data-hback="${esc(r.person_id)}">Take back…</button>` : `<button type="button" class="btn sm" data-hassign="${esc(r.person_id)}">Assign</button>`}</td>` : ''}</tr>`).join('')
-        : `<tr><td colspan="${hbE ? 8 : 7}"><div class="empty small"><p>No one here</p><span>Try another tab.</span></div></td></tr>`;
+          ${hbE ? `<td class="nowrap">${r.assignment_id ? `<a class="btn sm" href="${esc(asset(`handbook/?review=${encodeURIComponent(r.assignment_id)}`))}" target="_blank" rel="noopener">View</a> <button type="button" class="btn sm ghost" data-hrule="${esc(r.person_id)}">Rules…</button> <button type="button" class="btn sm ghost" data-hback="${esc(r.person_id)}">Take back…</button>` : `<button type="button" class="btn sm" data-hassign="${esc(r.person_id)}">Assign</button>`}</td>` : `<td>${r.assignment_id ? `<a class="btn sm" href="${esc(asset(`handbook/?review=${encodeURIComponent(r.assignment_id)}`))}" target="_blank" rel="noopener">View</a>` : ''}</td>`}</tr>`).join('')
+        : `<tr><td colspan="8"><div class="empty small"><p>No one here</p><span>Try another tab.</span></div></td></tr>`;
       $('#hcount', el).textContent = `${list.length} of ${rows.length} people`;
       fitTables();
     };

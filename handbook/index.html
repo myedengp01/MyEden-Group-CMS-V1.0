@@ -16,7 +16,10 @@ html,body{margin:0;height:100%;font-family:Arial,"Noto Sans",sans-serif;color:va
 .brandsub{font-size:10px;color:#cbd5e1;margin-top:2px}
 .top button,.top a{border:0;border-radius:6px;padding:8px 11px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-block}
 .btn-white{background:#fff;color:#111827}.btn-blue{background:#2563eb;color:#fff}.btn-green{background:#0f766e;color:#fff}
-.top .admin-only{display:none}.top.is-admin .admin-only{display:inline-block}
+.top .admin-only{display:none}.top.is-admin .admin-only{display:inline-block}.top .review-only{display:none}.top.is-review .review-only{display:inline-block}
+.rv{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;margin-top:1px}.rv-yes{background:#dcfce7;color:#166534}.rv-no{background:#fee2e2;color:#991b1b}
+.is-review-doc .clause.unread{border-color:#fecaca;background:#fff8f8}body.only-unread .clause.done,body.only-unread .preface{display:none}
+.rv-list{font-size:11px;line-height:1.55;margin:0;padding:0;list-style:none}.rv-list li{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed #e2e8f0;padding:2px 0}.rv-list b{font-weight:700}
 .layout{max-width:1550px;margin:0 auto;padding:14px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;height:calc(100vh - 68px)}
 .sidebar{height:100%;display:flex;flex-direction:column;gap:10px;min-height:0}
 .card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(15,23,42,.05)}
@@ -50,7 +53,7 @@ html,body{margin:0;height:100%;font-family:Arial,"Noto Sans",sans-serif;color:va
 .notice{font-size:10px;color:#64748b}
 .top-ref-btn{font-weight:400!important}.hidden{display:none!important}
 @media(max-width:900px){.layout{grid-template-columns:1fr;height:auto}.sidebar{height:auto}.nav-card{max-height:420px}.main{overflow:visible}.top{height:auto;flex-wrap:wrap}.layout{height:auto}.brandbox{min-width:260px}}
-@page{size:A4;margin:14mm 12mm 16mm 12mm;@bottom-right{content:counter(page) '/' counter(pages);font-family:Arial,sans-serif;font-size:9pt;color:#475569}}@media print{.top,.sidebar,.tools,.clause-head input,.no-print{display:none!important}.layout{display:block;height:auto;padding:0}.main{overflow:visible}.doc{border:0;box-shadow:none;padding:0}.clause{break-inside:avoid}.chapter{break-after:avoid}.clause.done{background:#fff;color:#111}.clause.done .clause-title{color:#111}}
+@page{size:A4;margin:14mm 12mm 16mm 12mm;@bottom-right{content:counter(page) '/' counter(pages);font-family:Arial,sans-serif;font-size:9pt;color:#475569}}@media print{.rv{-webkit-print-color-adjust:exact;print-color-adjust:exact}.top,.sidebar,.tools,.clause-head input,.no-print{display:none!important}.layout{display:block;height:auto;padding:0}.main{overflow:visible}.doc{border:0;box-shadow:none;padding:0}.clause{break-inside:avoid}.chapter{break-after:avoid}.clause.done{background:#fff;color:#111}.clause.done .clause-title{color:#111}}
 /* CMS: phones (CLC 7 Nov 2026) - nothing wider than the screen */
 @media(max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}.sidebar,.main,.card,.doc{min-width:0;max-width:100%}}
 @media(max-width:600px){.layout{padding:8px;gap:8px}.brandbox{min-width:0;flex:1 1 100%}.brandname{white-space:normal}.doc{padding:14px 12px}.doc-table{display:block;overflow-x:auto}.clause{padding:8px 6px}.top{gap:6px}.top button,.top a{padding:7px 9px;font-size:13px}.modal-bg{padding:6px}}
@@ -68,8 +71,10 @@ html,body{margin:0;height:100%;font-family:Arial,"Noto Sans",sans-serif;color:va
   <button class="btn-white top-ref-btn" type="button" onclick="openClauseSearch()">Search Clauses</button>
   <button class="btn-white top-ref-btn" id="chineseTopBtn" type="button" onclick="openChineseReference()">中文</button>
   <button class="btn-white top-ref-btn hidden" id="malayTopBtn" type="button" onclick="HandbookMalay.openFull()">Bahasa Malaysia</button>
+  <button class="btn-white review-only" id="notReadBtn" type="button" onclick="toggleNotRead()">Show only not read</button>
+  <button class="btn-white review-only" type="button" onclick="openReport()">Reading report</button>
   <button class="btn-white admin-only" onclick="window.print()">Print / Save PDF</button>
-  <a class="btn-white" href="../app/#/me/handbook">‹ Back to the CMS</a>
+  <a class="btn-white" id="backLink" href="../app/#/me/handbook">‹ Back to the CMS</a>
 </div>
 
 <div class="layout">
@@ -111,6 +116,12 @@ var CMS_BACK='../app/#/me/handbook';
 var PORTAL_UVN='v2026.10.07-13:30';
 var SESSION=null,BOOT=null,HB=null,PROGRESS={checked_count:0,required_clause_count:217,progress_percent:0};
 var CHECKED=new Set(),DOC_EN=null,DOC_ZH=null,CLAUSE_MAP={},ZH_MAP={},DEADLINE_TIMER=null;
+// PRI-024 (v2026.11.19): ?review=<assignment> — one employee's handbook, read only, what was and was not read (HR, Admin, Directors);
+// ?library=1 — every issued handbook (English, 中文, Bahasa Malaysia), read only. Otherwise: the signed-in person's own handbook.
+var QS=new URLSearchParams(location.search),MODE=QS.get('review')?'review':QS.get('library')?'library':'self',CHECKED_AT={};
+if(MODE!=='self')CMS_BACK='../app/#/handbook';
+function rvMark(pk){var at=CHECKED_AT[pk];return CHECKED.has(pk)?'<span class="rv rv-yes" title="Ticked as read">✓ Read'+(at?' · '+esc(fmt(at)):'')+'</span>':'<span class="rv rv-no">✗ Not read</span>'}
+function toggleNotRead(){var on=document.body.classList.toggle('only-unread');document.getElementById('notReadBtn').textContent=on?'Show everything':'Show only not read'}
 var CHAPTER_TITLES={
  '1':'HANDBOOK GOVERNANCE, SCOPE & DEFINITIONS','2':'WELCOME, COMPANY IDENTITY, MISSION, VISION & VALUES',
  '3':'CODE OF PROFESSIONAL CONDUCT','4':'EMPLOYMENT, APPOINTMENT, PROBATION, PROMOTION & TRANSFER',
@@ -406,9 +417,9 @@ function renderDoc(){
    if(ch.prefaceBlocks&&ch.prefaceBlocks.length)out+='<div class="preface">'+(HB.assignment&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'&&containsAppendixSigningTable(ch.prefaceBlocks)?signingTableBlocksHtml(horizontalSigningTableBlocks(ch.prefaceBlocks,'APPENDIX_B')):blockHtml(ch.prefaceBlocks))+'</div>';
    ch.clauses.forEach(function(c){
      var pk=progressKey(ch,c),done=CHECKED.has(pk),zh=ZH_MAP[pk],hasRef=c.legalRefs&&c.legalRefs.length;
-     out+='<section class="clause'+(done?' done':'')+'" id="clause-'+cssKey(pk)+'" data-key="'+esc(pk)+'">'+
+     out+='<section class="clause'+(done?' done':(MODE==='review'?' unread':''))+'" id="clause-'+cssKey(pk)+'" data-key="'+esc(pk)+'">'+
        '<div class="clause-head">'+
-       ((pk==='C211'||(c.key==='A.3'&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'))?'<span class="meta-row">Typed-name undertaking</span>':'<input type="checkbox" '+(done?'checked disabled':'')+' aria-label="Confirm clause '+esc(c.key)+'" onchange="confirmClause(this,\''+jsq(pk)+'\')">')+
+       (MODE==='review'?rvMark(pk):MODE==='library'?'':(pk==='C211'||(c.key==='A.3'&&HB.handbook.handbook_code!=='MYEDEN-EMPLOYEE-HANDBOOK'))?'<span class="meta-row">Typed-name undertaking</span>':'<input type="checkbox" '+(done?'checked disabled':'')+' aria-label="Confirm clause '+esc(c.key)+'" onchange="confirmClause(this,\''+jsq(pk)+'\')">')+
        '<div class="clause-title">'+esc(c.title)+'</div><div class="tools">'+
        (hasRef?'<button class="iconbtn" title="Legal reference" onclick="showLegal(\''+jsq(pk)+'\')">⚖ Legal</button>':'')+
        (zh?'<button class="iconbtn" title="Authorised Chinese reference" onclick="showChinese(\''+jsq(pk)+'\')">中文</button>':'')+
@@ -416,6 +427,7 @@ function renderDoc(){
    });
  });
  document.getElementById('doc').innerHTML=out;
+ document.getElementById('doc').classList.toggle('is-review-doc',MODE==='review');
  HandbookMalay.decorate();
  initAppendixSignature();
  renderRecordedAppendixSignature();
@@ -448,8 +460,9 @@ function renderMeta(){
   '<div class="meta-row"><b>Legal Employer:</b> '+esc(companyName(e.company_code))+'</div>'+
   '<div class="meta-row"><b>Job Title:</b> '+esc(e.job_title||'—')+'</div>'+
   '<div class="meta-row"><b>Department:</b> '+esc(e.department||'—')+'</div>'+
-  '<div class="meta-row"><b>Assignment:</b> <span class="status s-'+esc(a.status)+'">'+esc(a.status)+'</span></div>';
- else html+='<div class="notice">Admin preview mode.</div>';
+  '<div class="meta-row"><b>Assignment:</b> <span class="status s-'+esc(a.status)+'">'+esc(a.status)+'</span></div>'+
+  (MODE==='review'?'<div class="notice" style="margin-top:6px">Read only — HR view of what '+esc(e.employee_name)+' has and has not read. Nothing can be ticked here.</div>':'');
+ else html+='<div class="notice">'+(MODE==='library'?'Handbook library — read only. Choose a handbook at the top; 中文 and Bahasa Malaysia open the full translations.':'Admin preview mode.')+'</div>';
  document.getElementById('employeeCard').innerHTML=html;
 }
 function renderDeadlineStatus(){
@@ -483,6 +496,17 @@ function renderProgress(){
  renderDeadlineStatus();
  var btn=document.getElementById('markReadBtn'),a=HB.assignment,ack=document.getElementById('ackPanel');
  if(!a){btn.classList.add('hidden');ack.classList.add('hidden');return}
+ if(MODE==='review'){
+   btn.classList.add('hidden');ack.classList.remove('hidden');
+   document.getElementById('progressText').innerHTML='<b>'+count+'</b> of <b>'+total+'</b> sections ticked as read; <b>'+Math.max(0,total-count)+'</b> not read.<br>Needed for Mark as Read: <b>'+need+'</b> ('+threshold.toFixed(0)+'%'+(a.own_rules?', own rule':'')+').';
+   var li=function(k,v){return '<li><span>'+k+'</span><b>'+(v?esc(fmt(v)):'—')+'</b></li>'};
+   ack.innerHTML='<b>Reading record</b><ul class="rv-list">'+li('Assigned',a.assigned_at)+li('Due',a.due_at)+li('First opened',a.first_viewed_at)+
+     li('Receipt signed',a.receipt_acknowledged_at)+(a.receipt_typed_name?'<li><span>Signed as</span><b>'+esc(a.receipt_typed_name)+'</b></li>':'')+
+     li('Marked as read',a.read_at)+li('Acknowledged',a.acknowledged_at)+(a.deemed_received_at?li('Deemed received',a.deemed_received_at):'')+(a.deemed_read_at?li('Deemed read',a.deemed_read_at):'')+
+     (a.safeguarding_acknowledged_at?li('Safeguarding undertaking',a.safeguarding_acknowledged_at):'')+(a.appendix_b_signed_at?li('Appendix B signed',a.appendix_b_signed_at):'')+
+     (a.revoked_at?li('Taken back',a.revoked_at)+'<li><span>Reason</span><b>'+esc(a.revoked_reason||'—')+'</b></li>':'')+'</ul>';
+   return;
+ }
 
  if(a.status==='acknowledged'){
    btn.disabled=true;btn.textContent='Handbook Read ✓';
@@ -527,6 +551,7 @@ function renderProgress(){
    '<button onclick="acknowledge()">Finalise Acknowledgement '+esc(HB.handbook.version)+'</button>';
 }
 async function confirmClause(el,key){
+ if(MODE!=='self'){el.checked=false;return}
  if(!el.checked)return;
  el.disabled=true;
  try{
@@ -742,10 +767,60 @@ async function setupAdminHandbookSelector(){
  if(HB.handbook&&HB.handbook.id)sel.value=HB.handbook.id+'|'+activeEntityCode();
 }
 async function signOut(){location.href=CMS_BACK}
+// the reading report: who, the dates, and every section with read / not read and when (print or save as PDF)
+function openReport(){
+ if(!HB||!HB.assignment||!DOC_EN)return;
+ var e=HB.employee||{},h=HB.handbook||{},a=HB.assignment,rows=[],n=0,read=0;
+ DOC_EN.chapters.forEach(function(ch){ch.clauses.forEach(function(c){var pk=progressKey(ch,c),d=CHECKED.has(pk);n++;if(d)read++;
+   rows.push('<tr class="'+(d?'':'nr')+'"><td>'+n+'</td><td>'+esc(ch.title)+'</td><td>'+esc(c.title)+'</td><td class="st">'+(d?'✓ Read':'✗ Not read')+'</td><td>'+(d&&CHECKED_AT[pk]?esc(fmt(CHECKED_AT[pk])):'')+'</td></tr>')})});
+ var d=function(k,v){return '<tr><th>'+k+'</th><td>'+(v?esc(fmt(v)):'—')+'</td></tr>'};
+ var html='<!doctype html><html><head><meta charset="utf-8"><title>Handbook reading report · '+esc(e.employee_name||'')+'</title><style>body{font-family:Arial,sans-serif;font-size:10.5pt;color:#111;margin:18mm 14mm}h1{font-size:15pt;margin:0 0 2px}h2{font-size:11pt;margin:16px 0 6px}.sub{color:#555;margin-bottom:10px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef2f7}.meta th{width:34%}.nr td{background:#fff1f1}.st{white-space:nowrap;font-weight:700}tr{break-inside:avoid}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'+
+  '<h1>Employee Handbook reading report</h1><div class="sub">'+esc(companyName(e.company_code))+' · '+esc(h.title||'')+' '+esc(h.version||'')+' · printed '+esc(new Date().toLocaleString('en-MY'))+'</div>'+
+  '<table class="meta"><tr><th>Employee</th><td>'+esc(e.employee_name||'')+(e.employee_id?' ('+esc(e.employee_id)+')':'')+'</td></tr><tr><th>Job title · Department</th><td>'+esc(e.job_title||'—')+' · '+esc(e.department||'—')+'</td></tr>'+
+  '<tr><th>Sections read</th><td><b>'+read+' of '+n+'</b> ('+(n?(100*read/n).toFixed(1):'0')+'%) · not read: <b>'+(n-read)+'</b> · needed: '+Math.ceil(n*Number(a.effective_read_threshold_percent||90)/100)+' ('+Number(a.effective_read_threshold_percent||90).toFixed(0)+'%)</td></tr>'+
+  '<tr><th>Status</th><td>'+esc(a.status||'')+'</td></tr>'+d('Assigned',a.assigned_at)+d('Due',a.due_at)+d('First opened',a.first_viewed_at)+d('Receipt signed',a.receipt_acknowledged_at)+d('Marked as read',a.read_at)+d('Acknowledged',a.acknowledged_at)+
+  (a.deemed_read_at?d('Deemed read',a.deemed_read_at):'')+(a.safeguarding_acknowledged_at?d('Safeguarding undertaking',a.safeguarding_acknowledged_at):'')+(a.appendix_b_signed_at?d('Appendix B signed',a.appendix_b_signed_at):'')+'</table>'+
+  '<h2>Every section</h2><table><thead><tr><th>#</th><th>Chapter</th><th>Section</th><th>Read</th><th>Ticked on</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></body></html>';
+ var w=window.open('','_blank');if(!w){alert('Please allow pop-ups for this site to open the report.');return}
+ w.document.open();w.document.write(html);w.document.close();setTimeout(function(){try{w.focus();w.print()}catch(x){}},400);
+}
+async function initReview(id){
+ var R=await rpc('cms_handbook_review',{p_assignment:id});
+ HB={review:true,is_admin:false,employee:R.employee,handbook:R.handbook,assignment:R.assignment};
+ document.getElementById('topbar').classList.add('is-review','is-admin');var hs=document.getElementById('adminHandbookSelect');if(hs)hs.classList.add('hidden');
+ var en=await rpc('handbook_status_assignment_document',{p_assignment_id:id,p_language:'en'}),zh=null;
+ try{zh=await rpc('handbook_status_assignment_document',{p_assignment_id:id,p_language:'zh'})}catch(e){}
+ if(!en||!en.document)throw new Error('English structured handbook content is unavailable.');
+ if(!zh||!zh.document){var sz=await loadStaticChineseFallback(HB.handbook.handbook_code);if(sz)zh={document:sz}}
+ DOC_EN=structuredToDoc(en.document);DOC_ZH=(zh&&zh.document)?structuredToDoc(zh.document):null;
+ indexDocs();await HandbookMalay.load(HB.handbook,DOC_EN,CLAUSE_MAP);
+ CHECKED=new Set();CHECKED_AT={};(R.progress||[]).forEach(function(x){CHECKED.add(x.clause_key);CHECKED_AT[x.clause_key]=x.checked_at});
+ var total=0;DOC_EN.chapters.forEach(function(ch){total+=ch.clauses.length});
+ var cnt=0;DOC_EN.chapters.forEach(function(ch){ch.clauses.forEach(function(c){if(CHECKED.has(progressKey(ch,c)))cnt++})});
+ PROGRESS={checked_count:cnt,required_clause_count:total,progress_percent:total?100*cnt/total:0,effective_threshold_percent:HB.assignment.effective_read_threshold_percent};
+ var zhBtn=document.getElementById('chineseTopBtn');if(zhBtn)zhBtn.classList.toggle('hidden',!DOC_ZH);
+ document.title=(HB.employee.employee_name||'')+' · '+(HB.handbook.title||'Employee Handbook')+' (read only)';
+ renderMeta();renderDoc();renderProgress();applyEntityBranding();
+}
+async function initLibrary(){
+ HB={library:true,is_admin:true,assignment:null,employee:null,handbook:null};
+ document.getElementById('topbar').classList.add('is-admin');
+ var sel=document.getElementById('adminHandbookSelect');if(sel)sel.classList.remove('hidden');
+ await setupAdminHandbookSelector();
+ var want=QS.get('book');if(want&&sel&&[].some.call(sel.options,function(o){return o.value===want}))sel.value=want;
+ if(!sel||!sel.value)throw new Error('No issued handbook is available.');
+ await loadAdminHandbook(sel.value);
+}
 
 async function init(){
  SESSION=readSession();if(!SESSION||!SESSION.access_token){location.href=CMS_BACK;return}
  if(SESSION.expires_at&&SESSION.expires_at*1000<Date.now()+30000){try{await refreshSession()}catch(e){location.href=CMS_BACK;return}}
+ document.getElementById('backLink').href=CMS_BACK;
+ if(MODE!=='self'){
+  try{if(MODE==='review')await initReview(QS.get('review'));else await initLibrary()}
+  catch(e){document.getElementById('doc').innerHTML='<div class="preface" style="color:#b42318">'+esc(e.message)+'</div>'}
+  return;
+ }
  try{
   HB=await rpc('handbook_my_assignment',{});
   if(HB&&HB.assignment)HB=await rpc('handbook_apply_my_due_rule',{});

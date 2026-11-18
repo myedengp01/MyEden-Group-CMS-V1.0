@@ -54,7 +54,7 @@ window.CMS_MENU = [
       { route: 'interviews', label: 'Shortlist & Interviews', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Shortlisted applicants and offers in progress. Interviews are done in MEG-EAF V2; the offer letter (LOEC) can be prepared here or in MEG-EAF V2.' },
       { route: 'loec', label: 'Offer letter (LOEC)', phase: 3, live: true, hidden: true, desc: 'Prepare, approve and issue the Combined Letter of Offer & Contract of Employment for an approved applicant.' },
       { route: 'onboarding', label: 'Offers & Onboarding', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Accepted applicants become employees in one step (person record + payroll record + Employee ID); offer letters and stamp duty tracked.' },
-      { route: 'handbook', label: 'Employee Handbook', phase: 3, live: true, source: 'MEG-EAF V2', desc: 'Who has been assigned, opened, read and acknowledged the Employee Handbook, per person and centre.' },
+      { route: 'handbook', label: 'Employee Handbook', phase: 3, live: true, desc: 'The handbooks (English, 中文, Bahasa Malaysia); who has been assigned, opened, read and acknowledged them, and each person\'s handbook read only.' },
     ] },
     { group: 'Time & Leave', icon: 'calendar', items: [
       { route: 'leave', label: 'Leave Records', phase: 6, live: true, source: 'MyPayroll V2.0', desc: 'Leave taken and approved, by person and type.' },

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ms">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MyEden Group Buku Panduan Pekerja v2.0 Bahasa Malaysia</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f6fa;color:#172033}.top{position:sticky;top:0;background:#0f172a;color:white;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}.top h1{font-size:16px;flex:1;margin:0}.top a,.top button{background:white;color:#172033;padding:8px 12px;border:0;border-radius:6px;text-decoration:none;cursor:pointer}.doc{max-width:1180px;margin:16px auto;padding:28px;background:white;border:1px solid #d8dee8;border-radius:10px;font-size:12.5px;line-height:1.65}.doc p{text-align:justify}.chapter{color:#064e5a;border-bottom:2px solid #0f766e;margin-top:28px}.clause-title{font-size:15px;color:#1e293b;margin-top:20px}.doc li{margin:4px 0}.doc-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:11.5px}.doc-table td,.doc-table th{border:1px solid #cbd5e1;padding:7px 8px;vertical-align:middle}.doc-table th{background:#d9eaf7;color:#000}.doc-table tr:nth-child(even) td{background:#fafcff}.notice{padding:12px;background:#eef6ff}.error{color:#b42318}@media print{.top{display:none}.doc{border:0;margin:0;padding:0}.chapter{break-after:avoid}}
+</style><script src="handbook-malay.js?v=20261012-ms3"></script></head>
+<body><div class="top"><h1>Buku Panduan Pekerja · Bahasa Malaysia v2.0</h1><a href="javascript:window.close()" onclick="if(!window.opener){location.href='index.html';return false}">English</a><button onclick="window.print()">Cetak / Simpan PDF</button></div>
+<main class="doc" id="doc"><p>Memuatkan terjemahan yang diluluskan...</p></main>
+<script>
+(async function(){
+  try {
+    var selected=new URLSearchParams(location.search).get('handbook');
+    var handbooks={
+      'happy-dino':{code:'HAPPY-DINO-EMPLOYEE-HANDBOOK',name:'Happy Dino',version:'v1.0',section:'25.4'},
+      'aborne':{code:'ABORNE-EMPLOYEE-HANDBOOK',name:'Aborne Project',version:'v1.0',section:'26.4'}
+    };
+    var book=handbooks[selected]||{code:'MYEDEN-EMPLOYEE-HANDBOOK',name:'MyEden Group',version:'v2.0',section:'24.4'};
+    document.title=book.name+' Buku Panduan Pekerja '+book.version+' Bahasa Malaysia';
+    document.querySelector('.top h1').textContent=book.name+' Buku Panduan Pekerja · Bahasa Malaysia '+book.version;
+    var data=await HandbookMalay.readResource(book.code);
+    if(data.approval_status!=='approved')throw new Error('Terjemahan belum diluluskan.');
+    document.getElementById('doc').innerHTML='<div class="notice">Terjemahan Bahasa Malaysia yang diluluskan. Versi bahasa Inggeris ialah versi rasmi yang mengawal tafsiran, tertakluk kepada Seksyen '+book.section+'.</div>'+HandbookMalay.blocksHtml(data.blocks);
+  } catch(error) {
+    document.getElementById('doc').textContent=error.message;
+    document.getElementById('doc').classList.add('error');
+  }
+})();
+</script></body></html>
