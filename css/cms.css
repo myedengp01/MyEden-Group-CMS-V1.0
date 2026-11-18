@@ -1336,3 +1336,19 @@ table.fp-t select{max-width:130px}
 .pr-revs .chk { display: block; margin: 4px 0; }
 .grid-3.tight { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; margin: 4px 0; }
 @media (max-width: 640px) { .grid-3.tight { grid-template-columns: 1fr; } }
+
+/* ---- e-signatures (v2026.11.18): the signature spot on letters, the signing pad, thumbnails */
+.sheet.letter .lt-body p.lt-sig { position: relative; height: 17mm; margin: 0 0 .5mm; display: flex; align-items: flex-end; gap: 4mm; text-align: left; }
+.sheet.letter .lt-sig-img { max-height: 16mm; max-width: 50mm; object-fit: contain; object-position: left bottom; }
+.sheet.letter .lt-stamp-img { max-height: 24mm; max-width: 34mm; object-fit: contain; margin-bottom: -6mm; opacity: .92; mix-blend-mode: multiply; }
+.sheet.letter .lt-sig-note { font-size: 8.5pt; color: #6b5bd2; border: 1px dashed #b7adf0; border-radius: 4px; padding: 1mm 2mm; }
+@media print { .sheet.letter .lt-sig-note { display: none; } }
+.sig-modes { margin-bottom: .6rem; }
+.sig-pad { position: relative; border: 1px solid var(--line, #d0d5dd); border-radius: 10px; background: #fff; overflow: hidden; }
+.sig-pad canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; cursor: crosshair; touch-action: none; }
+.sig-pad .sig-base { position: absolute; left: 6%; right: 6%; bottom: 22%; border-bottom: 1px dashed #c3c8d2; pointer-events: none; }
+.sig-prev { min-height: 70px; border-radius: 10px; padding: .5rem; display: flex; align-items: center; justify-content: center;
+  background: repeating-conic-gradient(#f1f2f5 0 25%, #fff 0 50%) 0 0 / 16px 16px; border: 1px solid var(--line, #d0d5dd); }
+.sig-prev-img { max-width: 100%; max-height: 140px; height: auto; }
+.sig-thumb { display: block; max-height: 34px; max-width: 140px; background: #fff; border-radius: 4px; padding: 2px; }
+.sig-acc { display: grid; gap: .35rem; max-height: 50vh; overflow: auto; }

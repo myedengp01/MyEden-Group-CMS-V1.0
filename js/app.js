@@ -159,8 +159,11 @@
       </div>`;
   }
 
+  // notices for this person (e.g. "your e-signature was applied"); opening one marks it read (v2026.11.18)
+  async function loadNotices() { try { state.notices = await API.rpc('cms_my_notices'); drawBell(); } catch (e) { /* reminders only */ } }
+  const noticeTasks = () => (state.notices || []).map((n) => ({ ic: n.kind === 'esign' ? 'file-check' : 'bell', tone: 'violet', title: n.title, sub: `${n.body}${n.at ? ` · ${dShort(n.at)}` : ''}`, href: n.href || '#/dashboard', nt: String(n.id) }));
   function tasksFromDash(d) {
-    const t = [...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...letterTasks()];
+    const t = [...noticeTasks(), ...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...letterTasks()];
     if (state.selfPending && can('selfservice.profile')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -213,8 +216,9 @@
     const el = $('#bell-list'); if (!el) return;
     const t = tasksFromDash(state.dash);
     $('.bell-btn')?.classList.toggle('has', t.length > 0);
-    el.innerHTML = t.length ? t.map((x) => `<a class="pop-item task" href="${esc(x.href)}" ${x.ext ? 'target="_blank" rel="noopener"' : ''}>${icon(x.ic)}<span><b>${esc(x.title)}</b><small>${esc(x.sub)}</small></span></a>`).join('')
+    el.innerHTML = t.length ? t.map((x) => `<a class="pop-item task" href="${esc(x.href)}" ${x.ext ? 'target="_blank" rel="noopener"' : ''}${x.nt ? ` data-nt="${esc(x.nt)}"` : ''}>${icon(x.ic)}<span><b>${esc(x.title)}</b><small>${esc(x.sub)}</small></span></a>`).join('')
       : `<div class="empty small">${icon('bell')}<p>Nothing waiting</p><span>Approvals and reminders appear here.</span></div>`;
+    $$('[data-nt]', el).forEach((a) => a.addEventListener('click', () => { const id = Number(a.dataset.nt); state.notices = (state.notices || []).filter((n) => n.id !== id); API.rpc('cms_notice_read', { p_id: id }).catch(() => {}); setTimeout(drawBell, 0); }));
     if (canRoute('approvals')) el.insertAdjacentHTML('beforeend', `<a class="pop-item pop-foot" href="#/approvals">${icon('check-circle')}<span><b>Open the Action Center</b><small>Everything to approve, process and pay</small></span></a>`);
   }
 
@@ -6168,6 +6172,18 @@
     }
     return out.join('\n');
   }
+  // ---- e-signatures (v2026.11.18): signatories, their signatures and the company stamps, in the private cms-esign bucket
+  const SIGN_KEYS = ['authorized_signatory', 'authorized_designation', 'authorized_signature'];
+  const esignBucket = () => API.sb().storage.from('cms-esign');
+  async function signatoriesData(force) {
+    if (force || !state.signatories) { const r = await API.rpc('cms_signatories'); const o = r && !Array.isArray(r) && typeof r === 'object' ? r : {};
+      state.signatories = { ...o, signatories: (o.signatories || []).map((x) => ({ ...x, companies: x.companies || [] })), stamps: o.stamps || [] }; }
+    return state.signatories; }
+  const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Could not read the picture.')); r.readAsDataURL(b); });
+  async function esignBlob(path) { const { data, error } = await esignBucket().download(path); if (error) throw new Error(error.message || 'The picture could not be loaded.'); return data; }
+  const esignImgCache = new Map();
+  function esignImg(path) { if (!path) return Promise.resolve(null); if (!esignImgCache.has(path)) { const p = esignBlob(path).then(blobToDataUrl); esignImgCache.set(path, p); p.catch(() => esignImgCache.delete(path)); } return esignImgCache.get(path); }
+  async function esignPut(path, blob) { const { error } = await esignBucket().upload(path, blob, { contentType: 'image/png', upsert: false }); if (error) throw new Error(error.message || 'The picture could not be saved.'); return path; }
   const LETTERHEADS = { MEG: 'assets/letterheads/MEG.jpg', HD: 'assets/letterheads/HD.jpg', ABP: 'assets/letterheads/ABP.jpg', MEH: 'assets/letterheads/MEH.jpg' };
   const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -6185,8 +6201,23 @@
   // [b] [i] [u] → bold / italic / underline; an unfilled {{key}} shows as a red [Label]
   const richLine = (t, labelOf) => esc(t).replace(/\[(\/?)(b|i|u)\]/g, '<$1$2>')
     .replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => `<mark class="lt-miss">[${esc(labelOf ? labelOf(k) : k.replace(/_/g, ' '))}]</mark>`);
-  function letterSheet(text, co, coCode, labelOf) {
+  // the signature spot (v2026.11.18): {{authorized_signature}} on its own line; letters made before it get the spot just above
+  // the signing line under "For and on behalf of" when an e-signature or stamp was applied. Employee acknowledgements never get one.
+  const SIG_KEY = '{{authorized_signature}}';
+  function sigSpot(text) {
+    const raw = String(text).split('\n'); if (raw.some((l) => l.trim() === SIG_KEY)) return raw.join('\n');
+    const from = raw.findIndex((l) => /behalf of/i.test(l)); if (from < 0) return raw.join('\n');
+    let j = -1; for (let i = from + 1; i < raw.length; i += 1) { const t = raw[i].trim(); if (/^employee\s+(acknowledg|accept|signature)/i.test(t)) break; if (/^(_{5,}|[.…]{5,})/.test(t)) { j = i; break; } }
+    if (j < 0) { const k = Math.min(raw.length, from + (/behalf of\s*$/i.test(raw[from].trim()) ? 2 : 1)); raw.splice(k, 0, SIG_KEY); return raw.join('\n'); }
+    let k = j; while (k - 1 > from && !raw[k - 1].trim() && j - k < 3) k -= 1;
+    raw.splice(k, j - k, '', SIG_KEY); return raw.join('\n');
+  }
+  // opts.esign: { sig, stamp } picture URLs (issued letters) · opts.esignNote: a line shown in an empty spot (drafts)
+  const sigBox = (o) => { const e = o?.esign || {};
+    return `<p class="lt-sig">${e.sig ? `<img class="lt-sig-img" src="${esc(e.sig)}" alt="Signature">` : ''}${e.stamp ? `<img class="lt-stamp-img" src="${esc(e.stamp)}" alt="Company stamp">` : ''}${!e.sig && !e.stamp && o?.esignNote ? `<span class="lt-sig-note no-print">${esc(o.esignNote)}</span>` : ''}</p>`; };
+  function letterSheet(text, co, coCode, labelOf, opts) {
     const c = co || {}; const head = LETTERHEADS[coCode] || LETTERHEADS[c.code];
+    if (opts?.esign && (opts.esign.sig || opts.esign.stamp)) text = sigSpot(text);
     const formatted=String(text).replace(/\bRM\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.,])/g,(_,v)=>'RM '+Number(v.replaceAll(',','')).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}));
     const raw=formatted.split('\n'), html=[];
     for(let i=0;i<raw.length;i++) { const t=raw[i].trim();
@@ -6195,7 +6226,8 @@
         if(cm&&cm[4].trim()) html.push('<p>'+richLine(cm[4].trim(),labelOf)+'</p>'); continue; } }
       // one blank line = a small gap between paragraphs; two or more stacked blank lines = full lines (signing space, v2026.11.05)
       if(!t){let n=1;while(i+1<raw.length&&!raw[i+1].trim()){n++;i++;}html.push(n===1?'<div class="lt-gap"></div>':'<div class="lt-line"></div>'.repeat(n));continue;}
-      if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
+      if(t===SIG_KEY){html.push(sigBox(opts));continue;}
+      if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px;text-align:center">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
       if(/^Appendix [AB] —/.test(t)){html.push('<h2 style="break-before:page;font-size:14pt">'+richLine(t,labelOf)+'</h2>');continue;}
       if(/^PRIVATE & CONFIDENTIAL$/i.test(t))html.push('<p class="lt-conf">'+esc(t)+'</p>');
       else if(/^Subject:/i.test(t))html.push('<p class="lt-subj">'+richLine(t.replace(/^Subject:\s*/i,''),labelOf)+'</p>');
@@ -6386,6 +6418,53 @@
       if (!/<Default\b[^>]*Extension="jpg"/i.test(ct)) { ct = ct.replace(/(<Types\b[^>]*>)/, '$1<Default Extension="jpg" ContentType="image/jpeg"/>'); put('[Content_Types].xml', ct); }
       return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME, compression: 'DEFLATE' });
     },
+    // e-signature / company stamp (v2026.11.18): pictures go where {{authorized_signature}} is, or — in templates without it —
+    // just above the signing line under "For and on behalf of". imgs = { sig, stamp } with { data: ArrayBuffer, w, h }, or null:
+    // then the placeholder is only taken out (space for a pen signature). Employee acknowledgements are never touched.
+    async esign(bytes, imgs) {
+      const z = await W.zip(bytes); const n = 'word/document.xml'; const d = W.xml(await z.file(n).async('string'));
+      const paras = W.paras(d); const have = imgs && (imgs.sig || imgs.stamp);
+      let at = paras.find((p) => W.ptext(p).includes(SIG_KEY)); let replace = false;
+      if (at) { const t = W.ptext(at); const i = t.indexOf(SIG_KEY); W.splice(at, [{ start: i, end: i + SIG_KEY.length, text: '' }]); replace = !W.ptext(at).trim(); }
+      if (!have) { if (!at) return bytes; z.file(n, new XMLSerializer().serializeToString(d)); return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME, compression: 'DEFLATE' }); }
+      if (!at) {
+        const from = paras.findIndex((p) => /behalf of/i.test(W.ptext(p))); if (from < 0) throw new Error('Could not find “For and on behalf of” in the Word letter to place the e-signature.');
+        for (let i = from + 1; i < paras.length; i += 1) { const t = W.ptext(paras[i]).trim(); if (/^employee\s+(acknowledg|accept|signature)/i.test(t)) break; if (/^(_{5,}|[.…]{5,})/.test(t)) { at = paras[i]; break; } }
+        if (!at) at = paras[from + (/behalf of\s*$/i.test(W.ptext(paras[from]).trim()) ? 2 : 1)] || paras[from];
+        // the blank lines left for a pen signature give way to the picture (up to two)
+        let prev = at.previousSibling; let k = 0; while (prev && prev.localName === 'p' && !W.ptext(prev).trim() && !prev.getElementsByTagNameNS(WNS, 'drawing').length && k < 2) { const x = prev.previousSibling; prev.parentNode.removeChild(prev); prev = x; k += 1; }
+      }
+      let rels = await z.file('word/_rels/document.xml.rels').async('string'); let pid = 9200; const runs = [];
+      const pic = (img, key, maxW, maxH) => { if (!img) return; const r = Math.min(maxW / img.w, maxH / img.h); const cx = Math.round(img.w * r); const cy = Math.round(img.h * r);
+        const media = `media/cms-${key}-${Date.now().toString(36)}.png`; z.file(`word/${media}`, img.data); const rid = `rIdCms${key}`;
+        rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`), '').replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${media}"/></Relationships>`);
+        pid += 1;
+        runs.push(`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="114300"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${pid}" name="${key === 'Sig' ? 'Signature' : 'Company stamp'}"/>`
+          + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+          + `<pic:nvPicPr><pic:cNvPr id="0" name="${key}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+          + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`); };
+      pic(imgs.sig, 'Sig', 1800000, 576000); pic(imgs.stamp, 'Stamp', 1260000, 936000);
+      const frag = W.xml(`<w:p xmlns:w="${WNS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0"/></w:pPr>${runs.join('')}</w:p>`);
+      const np = d.importNode(frag.documentElement, true);
+      at.parentNode.insertBefore(np, at); if (replace) at.parentNode.removeChild(at);
+      z.file(n, new XMLSerializer().serializeToString(d)); z.file('word/_rels/document.xml.rels', rels);
+      let ct = await z.file('[Content_Types].xml').async('string');
+      if (!/<Default\b[^>]*Extension="png"/i.test(ct)) { ct = ct.replace(/(<Types\b[^>]*>)/, '$1<Default Extension="png" ContentType="image/png"/>'); z.file('[Content_Types].xml', ct); }
+      return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME, compression: 'DEFLATE' });
+    },
+    // blank "Name: ____" / "Position: ____" lines in the company's signing block take the chosen signatory (v2026.11.18)
+    async signBlock(bytes, name, desig) {
+      if (!name && !desig) return bytes; let on = false;
+      const r = await W.edit(bytes, (p, text) => {
+        if (/behalf of/i.test(text)) { on = true; return 0; }
+        if (/^\s*employee\s+(acknowledg|accept|signature)/i.test(text)) { on = false; return 0; }
+        if (!on) return 0;
+        let m = text.match(/^(\s*(?:Position|Designation)\s*:\s*)(?:_{3,}|[.…]{3,})\s*$/i); if (m && desig) { W.splice(p, [{ start: m[1].length, end: text.length, text: desig }]); return 1; }
+        m = text.match(/^(\s*Name\s*:\s*)(?:_{3,}|[.…]{3,})\s*$/i); if (m && name) { W.splice(p, [{ start: m[1].length, end: text.length, text: name }]); return 1; }
+        return 0;
+      });
+      return r.count ? r.bytes : bytes;
+    },
     // a plain-text template from the Word file: paragraphs as lines, bold / italic / underline as [b] [i] [u]
     async toText(bytes) {
       const z = await W.zip(bytes); const d = W.xml(await z.file('word/document.xml').async('string'));
@@ -6475,6 +6554,134 @@
     if (force || !state.lettersData) { const [d, o] = await Promise.all([API.rpc('cms_letters'), API.rpc('cms_letter_options').catch(() => [])]); d.options = o || []; state.lettersData = d; }
     return state.lettersData;
   }
+  // ---------------------------------------------------------------- HR letters › Signatures (v2026.11.18)
+  // Signatories (name, designation, companies, own login), their e-signature (drawn, uploaded from the gallery, or typed) and who
+  // may apply it; company stamps (optional). Admin / Directors manage the list; a signatory can set their own signature and access.
+  // Pictures are kept as transparent PNGs in the private cms-esign bucket and never changed; a new one replaces the old for new letters.
+  const SIG_FONTS = [['Dancing Script', 'Dancing Script'], ['Great Vibes', 'Great Vibes'], ['Allura', 'Allura'], ['Homemade Apple', 'Homemade Apple']];
+  let sigFontsP = null;
+  const sigFonts = () => sigFontsP || (sigFontsP = new Promise((res) => {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `https://fonts.googleapis.com/css2?${SIG_FONTS.map(([f]) => `family=${f.replace(/ /g, '+')}`).join('&')}&display=swap`;
+    l.onload = () => Promise.all(SIG_FONTS.map(([f]) => document.fonts.load(`48px "${f}"`).catch(() => null))).then(res); l.onerror = () => res(); document.head.appendChild(l); }));
+  // ink on a transparent background, trimmed to what is drawn, with a little margin; whiteBg: make near-white paper transparent
+  function inkCanvas(src, { whiteBg = false, maxW = 900 } = {}) {
+    const w = src.width; const h = src.height; const c0 = document.createElement('canvas'); c0.width = w; c0.height = h; const x0 = c0.getContext('2d'); x0.drawImage(src, 0, 0);
+    const img = x0.getImageData(0, 0, w, h); const d = img.data; let minX = w; let minY = h; let maxX = -1; let maxY = -1;
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) { const i = (y * w + x) * 4;
+      if (whiteBg) { const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; const a = lum >= 215 ? 0 : lum <= 150 ? 255 : Math.round(255 * (215 - lum) / 65); d[i + 3] = Math.min(d[i + 3], a); }
+      if (d[i + 3] > 24) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; } }
+    if (maxX < 0) return null; x0.putImageData(img, 0, 0);
+    const pad = 8; const cw = maxX - minX + 1 + pad * 2; const ch = maxY - minY + 1 + pad * 2; const k = Math.min(1, maxW / cw);
+    const out = document.createElement('canvas'); out.width = Math.round(cw * k); out.height = Math.round(ch * k); const xo = out.getContext('2d'); xo.imageSmoothingQuality = 'high';
+    xo.drawImage(c0, minX - pad, minY - pad, cw, ch, 0, 0, out.width, out.height); return out;
+  }
+  const canvasPng = (c) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Could not make the picture.'))), 'image/png'));
+  const fileImage = (file) => new Promise((res, rej) => { if (!file) { rej(new Error('Choose a picture.')); return; } if (!/^image\//.test(file.type)) { rej(new Error('Choose a picture (PNG or JPG).')); return; }
+    if (file.size > 15 * 1024 * 1024) { rej(new Error('The picture is too large (15 MB at most).')); return; }
+    const u = URL.createObjectURL(file); const im = new Image(); im.onload = () => { const k = Math.min(1, 2000 / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c); };
+    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('This picture could not be opened.')); }; im.src = u; });
+  // the signature maker: draw · upload from the gallery · type. Resolves { blob, method } or null.
+  function signatureMaker(who) {
+    let out = null; let mode = 'draw'; let upCanvas = null; let drawn = false;
+    return modal({ title: `E-signature · ${who}`, ok: 'Save signature', wide: true,
+      body: `<div class="seg sig-modes"><button type="button" data-m="draw" class="on">Draw</button><button type="button" data-m="upload">Upload from gallery</button><button type="button" data-m="type">Type</button></div>
+        <div data-p="draw"><p class="muted small">Sign with your finger, a stylus or the mouse.</p><div class="sig-pad"><canvas width="900" height="300" aria-label="Signing pad"></canvas><span class="sig-base"></span></div>
+          <button type="button" class="btn sm ghost" data-clear>Clear</button></div>
+        <div data-p="upload" hidden><p class="muted small">A clear photo or scan of the signature in dark ink on white paper. The white is made transparent and the picture is cropped.</p>
+          <label class="fld"><span>Picture</span><input type="file" accept="image/*" data-file></label></div>
+        <div data-p="type" hidden><label class="fld"><span>Name as signed</span><input data-tname maxlength="60" value="${esc(String(who).toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase()))}"></label>
+          <label class="fld"><span>Handwriting</span><select data-tfont>${SIG_FONTS.map(([f, l]) => `<option value="${esc(f)}">${esc(l)}</option>`).join('')}</select></label></div>
+        <p class="sec-h small">Preview</p><div class="sig-prev" data-prev><span class="muted small">Nothing yet</span></div>
+        <p class="muted small">By saving, the signatory agrees that this picture stands for their signature on HR letters issued for the Company. It is applied only when an approved letter is issued, by them or someone they allow, and every use is recorded.</p>`,
+      onOpen: (wrap) => {
+        const cv = $('.sig-pad canvas', wrap); const cx = cv.getContext('2d'); cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.strokeStyle = '#14215a'; let last = null;
+        const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height, e.pressure || 0.5]; };
+        cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); last = pos(e); });
+        cv.addEventListener('pointermove', (e) => { if (!last) return; const p = pos(e); cx.lineWidth = 3 + 3 * (e.pointerType === 'pen' ? p[2] : 0.5); cx.beginPath(); cx.moveTo(last[0], last[1]); cx.lineTo(p[0], p[1]); cx.stroke(); last = p; drawn = true; });
+        const up = () => { if (last) { last = null; prev(); } }; cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up); cv.addEventListener('pointerleave', up);
+        cv.style.touchAction = 'none';
+        $('[data-clear]', wrap).onclick = () => { cx.clearRect(0, 0, cv.width, cv.height); drawn = false; prev(); };
+        const typed = () => { const t = $('[data-tname]', wrap).value.trim(); if (!t) return null; const f = $('[data-tfont]', wrap).value; const c = document.createElement('canvas'); c.width = 1400; c.height = 300;
+          const x = c.getContext('2d'); x.fillStyle = '#14215a'; x.font = `140px "${f}"`; x.textBaseline = 'middle'; x.fillText(t, 30, 160); return c; };
+        const current = () => (mode === 'draw' ? (drawn ? inkCanvas(cv) : null) : mode === 'upload' ? (upCanvas ? inkCanvas(upCanvas, { whiteBg: true }) : null) : (() => { const c = typed(); return c ? inkCanvas(c) : null; })());
+        const prev = () => { const box = $('[data-prev]', wrap); const c = current(); box.innerHTML = ''; if (!c) { box.innerHTML = '<span class="muted small">Nothing yet</span>'; return; } c.className = 'sig-prev-img'; box.appendChild(c); };
+        $$('[data-m]', wrap).forEach((b) => b.addEventListener('click', async () => { mode = b.dataset.m; $$('[data-m]', wrap).forEach((x) => x.classList.toggle('on', x === b)); $$('[data-p]', wrap).forEach((p) => { p.hidden = p.dataset.p !== mode; });
+          if (mode === 'type') await sigFonts(); prev(); }));
+        $('[data-file]', wrap).addEventListener('change', async (e) => { try { upCanvas = await fileImage(e.target.files[0]); } catch (x) { upCanvas = null; toast(x.message, 'err'); } prev(); });
+        $('[data-tname]', wrap).addEventListener('input', prev); $('[data-tfont]', wrap).addEventListener('change', prev);
+        wrap._sig = async () => { const c = current(); if (!c) throw new Error(mode === 'draw' ? 'Sign on the pad first.' : mode === 'upload' ? 'Choose a picture of the signature.' : 'Type the name.'); return { blob: await canvasPng(c), method: mode }; };
+        out = wrap;
+      },
+      onOk: async () => { const r = await out._sig(); out = r; } }).then((ok) => (ok ? out : null));
+  }
+  function stampMaker(co) {
+    let pic = null; let wrapEl = null;
+    return modal({ title: `Company stamp · ${co}`, ok: 'Save stamp',
+      body: `<p class="muted small">A clear scan or photo of the company stamp on white paper. The white is made transparent and the picture is cropped. It is optional on each letter.</p>
+        <label class="fld"><span>Picture</span><input type="file" accept="image/*" data-file></label><label class="chk"><input type="checkbox" data-wbg checked> Make the white background transparent</label>
+        <p class="sec-h small">Preview</p><div class="sig-prev" data-prev><span class="muted small">Nothing yet</span></div>`,
+      onOpen: (wrap) => { wrapEl = wrap; let src = null;
+        const prev = () => { const box = $('[data-prev]', wrap); box.innerHTML = ''; pic = src ? inkCanvas(src, { whiteBg: $('[data-wbg]', wrap).checked, maxW: 700 }) : null; if (!pic) { box.innerHTML = '<span class="muted small">Nothing yet</span>'; return; } pic.className = 'sig-prev-img'; box.appendChild(pic); };
+        $('[data-file]', wrap).addEventListener('change', async (e) => { try { src = await fileImage(e.target.files[0]); } catch (x) { src = null; toast(x.message, 'err'); } prev(); });
+        $('[data-wbg]', wrap).addEventListener('change', prev); },
+      onOk: async () => { if (!pic) throw new Error('Choose the stamp picture.'); pic = await canvasPng(pic); } }).then((ok) => (ok && wrapEl ? pic : null));
+  }
+  async function signaturesTab(box) {
+    box.innerHTML = loading();
+    let S; try { S = await signatoriesData(true); } catch (e) { box.innerHTML = errorCard(e.message); return; }
+    const users = S.users || []; const mgr = !!S.can_manage;
+    const cos = (window.CMS_COMPANIES || []).map((c) => c.code);
+    const thumb = (path, alt) => (path ? `<img class="sig-thumb" data-esp="${esc(path)}" alt="${esc(alt)}">` : '');
+    const rows = S.signatories.map((x) => `<tr class="${x.active ? '' : 'muted'}"><td><b>${esc(x.name)}</b>${x.active ? '' : ' <span class="tag xs">off</span>'}${x.is_mine ? ' <span class="tag blue xs">you</span>' : ''}<small class="sub">${esc(x.designation || '—')}</small></td>
+        <td>${x.companies.length ? x.companies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ') : '<span class="muted small">All companies</span>'}</td>
+        <td>${x.user_name ? esc(x.user_name) : '<span class="muted small">—</span>'}</td>
+        <td>${x.sig ? `${x.sig.path ? thumb(x.sig.path, `Signature of ${x.name}`) : '<span class="tag ok xs">set</span>'}<small class="sub">${esc({ draw: 'Drawn', upload: 'Uploaded', type: 'Typed' }[x.sig.method] || '')} · ${dShort(x.sig.created_at)}</small>` : '<span class="muted small">none — signed by pen</span>'}</td>
+        <td>${x.access ? (x.access.length ? x.access.map((a) => `${esc(a.name)}${a.has_esign ? '' : ' <span class="tag warn xs" title="Needs the &quot;Apply e-signatures&quot; permission">no permission</span>'}`).join('<br>') : '<span class="muted small">Only them</span>') : (x.can_use ? '<span class="tag ok xs">you may apply</span>' : '')}${x.uses ? `<small class="sub">used on ${num(x.uses)} letter${x.uses === 1 ? '' : 's'}</small>` : ''}</td>
+        <td class="nowrap">${mgr ? `<button type="button" class="btn sm ghost" data-sedit="${esc(x.id)}">Edit…</button> ` : ''}${x.can_edit ? `<button type="button" class="btn sm" data-ssig="${esc(x.id)}">${x.sig ? 'New signature…' : 'Set signature…'}</button> <button type="button" class="btn sm ghost" data-sacc="${esc(x.id)}">Who may apply…</button>${x.sig ? ` <button type="button" class="btn sm ghost" data-srm="${esc(x.id)}">Remove</button>` : ''}` : ''}</td></tr>`).join('');
+    const stamps = cos.map((c) => { const st = (S.stamps || []).find((y) => y.company === c);
+      return `<tr><td><b>${esc(coShort(c) || c)}</b> <small class="muted">${esc(c)}</small></td><td>${st ? `${st.path ? thumb(st.path, `${c} stamp`) : '<span class="tag ok xs">set</span>'}<small class="sub">${dShort(st.created_at)}${st.by ? ` · ${esc(st.by)}` : ''}</small>` : '<span class="muted small">none</span>'}</td>
+        <td class="nowrap">${mgr ? `<button type="button" class="btn sm" data-stamp="${esc(c)}">${st ? 'Replace…' : 'Upload…'}</button>${st ? ` <button type="button" class="btn sm ghost" data-strm="${esc(c)}">Remove</button>` : ''}` : ''}</td></tr>`; }).join('');
+    box.innerHTML = `<div class="toolbar"><h4 class="sec-h" style="margin:0">Signatories</h4><span class="sp"></span>${mgr ? '<button type="button" class="btn sm primary" data-sadd>+ Add signatory…</button>' : ''}</div>
+      ${S.signatories.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Signatory</th><th>Signs for</th><th>Login</th><th>E-signature</th><th>Who may apply it</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty small"><p>No signatories yet</p>${mgr ? '<span>Add the people who sign letters for the Company.</span>' : ''}</div>`}
+      <h4 class="sec-h">Company stamps <small class="muted">optional on each letter</small></h4>
+      <div class="table-wrap"><table class="data compact"><tbody>${stamps}</tbody></table></div>
+      <p class="muted small">A signatory, or Admin / a Director, chooses who may apply their e-signature; that person also needs the “Apply e-signatures” permission. It is applied only when an approved letter is issued, the signatory gets a CMS notice when someone else applies it, and each use is recorded. Issued letters keep the signature they were issued with. Employee acknowledgements are always signed by hand.</p>`;
+    $$('img[data-esp]', box).forEach((im) => esignImg(im.dataset.esp).then((u) => { if (u) im.src = u; }).catch(() => { im.replaceWith(Object.assign(document.createElement('span'), { className: 'muted small', textContent: 'picture not available' })); }));
+    const redo = () => { state.signatories = null; signaturesTab(box); };
+    const editSig = async (x) => {
+      const ok = await modal({ title: x ? `Signatory · ${x.name}` : 'Add signatory',
+        body: `<label class="fld"><span>Name (as printed on letters)</span><input name="name" required maxlength="120" value="${esc(x?.name || '')}"></label>
+          <label class="fld"><span>Designation</span><input name="desig" maxlength="120" value="${esc(x?.designation || '')}" placeholder="e.g. Director"></label>
+          <div class="fld"><span>Signs for <small class="muted">none ticked = all companies</small></span><div class="chk-row">${cos.map((c) => `<label class="chk"><input type="checkbox" name="co" value="${esc(c)}" ${x?.companies.includes(c) ? 'checked' : ''}> ${esc(coShort(c) || c)}</label>`).join('')}</div></div>
+          <label class="fld"><span>Their CMS login <small class="muted">lets them set their own signature and choose who may apply it</small></span><select name="uid"><option value="">None</option>${users.map((u) => `<option value="${esc(u.id)}" ${u.id === x?.user_id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+          <div class="grid-2 tight"><label class="fld"><span>Order in the list</span><input name="sort" type="number" value="${esc(x?.sort ?? 0)}"></label>
+          <label class="chk" style="align-self:end"><input type="checkbox" name="on" ${!x || x.active ? 'checked' : ''}> In use</label></div>`,
+        onOk: async (fm) => { if (!fm.name.value.trim()) throw new Error('Give the name.');
+          await API.rpc('cms_signatory_save', { p: { id: x?.id || null, name: fm.name.value.trim(), designation: fm.desig.value.trim(), companies: $$('input[name=co]:checked', fm).map((i) => i.value), user_id: fm.uid.value || null, sort: Number(fm.sort.value || 0), active: fm.on.checked } }); } });
+      if (ok) { toast('Signatory saved'); redo(); } };
+    $('[data-sadd]', box)?.addEventListener('click', () => editSig(null));
+    $$('[data-sedit]', box).forEach((b) => b.addEventListener('click', () => editSig(S.signatories.find((y) => y.id === b.dataset.sedit))));
+    $$('[data-ssig]', box).forEach((b) => b.addEventListener('click', async () => { const x = S.signatories.find((y) => y.id === b.dataset.ssig);
+      const r = await signatureMaker(x.name); if (!r) return;
+      try { const path = await esignPut(`sig/${x.id}/${crypto.randomUUID()}.png`, r.blob); await API.rpc('cms_signature_set', { p_signatory: x.id, p_path: path, p_method: r.method }); toast(`E-signature saved for ${x.name}`); redo(); }
+      catch (e) { toast(e.message, 'err'); } }));
+    $$('[data-srm]', box).forEach((b) => b.addEventListener('click', async () => { const x = S.signatories.find((y) => y.id === b.dataset.srm);
+      if (await confirmBox('Remove e-signature', `Remove ${esc(x.name)}'s e-signature? New letters are then signed by pen until a new one is set. Letters already issued keep theirs.`, 'Remove', true,
+        () => API.rpc('cms_signature_remove', { p_signatory: x.id }))) { toast('E-signature removed'); redo(); } }));
+    $$('[data-sacc]', box).forEach((b) => b.addEventListener('click', async () => { const x = S.signatories.find((y) => y.id === b.dataset.sacc);
+      const on = new Set((x.access || []).map((a) => a.user_id)); const list = users.filter((u) => u.id !== x.user_id);
+      const ok = await modal({ title: `Who may apply ${x.name}'s e-signature`,
+        body: `<p class="muted small">${x.user_id ? `${esc(x.name)} can always apply their own. ` : ''}Tick the people who may apply it when they issue a letter. They also need the “Apply e-signatures” permission and permission to issue letters.</p>
+          <div class="sig-acc">${list.map((u) => `<label class="chk"><input type="checkbox" name="u" value="${esc(u.id)}" ${on.has(u.id) ? 'checked' : ''}> ${esc(u.name)}${u.has_esign ? '' : ' <span class="tag warn xs">no “Apply e-signatures” permission</span>'}${u.can_issue ? '' : ' <span class="tag xs">cannot issue letters</span>'}</label>`).join('') || '<p class="muted small">No other CMS users.</p>'}</div>`,
+        onOk: async (fm) => { const want = new Set($$('input[name=u]:checked', fm).map((i) => i.value));
+          for (const u of list) { if (want.has(u.id) !== on.has(u.id)) await API.rpc('cms_signatory_access_set', { p_signatory: x.id, p_user: u.id, p_on: want.has(u.id) }); } } });
+      if (ok) { toast('Saved'); redo(); } }));
+    $$('[data-stamp]', box).forEach((b) => b.addEventListener('click', async () => { const c = b.dataset.stamp; const blob = await stampMaker(c); if (!blob) return;
+      try { const path = await esignPut(`stamp/${c}/${crypto.randomUUID()}.png`, blob); await API.rpc('cms_stamp_set', { p_company: c, p_path: path }); toast(`${c} stamp saved`); redo(); } catch (e) { toast(e.message, 'err'); } }));
+    $$('[data-strm]', box).forEach((b) => b.addEventListener('click', async () => { const c = b.dataset.strm;
+      if (await confirmBox('Remove company stamp', `Remove the ${esc(c)} stamp? Letters already issued keep theirs.`, 'Remove', true, () => API.rpc('cms_stamp_remove', { p_company: c }))) { toast('Stamp removed'); redo(); } }));
+  }
   async function loadLettersPending() { try { state.lettersPending = await API.rpc('cms_letters_pending'); drawBell(); } catch (e) { /* reminders only */ } }
   function letterTasks() {
     const x = state.lettersPending; const t = []; if (!x) return t;
@@ -6557,9 +6764,9 @@
       const T = todo(); const t = f.q.trim().toLowerCase(); const m = (l) => !t || `${l.name} ${l.title || ''} ${l.employee_id || ''}`.toLowerCase().includes(t);
       const iss = L.letters.filter((l) => l.status === 'issued' && m(l)); const prog = L.letters.filter((l) => ['draft', 'pending_approval', 'approved'].includes(l.status) && m(l));
       const n = T.approve.length + T.issue.length + T.back.length + T.tpls.length;
-      const TABS = [['todo', `To do <span>${n}</span>`], ['issued', `Issued <span>${iss.length}</span>`], ['progress', `In progress <span>${prog.length}</span>`], ['templates', `Templates <span>${L.templates.filter((x) => x.status !== 'retired').length}</span>`], ['placeholders', `Placeholders <span>${L.placeholders.filter((x) => x.active).length}</span>`]];
+      const TABS = [['todo', `To do <span>${n}</span>`], ['issued', `Issued <span>${iss.length}</span>`], ['progress', `In progress <span>${prog.length}</span>`], ['templates', `Templates <span>${L.templates.filter((x) => x.status !== 'retired').length}</span>`], ['placeholders', `Placeholders <span>${L.placeholders.filter((x) => x.active).length}</span>`], ['signatures', 'Signatures']];
       $('#lt-body', el).innerHTML = `<section class="card"><div class="seg ss-tabs">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${f.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-        <div class="toolbar"><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="${f.tab === 'placeholders' ? 'Placeholder name or label' : f.tab === 'templates' ? 'Template' : 'Name or letter'}" value="${esc(f.q)}" aria-label="Search"></label>
+        <div class="toolbar" ${f.tab === 'signatures' ? 'hidden' : ''}><label class="search-in">${icon('search')}<input id="lq" type="search" placeholder="${f.tab === 'placeholders' ? 'Placeholder name or label' : f.tab === 'templates' ? 'Template' : 'Name or letter'}" value="${esc(f.q)}" aria-label="Search"></label>
           ${f.tab === 'templates' ? `<label class="chk"><input type="checkbox" id="lret" ${f.retired ? 'checked' : ''}> Show retired</label>${L.can_change ? `<button type="button" class="btn sm" data-imp>${icon('plus')}Import from Word…</button><a class="btn sm" href="#/letters?tpl=new">+ New text template</a>` : ''}`
             : f.tab === 'placeholders' ? (L.can_placeholders ? '<button type="button" class="btn sm primary" data-phnew>+ New placeholder…</button>' : '')
             : `${L.can_edit || L.can_approve ? `<button type="button" class="btn sm" data-rec>${icon('plus')}Record a past letter…</button>` : ''}${L.can_edit ? '<a class="btn sm primary" href="#/letters?ws=new">+ New letter</a>' : ''}`}</div><div id="lt-tab"></div></section>
@@ -6570,7 +6777,8 @@
         box.innerHTML = (sec('Waiting for your approval', T.approve, 'Sent') + sec('Approved — ready to issue', T.issue, 'Approved') + sec('Sent back to you', T.back, 'Drafted')
           + (T.tpls.length ? `<h4 class="sec-h">Templates to review <span class="muted">${T.tpls.length}</span></h4><div class="table-wrap"><table class="data compact"><tbody>${T.tpls.map((x) => `<tr><td><b>${esc(x.title)}</b> <small class="muted">${esc(x.code)}</small><small class="sub">${x.retire_request ? `Retire: ${esc(x.retire_request.reason)} · ${esc(x.retire_request.by_name || '')}` : x.pending?.submitted_at ? `Change: ${esc(x.pending.reason || '')} · ${esc(x.pending.by_name || '')}` : `New ${x.format === 'docx' ? 'Word' : 'text'} template · ${esc(x.created_by_name || '')}`}</small></td><td><button type="button" class="btn sm primary" data-review="${esc(x.code)}">Review…</button></td></tr>`).join('')}</tbody></table></div>` : ''))
           || '<div class="empty small"><p>Nothing waiting for you</p></div>';
-      } else if (f.tab === 'issued') box.innerHTML = letterRows(iss, 'Issued');
+      } else if (f.tab === 'signatures') signaturesTab(box);
+      else if (f.tab === 'issued') box.innerHTML = letterRows(iss, 'Issued');
       else if (f.tab === 'progress') box.innerHTML = letterRows(prog, 'Last step');
       else if (f.tab === 'templates') {
         const list = L.templates.filter((x) => (f.retired || x.status !== 'retired') && (!t || `${x.title} ${x.code} ${x.type_title}`.toLowerCase().includes(t)));
@@ -6774,7 +6982,7 @@
           <label class="fld"><span>Letter</span><select id="lw-t" ${editable ? '' : 'disabled'}><option value="">Choose…</option>${[...new Set(choices.map((t) => t.type_title))].map((g) => `<optgroup label="${esc(g)}">${choices.filter((t) => t.type_title === g).map((t) => `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.title)}${t.format === 'docx' ? ' · Word' : ''}${t.company ? ` · ${esc(coShort(t.company) || t.company)}` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
           ${!usable.length && editable ? '<p class="small bad-t">No template is switched on yet. Admin switches templates on under HR Letters › Templates.</p>' : ''}
           <div id="lw-resign"></div><div id="lw-facts"></div>
-          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-basis"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-warn"></div><div id="lw-hist"></div>
+          <div id="lw-jd"></div><div id="lw-jdnote"></div><div id="lw-basis"></div><div id="lw-sal"></div><div id="lw-fields"></div><div id="lw-sign"></div><div id="lw-warn"></div><div id="lw-hist"></div>
         </section>
         <section class="card lw-pv-card" id="lw-pv-card">
           <div class="lw-pv-bar"><b>Preview</b><span class="muted small" id="lw-pv-st"></span><span class="sp"></span>
@@ -6889,11 +7097,11 @@
       if (recorded) { st.textContent = 'signed copy'; if (pv.dataset.pdf === rec.signed_path) return; pv.innerHTML = loading();
         try { const u = await letterPdfUrl(rec.signed_path); pv.dataset.pdf = rec.signed_path; pv.innerHTML = `<iframe class="lw-pdf" src="${u}" title="Signed letter"></iframe>`; } catch (e) { pv.innerHTML = errorCard(e.message); } return; }
       const miss = missing(); st.textContent = status === 'issued' ? 'as issued' : miss.length ? `${miss.length} field${miss.length === 1 ? '' : 's'} still to fill (red)` : 'all fields filled';
-      if (t.format !== 'docx') { view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf)}`; requestAnimationFrame(applyZoom); return; }
+      if (t.format !== 'docx') { if (status === 'issued' && rec?.esign) loadEsImgs(); view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf, sheetOpts())}`; requestAnimationFrame(applyZoom); return; }
       try {
         let bytes;
         if (status === 'issued' && rec.docx_path) bytes = await getDocx(rec.docx_path);
-        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(srcBytes, vals, labelOf), coCode || co?.code); }
+        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(srcBytes, null), vals.authorized_signatory, vals.authorized_designation), vals, labelOf), coCode || co?.code); }
         view = await W.render(bytes, pv, { marks: missing().map((k) => `[${labelOf(k)}]`), stamp: stamp() }); view.frame.addEventListener('load', () => setTimeout(applyZoom, 30));
       } catch (e) { pv.innerHTML = errorCard(e.message); }
     };
@@ -7082,7 +7290,7 @@
       drawBasis();
       salArr(); if (!$('#lw-sal [data-sal-mode]', el) || !editable) drawSal();
       if (jdTitlesFor !== personId) { jdTitles = null; loadJdTitles(); }
-      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().map((k) => { const p = ph.get(k) || {}; const op = OPT.get(k);
+      box.innerHTML = `<h4 class="sec-h">Letter fields</h4>${keys().filter((k) => !SIGN_KEYS.includes(k)).map((k) => { const p = ph.get(k) || {}; const op = OPT.get(k);
         if (op) { const cur = String(vals[k] ?? '');
           return `<label class="fld lw-opt"><span>${esc(p.label || k.replace(/_/g, ' '))}${op.type === 'switch' ? ' <small class="muted">changes which parts of the letter are included</small>' : ''}</span><select data-opt="${k}" ${editable ? '' : 'disabled'}>${cur && op.options.some((o) => o.value === cur) ? '' : '<option value="">Choose…</option>'}${op.options.map((o) => `<option value="${esc(o.value)}" ${o.value === cur ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>`; }
         const ro = !editable || p.protected || p.editable === false || p.source === 'calculation' || (isJD() && [...jdFields,'post_probation_salary_arrangement'].includes(k)) || (hasSal() && k === 'salary_arrangement');
@@ -7099,7 +7307,50 @@
       $$('[data-opt]', box).forEach((i) => i.addEventListener('change', () => { vals[i.dataset.opt] = i.value; calc(); drawFields(); later(); }));
       $$('[data-pick]', box).forEach((i) => i.addEventListener('change', () => { if (!i.value) return; const k = i.dataset.pick; vals[k] = longDate(i.value); $(`[data-k="${k}"]`, box).value = vals[k]; calc(); later(); }));
       $('[data-addr]', box)?.addEventListener('click', () => { Object.assign(vals, splitAddress(ctx._home_address)); drawFields(); later(); });
+      drawSign();
     };
+    // signed for the Company (v2026.11.18): pick from the signatory list (fills Name and Designation), or type someone else.
+    // The e-signature itself is applied only when the approved letter is issued.
+    let SG = null; let sgLoading = false; let sgOther = false; let esImgs = null; let esFor = '';
+    const sigOf = () => { const list = SG?.signatories || []; return list.find((x) => x.id === vals._signatory_id)
+      || (!vals._signatory_id && vals.authorized_signatory ? list.find((x) => x.active && x.name.trim().toLowerCase() === String(vals.authorized_signatory).trim().toLowerCase()) : null) || null; };
+    const loadSG = async () => { if (SG || sgLoading) return; sgLoading = true; try { SG = await signatoriesData(); } catch (e) { SG = { signatories: [], stamps: [] }; } sgLoading = false; drawSign(); if (sigOf()?.sig) later(); };
+    function drawSign() {
+      const box = $('#lw-sign', el); if (!box) return; const t = tpl();
+      if (!t || !personId || recorded || isJD()) { box.innerHTML = ''; return; }
+      if (!SG) { box.innerHTML = ''; loadSG(); return; }
+      const co0 = coCode || co?.code || rec?.company || '';
+      const list = SG.signatories.filter((x) => x.active && (!x.companies.length || x.companies.includes(co0)));
+      const cur = sigOf(); const other = !cur && String(vals.authorized_signatory || '').trim() !== '';
+      const esNote = (x) => (!x ? '<p class="muted small">Signed by pen (no e-signature for someone not on the signatory list).</p>'
+        : x.sig ? `<p class="small ok-t">${icon('check-circle')} ${esc(x.name)} has an e-signature. It can be applied when the letter is issued${x.can_use ? ' — you may apply it' : ' by them or someone they allowed'}.</p>`
+          : `<p class="muted small">${esc(x.name)} has no e-signature yet — the letter is signed by pen${x.can_edit ? '. Set one up under HR Letters › Signatures' : ''}.</p>`);
+      if (!editable) {
+        const es = rec?.esign;
+        box.innerHTML = `<h4 class="sec-h">Signed for the Company</h4><p class="small"><b>${esc(vals.authorized_signatory || es?.name || '—')}</b>${vals.authorized_designation ? ` · ${esc(vals.authorized_designation)}` : ''}</p>
+          ${status === 'issued' ? (es?.sig_path || es?.stamp_path ? `<p class="small ok-t">${icon('check-circle')} ${[es.sig_path && 'E-signature', es.stamp_path && 'company stamp'].filter(Boolean).join(' and ')} applied by ${esc(es.applied_by_name || '')} · ${dShort(es.applied_at)}</p>` : '<p class="muted small">Signed by pen.</p>') : esNote(cur)}
+          <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`;
+        return;
+      }
+      const v = cur ? cur.id : other || sgOther ? 'other' : '';
+      box.innerHTML = `<h4 class="sec-h">Signed for the Company</h4>
+        <label class="fld"><span>Signatory</span><select data-sg><option value="">Choose…</option>${list.map((x) => `<option value="${esc(x.id)}" ${x.id === v ? 'selected' : ''}>${esc(x.name)}${x.designation ? ` · ${esc(x.designation)}` : ''}${x.sig ? ' ✎' : ''}</option>`).join('')}
+          <option value="other" ${v === 'other' ? 'selected' : ''}>Someone else — type the name</option></select></label>
+        ${v ? `<div class="grid-2 tight"><label class="fld ${v !== 'other' ? 'ro' : ''}"><span>Name</span><input data-sgk="authorized_signatory" value="${esc(vals.authorized_signatory || '')}" ${v !== 'other' ? 'readonly' : ''}></label>
+          <label class="fld ${v !== 'other' ? 'ro' : ''}"><span>Designation</span><input data-sgk="authorized_designation" value="${esc(vals.authorized_designation || '')}" ${v !== 'other' ? 'readonly' : ''}></label></div>` : ''}
+        ${v ? esNote(cur) : `<p class="muted small">${list.length ? 'Choosing a signatory fills the Name and Designation.' : 'No signatory is set up for this company yet (HR Letters › Signatures).'}</p>`}
+        <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`;
+      $('[data-sg]', box).onchange = (e) => { const x = list.find((y) => y.id === e.target.value);
+        sgOther = e.target.value === 'other';
+        if (x) { vals._signatory_id = x.id; vals.authorized_signatory = x.name; vals.authorized_designation = x.designation; }
+        else { delete vals._signatory_id; if (!sgOther || cur) { vals.authorized_signatory = ''; vals.authorized_designation = ''; } }
+        drawSign(); later(); };
+      $$('[data-sgk]', box).forEach((i) => i.addEventListener('input', () => { vals[i.dataset.sgk] = i.value; later(); }));
+    }
+    // pictures of an issued letter's e-signature / stamp (its own copies), for the preview and print
+    const loadEsImgs = async () => { const es = rec?.esign; const k = `${es?.sig_path || ''}|${es?.stamp_path || ''}`; if (!es || k === '|' || esFor === k) return; esFor = k;
+      try { const [a, b] = await Promise.all([esignImg(es.sig_path), esignImg(es.stamp_path)]); esImgs = { sig: a, stamp: b }; } catch (e) { esImgs = null; toast(`The e-signature picture could not be loaded: ${e.message}`, 'err'); } later(); };
+    const sheetOpts = () => { if (status === 'issued') return esImgs ? { esign: esImgs } : null; const x = sigOf(); return x?.sig ? { esignNote: `${x.name}'s e-signature can be applied on issue` } : null; };
     // a confirmation after a promotion: fill the promotion letter date and probation from that letter (issued in the CMS or recorded)
     let basis = null; let basisFor = '';
     const fillBasis = (b) => {
@@ -7251,9 +7502,32 @@
     $('#lw-acts', el).innerHTML = acts.join('');
     const payload = (submit) => { const t = tpl(); return { id: rec?.id || null, person_id: personId, template: t.code, fields: vals, text: textNow(), company: co ? { ...co, logo: undefined } : null, appraisal_id: appraisal, submit }; };
     const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
-    const doIssue = async () => {
-      const t = tpl(); let path = null;
-      if (t.format === 'docx') { const src = await getDocx(t.source_path); const bytes = await W.letterhead(await W.fill(src, rec.fields || vals, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
+    // issue: choose whether to apply the e-signature / company stamp (only what this person may apply), then issue
+    const issueChoices = async () => {
+      let S; try { S = await signatoriesData(true); SG = S; } catch (e) { S = { signatories: [], stamps: [] }; }
+      const f0 = rec.fields || vals; const co0 = coCode || co?.code || rec.company;
+      const x = (S.signatories || []).find((y) => y.id === f0._signatory_id) || (!f0._signatory_id ? (S.signatories || []).find((y) => y.active && y.name.trim().toLowerCase() === String(f0.authorized_signatory || '').trim().toLowerCase()) : null);
+      const coOk = x && (!x.companies.length || x.companies.includes(co0));
+      const sigWhy = !x ? `${esc(f0.authorized_signatory || 'The signatory')} is not on the signatory list` : !coOk ? `${esc(x.name)} does not sign for ${esc(co0)}` : !x.sig ? `${esc(x.name)} has no e-signature yet` : !x.can_use ? `You are not allowed to apply ${esc(x.name)}'s e-signature` : '';
+      const stp = (S.stamps || []).find((y) => y.company === co0 && y.path);
+      let out = null;
+      const ok = await modal({ title: 'Issue letter', ok: 'Issue',
+        body: `<p>Issue this letter to <b>${esc(rec.name)}</b>? It is then locked and kept in their records.</p>
+          <label class="chk"><input type="checkbox" name="sig" ${sigWhy ? 'disabled' : 'checked'}> Apply ${x ? `<b>${esc(x.name)}</b>'s` : 'the'} e-signature</label>${sigWhy ? `<p class="muted small">${sigWhy} — the letter is signed by pen.</p>` : `<p class="muted small">${x.is_mine ? 'Your own signature.' : `${esc(x.name)} gets a notice in the CMS.`}</p>`}
+          ${stp ? `<label class="chk"><input type="checkbox" name="stamp"> Apply the ${esc(coShort(co0) || co0)} company stamp <small class="muted">optional</small></label>` : ''}
+          <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`,
+        onOk: (fm) => { out = { sig: !sigWhy && fm.sig.checked ? x : null, stamp: stp && fm.stamp?.checked ? stp : null }; } });
+      return ok ? out : null;
+    };
+    const imgOf = async (blob) => { let w = 600; let h = 200; try { const bm = await createImageBitmap(blob); w = bm.width; h = bm.height; bm.close?.(); } catch (e) { /* default shape */ } return { data: await blob.arrayBuffer(), w, h }; };
+    const doIssue = async (ch) => {
+      const t = tpl(); let path = null; const pics = {}; let sigPath = null; let stampPath = null;
+      if (ch?.sig) { const b = await esignBlob(ch.sig.sig.path); sigPath = await esignPut(`issued/${rec.id}/${crypto.randomUUID()}.png`, b); pics.sig = b; }
+      if (ch?.stamp) { const b = await esignBlob(ch.stamp.path); stampPath = await esignPut(`issued/${rec.id}/${crypto.randomUUID()}.png`, b); pics.stamp = b; }
+      await API.rpc('cms_letter_esign', { p_id: rec.id, p_sig_path: sigPath, p_stamp_path: stampPath });
+      if (t.format === 'docx') { const f0 = rec.fields || vals; const src = await getDocx(t.source_path);
+        const imgs = pics.sig || pics.stamp ? { sig: pics.sig ? await imgOf(pics.sig) : null, stamp: pics.stamp ? await imgOf(pics.stamp) : null } : null;
+        const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs), f0.authorized_signatory, f0.authorized_designation), f0, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
     // file name for print / PDF / Word: employee name - letter name - date and time
@@ -7276,17 +7550,17 @@
         if (a === 'back') { const ok = await modal({ title: recorded ? 'Do not approve this recorded letter' : 'Send back to the drafter', ok: recorded ? 'Do not approve' : 'Send back', danger: true, body: `${recorded ? '<p class="muted small">The recording is cancelled; HR records the letter again with the right details.</p>' : ''}<label class="fld"><span>${recorded ? 'What is wrong' : 'What should be changed'}</span><input name="r" required maxlength="300"></label>`,
           onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Say what should be changed.'); await API.rpc('cms_letter_decide', { p_id: rec.id, p_approve: false, p_reason: f.r.value.trim() }); } });
           if (ok) { toast('Sent back'); loadLettersPending(); render(); } return; }
-        if (a === 'issue') { if (!(await ask(`Issue this letter to ${rec.name}? It is then locked and kept in their records.`, 'Issue'))) return;
-          b.disabled = true; await doIssue(); toast('Letter issued'); state.lettersData = null; loadLettersPending(); render(); return; }
+        if (a === 'issue') { const ch = await issueChoices(); if (!ch) return;
+          b.disabled = true; await doIssue(ch); esignImgCache.clear(); toast(ch.sig || ch.stamp ? `Letter issued with ${[ch.sig && 'e-signature', ch.stamp && 'company stamp'].filter(Boolean).join(' and ')}` : 'Letter issued'); state.lettersData = null; loadLettersPending(); render(); return; }
         if (a === 'dprint') {   // before issue: printed with its watermark, and recorded
           if (!tpl() || !personId) throw new Error('Choose the person and the letter first.');
           try { await API.rpc('cms_letter_draft_printed', { p_id: rec?.id || null, p_person: personId, p_template: tpl().code }); } catch (e) { toast(e.message, 'err'); return; }
           const nm = letterFileName().replace(/ - (\d{4}-\d{2}-\d{2} \d{2}\.\d{2})$/, ' - DRAFT - $1');
           if (tpl().format === 'docx') { if (!view) throw new Error('The preview is still loading. Try again in a moment.'); view.print(nm); }
-          else docView(el, nm, [`<div class="lw-stamp">${esc(stamp() || 'DRAFT — NOT ISSUED')}</div>${letterSheet(textNow(), co, coCode, labelOf)}`], () => render());
+          else docView(el, nm, [`<div class="lw-stamp">${esc(stamp() || 'DRAFT — NOT ISSUED')}</div>${letterSheet(textNow(), co, coCode, labelOf, sheetOpts())}`], () => render());
           drawHistory(); return;
         }
-        if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(letterFileName()); return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf)], () => render()); return; }
+        if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(letterFileName()); return; } if (rec.esign) { await loadEsImgs(); if (!esImgs) return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf, sheetOpts())], () => render()); return; }
         if (a === 'word') { saveBytes(await getDocx(rec.docx_path), `${letterFileName()}.docx`); return; }
         if (a === 'void') { const ok = await modal({ title: 'Cancel letter', ok: 'Cancel letter', danger: true, body: `<p class="muted small">${status === 'issued' ? 'The issued letter stays on record, marked as cancelled.' : 'The draft is closed.'}</p><label class="fld"><span>Reason</span><input name="r" required></label>`,
           onOk: async (f) => { if (!f.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_letter_void', { p_id: rec.id, p_reason: f.r.value.trim() }); } });
@@ -8887,7 +9161,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); loadLoecPending(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); loadLoecPending(); loadNotices(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 
