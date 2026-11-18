@@ -21,7 +21,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-014 | 2026-11-03 | Sick leave (EA s.60F): the upgraded quantum (14 → 18 → 22; part time 10 → 13 → 15 from 2027) applies to the whole calendar year in which the 2-year or 5-year service mark is crossed, from 1 January; no proration in the year of joining | **Built in v2026.11.03-17:55** |
 | PRI-020 | 2026-11-07 | Retire the form apps' own sign-in together: once every form (SCF, OTCF, MTCF, PRFAF, TEC) is made in the CMS and stable, all form apps at once get the CMS notice / redirect and become read-only (F3) | Recorded; waits until all forms are stable in the CMS |
 | PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
-| PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | Recorded; plan given 18 Nov 2026, waiting for go |
+| PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | **Built in v2026.11.18-21:30 to 23:05** (phases 1–4); old MEG-EAF V2 pages switch over one by one as CLC confirms |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -566,4 +566,10 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   handbook administration (versions, assigning, due dates).
 - **Plan:** see the plan given on 18 Nov 2026 (phases: LOEC into HR Letters → HR Staff parts → Apply Now → handbook administration →
   parallel run, then the old pages point to the CMS).
+- **Decisions (CLC 18 Nov 2026):** applicant person record made when the offer is prepared; Apply Now at a new CMS address with the old one
+  forwarding; invitation only kept; phases 1 → 4; each old page switched over as CLC confirms it.
+- **Built:** phase 1 v2026.11.18-21:30 (LOEC in HR Letters, applicant record, signatory + e-signature on the offer letter); phases 2–3
+  v2026.11.18-22:30 (Apply Now at `apply/` with the server-checked apply link, apply links, drafts, full application view / print, summary);
+  phase 4 v2026.11.18-23:05 (handbook administration). To do on CLC's word, page by page: MEG-EAF V2 index.html (Apply Now) → forward to
+  the CMS `apply/` (keeping ?invite=), hr.html → the CMS Applications page, handbook-status.html → the CMS Employee Handbook page.
 

@@ -1361,3 +1361,7 @@ code.brk { word-break: break-all; }
 .sheet.list-sheet.land .sum-tbl { font-size: 8pt; width: 100%; }
 .sheet.list-sheet.land .sum-tbl td, .sheet.list-sheet.land .sum-tbl th { padding: 3px 4px; vertical-align: top; }
 @media print { body.doc-mode .sheet.list-sheet.land { page: land; } }
+/* PRI-024: handbook rules */
+.grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem 1rem; align-items: end; }
+@media (max-width: 720px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
+.card.sub-card { box-shadow: none; border: 1px solid var(--line, #e3e6ec); margin: .6rem 0; }

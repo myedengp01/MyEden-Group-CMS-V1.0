@@ -3096,7 +3096,9 @@
     return `<span class="tag ${HB[s][1]} xs">${HB[s][0]}</span>${s === 'acknowledged' ? `<small class="sub">${dShort(r.acknowledged_at)}</small>` : r.progress != null ? `<small class="sub ${late ? 'bad-txt' : ''}">${r.progress}% read${r.due_at ? ` · due ${dShort(r.due_at)}` : ''}</small>` : ''}`;
   };
   async function handbookPage(item, el) {
-    el.innerHTML = `${pageHead(item, eafBtn('handbook', 'Open handbook status in MEG-EAF V2', 'ghost'))}<div id="hb-body">${loading()}</div>`;
+    el.innerHTML = `${pageHead(item, `<button type="button" class="btn sm" id="hb-set">${icon('shield')}Handbooks &amp; reading rules</button>`)}<div id="hb-body">${loading()}</div>`;
+    $('#hb-set', el).addEventListener('click', () => handbookSettings(() => handbookPage(item, el)));
+    const hbE = can('handbook', 'E');
     let rows;
     try { [rows] = await Promise.all([loadHandbook(), loadOrg()]); if (!rows) throw new Error('Could not load handbook progress.'); } catch (e) { $('#hb-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     rows.forEach((r) => upKeys(r, 'name'));
@@ -3111,23 +3113,65 @@
           <select id="hco" aria-label="Company"><option value="all">All companies</option>${cos.map((c) => `<option value="${esc(c)}">${esc(coShort(c))}</option>`).join('')}</select>
           <div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div>
         </div>
-        <div class="table-wrap fill"><table class="data freeze2" id="htable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Centre</th><th>Handbook</th><th>Assigned</th><th>Progress</th></tr></thead><tbody></tbody></table></div>
+        <div class="table-wrap fill"><table class="data freeze2" id="htable"><thead><tr><th>Employee ID</th><th>Name</th><th>Employer</th><th>Centre</th><th>Handbook</th><th>Assigned</th><th>Progress</th>${hbE ? '<th></th>' : ''}</tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="hcount"></p>
-        <p class="muted small">Active and onboarding staff with their latest handbook assignment from MEG-EAF V2. Staff read and acknowledge the handbook in MEG-EAF V2; assignments, deadlines and reminders are managed there.</p>
+        <p class="muted small">Active and onboarding staff with their handbook. Hiring assigns the employer's handbook automatically; staff read and acknowledge it in the CMS (My Handbook). Here HR assigns it, takes it back (with a reason), and sets a person's own days to read and how much must be read; <b>Handbooks &amp; reading rules</b> sets them for everyone on a handbook.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
       const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co) && (!t || `${r.name} ${r.employee_id || ''} ${r.unit || ''}`.toLowerCase().includes(t)));
       $('#htable tbody', el).innerHTML = list.length ? list.map((r) => `<tr><td class="nowrap"><code>${esc(r.employee_id || '—')}</code></td><td><b>${esc(r.name)}</b></td>
-          <td>${esc(coShort(r.company))}</td><td>${esc(r.unit || '—')}</td><td>${esc(r.version || '—')}</td><td class="nowrap">${dShort(r.assigned_at)}</td><td class="nowrap">${hbCell(r)}</td></tr>`).join('')
-        : '<tr><td colspan="7"><div class="empty small"><p>No one here</p><span>Try another tab.</span></div></td></tr>';
+          <td>${esc(coShort(r.company))}</td><td>${esc(r.unit || '—')}</td><td>${esc(r.version || '—')}</td><td class="nowrap">${dShort(r.assigned_at)}</td><td class="nowrap">${hbCell(r)}</td>
+          ${hbE ? `<td class="nowrap">${r.assignment_id ? `<button type="button" class="btn sm ghost" data-hrule="${esc(r.person_id)}">Rules…</button> <button type="button" class="btn sm ghost" data-hback="${esc(r.person_id)}">Take back…</button>` : `<button type="button" class="btn sm" data-hassign="${esc(r.person_id)}">Assign</button>`}</td>` : ''}</tr>`).join('')
+        : `<tr><td colspan="${hbE ? 8 : 7}"><div class="empty small"><p>No one here</p><span>Try another tab.</span></div></td></tr>`;
       $('#hcount', el).textContent = `${list.length} of ${rows.length} people`;
       fitTables();
     };
     draw();
+    const redo = () => { state.hb = null; handbookPage(item, el); };
+    const who = (id) => rows.find((r) => r.person_id === id);
+    $('#htable tbody', el).addEventListener('click', async (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      try {
+        if (b.dataset.hassign) { const r = who(b.dataset.hassign); b.disabled = true; await API.rpc('cms_handbook_assign', { p_person: r.person_id }); toast(`${r.name}: handbook assigned`); redo(); return; }
+        if (b.dataset.hback) { const r = who(b.dataset.hback);
+          const ok = await modal({ title: `Take back the handbook · ${r.name}`, ok: 'Take back', danger: true, body: `<p class="muted small">${esc(r.name)} no longer sees the handbook to read; what was read and acknowledged is kept. Assign gives it back.</p><label class="fld"><span>Reason</span><input name="r" required maxlength="200" value="Employee exit / inactive handbook access"></label>`,
+            onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('handbook_admin_retire_assignment', { p_assignment_id: r.assignment_id, p_reason: fm.r.value.trim() }); } });
+          if (ok) { toast('Handbook taken back'); redo(); } return; }
+        if (b.dataset.hrule) { const r = who(b.dataset.hrule);
+          const ok = await modal({ title: `Reading rules · ${r.name}`, body: `<p class="muted small">Only for ${esc(r.name)}; empty = the handbook's rule (${r.deadline_enabled ? `${esc(r.default_days)} days` : 'no deadline'}, read at least ${esc(r.default_threshold)} %).</p>
+              <div class="grid-2 tight"><label class="fld"><span>Days to read (from assigned)</span><input name="d" type="number" min="1" max="365" value="${esc(r.deadline_days ?? '')}"></label>
+              <label class="fld"><span>Read at least (%)</span><input name="t" type="number" min="1" max="100" value="${esc(r.read_threshold ?? '')}"></label></div>`,
+            onOk: async (fm) => { await API.rpc('handbook_admin_set_assignment_policy', { p_assignment_id: r.assignment_id, p_deadline_days: fm.d.value ? Number(fm.d.value) : null, p_read_threshold_percent: fm.t.value ? Number(fm.t.value) : null }); } });
+          if (ok) { toast('Reading rules saved'); redo(); } return; }
+      } catch (x) { b.disabled = false; toast(x.message, 'err'); }
+    });
     $('#hq', el).addEventListener('input', (e) => { f.q = e.target.value; draw(); });
     $('#hco', el).addEventListener('change', (e) => { f.co = e.target.value; draw(); });
     $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+  }
+
+  // the handbooks (one per employer) and their reading rules: deadline on / off, days to read, how much must be read, deemed acknowledgement
+  async function handbookSettings(after) {
+    let H; try { H = await API.rpc('cms_handbook_admin'); } catch (e) { toast(e.message, 'err'); return; }
+    let changed = false;
+    await modal({ title: 'Handbooks & reading rules', wide: true, ok: null, cancel: 'Close',
+      body: `<p class="muted small">Each employer has its handbook; a new hire gets their employer's handbook automatically. The rules here apply to everyone on that handbook unless a person has their own (Rules… on the list).</p>
+        ${H.versions.map((v) => `<section class="card sub-card" data-v="${esc(v.id)}"><div class="card-head"><h3>${esc(v.title)} ${esc(v.version)}</h3><span class="muted small">${esc((v.companies || []).join(', '))} · ${esc(v.status)} · ${num(v.assigned)} assigned · ${num(v.acknowledged)} acknowledged${v.clauses ? ` · ${num(v.clauses)} sections to tick` : ''}</span></div>
+          <div class="grid-4 tight"><label class="chk"><input type="checkbox" name="dl" ${v.deadline_enabled ? 'checked' : ''} ${H.can_edit ? '' : 'disabled'}> Deadline to read</label>
+          <label class="fld"><span>Days to read</span><input name="days" type="number" min="1" max="365" value="${esc(v.days ?? 7)}" ${H.can_edit ? '' : 'disabled'}></label>
+          <label class="fld"><span>Read at least (%)</span><input name="thr" type="number" min="1" max="100" value="${esc(v.threshold ?? 90)}" ${H.can_edit ? '' : 'disabled'}></label>
+          <label class="chk"><input type="checkbox" name="deem" ${v.auto_deem ? 'checked' : ''} ${H.can_edit ? '' : 'disabled'}> Deemed acknowledged after the deadline</label></div>
+          ${H.can_edit ? '<div class="btn-row"><button type="button" class="btn sm primary" data-save>Save</button></div>' : ''}</section>`).join('')}
+        ${H.can_edit ? '<div class="btn-row"><button type="button" class="btn sm" data-due>Apply the due-date rules now</button></div>' : ''}`,
+      onOpen: (wrap) => {
+        $$('[data-save]', wrap).forEach((b) => b.addEventListener('click', async () => {
+          const sec = b.closest('[data-v]'); const q = (n) => $(`[name=${n}]`, sec);
+          try { b.disabled = true; await API.rpc('cms_handbook_version_set', { p_id: sec.dataset.v, p_deadline_enabled: q('dl').checked, p_days: Number(q('days').value), p_threshold: Number(q('thr').value), p_auto_deem: q('deem').checked }); changed = true; toast('Reading rules saved'); }
+          catch (x) { toast(x.message, 'err'); } finally { b.disabled = false; } }));
+        $('[data-due]', wrap)?.addEventListener('click', async (e) => { try { e.target.disabled = true; const n = await API.rpc('handbook_admin_apply_due_rules'); changed = true; toast(`Due-date rules applied (${num(n || 0)} updated)`); } catch (x) { toast(x.message, 'err'); } finally { e.target.disabled = false; } });
+      } });
+    if (changed && after) after();
   }
 
   // ---------------------------------------------------------------- 3.7 Employment Act & calculators
