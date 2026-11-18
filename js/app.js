@@ -5495,6 +5495,7 @@
     const ok = await modal({ title: `${apName(A)} · ${A.name}`, ok: edit ? (A.status === 'reviewed' ? 'Save changes' : 'Save review') : null, cancel: 'Close', wide: true,
       body: `<p class="muted small">${esc([A.employee_id, A.title, coShort(A.company)].filter(Boolean).join(' · '))}${A.position ? ` · JD ${esc(A.position.level)} ${esc(A.position.title)}` : ' · not placed on a JD position (Career Paths)'}
           · reviewer ${esc(A.reviewer || 'HR')} ${apTag(A)}</p>
+        ${A.returned_at && A.status === 'open' ? `<div class="err-box"><b>Returned by ${esc(A.returned_by_name || '')}</b> · ${dShort(A.returned_at)}<br>${esc(A.approve_note || '')}</div>` : ''}
         ${prob ? `<p class="small">Probation ends (= confirmation date): <b>${A.probation_end ? dShort(A.probation_end) : '—'}</b> <span class="muted">${esc(PROB_SRC[A.probation_source] || '')}</span></p>` : ''}
         ${A.self_requested ? `<details class="card" ${A.self_done ? 'open' : ''}><summary><b>Self-assessment</b> ${A.self_done ? `<small class="muted">${dShort(A.self_at)}</small>` : '<small class="muted">not sent yet</small>'}</summary>
           ${A.self_answers ? SELF_Q.map(([k, l]) => (A.self_answers[k] ? `<p><b>${l}:</b> ${esc(A.self_answers[k])}</p>` : '')).join('') : ''}</details>` : ''}
@@ -5677,6 +5678,7 @@
         <div class="btn-row"><button type="button" class="btn primary" data-check>Send to the Director</button>${A.status === 'open' ? '<button type="button" class="btn" data-revs>Set reviewers…</button>' : ''}<button type="button" class="btn ghost" data-out>Result reached outside the CMS…</button></div>`;
     const decided = A.status === 'approved';
     const body = `<p class="muted small">${esc([A.employee_id, A.title, coShort(A.company)].filter(Boolean).join(' · '))}${A.position ? ` · JD ${esc(A.position.level)} ${esc(A.position.title)}` : ''} ${apTag(A)}</p>
+      ${A.returned_at && A.status === 'open' ? `<div class="err-box"><b>Returned by ${esc(A.returned_by_name || '')}</b> · ${dShort(A.returned_at)}<br>${esc(A.approve_note || '')}<br><small class="muted">Change the HR check (or the result) and send it to the Director again.</small></div>` : ''}
       <p class="small">Probation ends: <b>${dShort(pend)}</b>${pipTxt ? ` · <span class="tag warn xs">${esc(pipTxt)}</span>` : ''}${A.due ? ` · review due ${dShort(A.due)}` : ''} · reviewers ${revChips}</p>
       ${A.pip_targets?.length && A.pip_month ? `<details class="card"><summary><b>PIP targets</b></summary>${A.pip_targets.map((t) => `<p class="small"><b>${esc(t.area)}</b>${t.action ? ` — ${esc(t.action)}` : ''}${t.support ? ` <span class="muted">(support: ${esc(t.support)})</span>` : ''}</p>`).join('')}</details>` : ''}
       ${['hr', 'director'].includes(A.role) || decided ? resultBox() : ''}
