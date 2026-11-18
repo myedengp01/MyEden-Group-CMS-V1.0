@@ -2069,8 +2069,13 @@
 
   // ---------------------------------------------------------------- 3.1 applications (and Shortlist & Interviews)
   async function applicationsPage(item, el) {
-    el.innerHTML = `${pageHead(item, `${can('recruitment') ? `<button type="button" class="btn sm" id="ap-open">${icon('briefcase')}Posts open for applications</button>` : ''}${eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost')}`)}<div id="ap-body">${loading()}</div>`;
+    el.innerHTML = `${pageHead(item, `${can('recruitment') ? `<button type="button" class="btn sm" id="ap-open">${icon('briefcase')}Posts open for applications</button>` : ''}
+      ${can('recruitment') ? `<button type="button" class="btn sm" id="ap-links">${icon('plug')}Apply links</button><button type="button" class="btn sm" id="ap-drafts">${icon('file-check')}Drafts</button><button type="button" class="btn sm" id="ap-sum">${icon('list')}Application summary</button>` : ''}
+      ${can('recruitment', 'E') ? `<a class="btn sm primary" href="${esc(asset('apply/'))}" target="_blank" rel="noopener">${icon('plus')}Fill in an application</a>` : ''}`)}<div id="ap-body">${loading()}</div>`;
     $('#ap-open', el)?.addEventListener('click', recruitOpenWindow);
+    $('#ap-links', el)?.addEventListener('click', applyLinksWindow);
+    $('#ap-drafts', el)?.addEventListener('click', () => applyDraftsWindow(() => applicationsPage(item, el)));
+    $('#ap-sum', el)?.addEventListener('click', () => applySummary(el, () => applicationsPage(item, el)));
     let rows;
     try { [rows] = await Promise.all([API.rpc('cms_recruit_applications'), loadOrg()]); }
     catch (e) { $('#ap-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
@@ -2095,7 +2100,7 @@
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="atable"><thead><tr><th>Submitted</th><th>Applicant</th><th>Company</th><th>Position</th><th>Stage</th><th>Offer letter</th><th>Start</th><th>Employee</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="acount"></p>
-        <p class="muted small">From MEG-EAF V2. Click an application to move its stage, record the interview and Office Use, prepare the offer letter, and record the signed copy and stamp duty. Applicants still apply through the MEG-EAF V2 form (photos and IC images stay there); once the offer is accepted, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
+        <p class="muted small">From MEG-EAF V2. Click an application to move its stage, record the interview and Office Use, prepare the offer letter, and record the signed copy and stamp duty. Applicants apply with the link from <b>Apply links</b> (the same form as MEG-EAF V2, now in the CMS); click <b>Full application</b> in an application to see it as submitted, with photos, IC and signature, and print it; once the offer is accepted, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
@@ -2280,12 +2285,87 @@
         </dl>
         <h4 class="sec-h">Stage history</h4>
         ${a.events.length ? `<ol class="timeline">${a.events.map((e) => `<li><b>${esc(appStageOf(e.to)[1])}</b>${e.from ? ` <span class="muted small">from ${esc(appStageOf(e.from)[1])}</span>` : ''}<small class="sub">${dShort(e.at)} · ${esc(e.by || '—')}${e.note ? ` · ${esc(e.note)}` : ''}</small></li>`).join('')}</ol>` : '<p class="muted small">No stage changes recorded yet.</p>'}
-        <div class="btn-row">${loecOk ? `<a class="btn primary" href="#/loec?app=${esc(a.id)}" data-x>${icon('file-check')}${a.loec ? 'Open offer letter (LOEC)' : 'Prepare offer letter (LOEC)'}</a>` : ''}${eafBtn('hr', 'Open in MEG-EAF V2', loecOk ? '' : 'primary')}${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
+        <div class="btn-row">${loecOk ? `<a class="btn primary" href="#/loec?app=${esc(a.id)}" data-x>${icon('file-check')}${a.loec ? 'Open offer letter (LOEC)' : 'Prepare offer letter (LOEC)'}</a>` : ''}<a class="btn ${loecOk ? '' : 'primary'}" href="${esc(asset(`apply/?view=${encodeURIComponent(a.id)}`))}" target="_blank" rel="noopener">${icon('eye')}Full application</a>${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
         <div id="aw-hr" class="aw-hr">${loading()}</div>
-        <p class="muted small">MEG-EAF V2 opens on its HR page; search for ${esc(a.name)} there. Photos and IC images stay in MEG-EAF V2.</p>`,
+        <p class="muted small">Full application opens the form as ${esc(a.name)} submitted it (photos, IC, signature), view only, ready to print.</p>`,
       onOpen: (wrap) => appHrBox($('#aw-hr', wrap), id, () => { changed = true; }),
     });
     if (changed && after) after();
+  }
+
+  // ---------------------------------------------------------------- PRI-024 (v2026.11.18): the MEG-EAF V2 HR Staff parts in the CMS
+  const APPLY_CO = [['meg', 'MyEden Group'], ['meh', 'MyEden Edu Hub'], ['hds', 'Happy Dino'], ['abn', 'Aborne Project']];
+  const applyUrl = (q) => new URL(asset(`apply/${q || ''}`), location.href).href;
+  // apply links: Apply Now stays invitation only — each applicant gets a link (one company, valid until a date, a number of uses)
+  async function applyLinksWindow() {
+    let D; try { D = await API.rpc('cms_apply_links'); } catch (e) { toast(e.message, 'err'); return; }
+    const ST = { active: ['Active', 'ok'], used: ['Used', ''], expired: ['Expired', ''], revoked: ['Revoked', 'bad'] };
+    const week = new Date(Date.now() + 8 * 36e5 + 7 * 864e5).toISOString().slice(0, 16);
+    const rowsHtml = () => (D.links.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Company</th><th>Status</th><th>Valid until</th><th class="num">Used</th><th>Made by</th><th></th></tr></thead><tbody>
+      ${D.links.map((l) => `<tr><td>${esc((APPLY_CO.find((c) => c[0] === l.company) || [0, l.company])[1])}</td><td><span class="tag ${ST[l.status][1]} xs">${ST[l.status][0]}</span></td>
+        <td class="nowrap">${esc(new Date(l.expires_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="num">${esc(l.use_count)} / ${esc(l.max_uses)}</td><td>${esc(l.by || '—')}<small class="sub">${dShort(l.created_at)}</small></td>
+        <td class="nowrap">${l.status === 'active' ? `<button type="button" class="btn sm" data-copy="${esc(applyUrl(`?invite=${l.token}`))}">Copy link</button>${D.can_edit ? ` <button type="button" class="btn sm ghost" data-rev="${esc(l.id)}">Revoke</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No apply links yet.</p>');
+    await modal({ title: 'Apply links', ok: null, cancel: 'Close', wide: true,
+      body: `<p class="muted small">Apply Now is <b>${D.mode === 'invitation_only' ? 'invitation only' : esc(D.mode)}</b>: an applicant opens the form with the link you send them. A link is for one company (the form is set to it), valid until the date and for the number of uses you choose. Staff with Recruitment can always open the form from the CMS.</p>
+        ${D.can_edit ? `<div class="grid-3 tight"><label class="fld"><span>Company</span><select name="co">${APPLY_CO.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Valid until</span><input type="datetime-local" name="exp" value="${week}"></label><label class="fld"><span>Uses</span><input type="number" name="max" min="1" max="1000" value="1"></label></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-make>Make a link</button></div><div data-new></div>` : ''}
+        <h4 class="sec-h">Links</h4><div data-list>${rowsHtml()}</div>`,
+      onOpen: (wrap) => {
+        const wire = () => {
+          $$('[data-copy]', wrap).forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Link copied'); } catch (e) { prompt('Copy the link:', b.dataset.copy); } });
+          $$('[data-rev]', wrap).forEach((b) => b.onclick = async () => { if (!(await ask('Revoke this apply link? It stops working at once.', 'Revoke'))) return;
+            try { await API.rpc('cms_apply_link_revoke', { p_id: b.dataset.rev }); D = await API.rpc('cms_apply_links'); $('[data-list]', wrap).innerHTML = rowsHtml(); wire(); toast('Link revoked'); } catch (e) { toast(e.message, 'err'); } });
+        };
+        wire();
+        $('[data-make]', wrap)?.addEventListener('click', async () => {
+          const f = $('form', wrap);
+          try { const r = await API.rpc('cms_apply_link_create', { p_company: f.co.value, p_expires: new Date(f.exp.value).toISOString(), p_max: Number(f.max.value || 1) });
+            const url = applyUrl(`?invite=${r.token}`);
+            $('[data-new]', wrap).innerHTML = `<p class="note ok small">${icon('check-circle')}<span>Link made: <code class="brk">${esc(url)}</code> <button type="button" class="btn sm" data-copy="${esc(url)}">Copy link</button></span></p>`;
+            D = await API.rpc('cms_apply_links'); $('[data-list]', wrap).innerHTML = rowsHtml(); wire();
+          } catch (e) { toast(e.message, 'err'); } });
+      } });
+  }
+  // drafts: applicants' saved drafts and drafts HR adds from a JSON backup; HR opens one in the form to complete, save or submit
+  async function applyDraftsWindow(after) {
+    let L; try { L = await API.rpc('cms_apply_drafts'); } catch (e) { toast(e.message, 'err'); return; }
+    let changed = false; const canE = can('recruitment', 'E');
+    const listHtml = () => (L.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Applicant</th><th>Company</th><th>Saved</th><th>Code</th><th></th></tr></thead><tbody>
+      ${L.map((d) => `<tr><td><b>${esc(d.name || '(no name yet)')}</b><small class="sub">${esc([d.contact, d.email].filter(Boolean).join(' · '))}</small></td><td>${esc(coShort(d.company) || d.company)}</td>
+        <td class="nowrap">${dShort(d.updated_at)}${d.expired ? '<small class="sub warn-txt">past the 14 days</small>' : ''}<small class="sub">${d.source === 'cms_staff' ? 'by HR' : 'by the applicant'}</small></td><td><code>${esc(d.code)}</code></td>
+        <td><a class="btn sm" href="${esc(asset(`apply/?draft=${encodeURIComponent(d.id)}`))}" target="_blank" rel="noopener">${canE ? 'Open to complete' : 'Open'}</a></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No drafts.</p>');
+    await modal({ title: 'Application drafts', ok: null, cancel: 'Close', wide: true,
+      body: `<p class="muted small">Drafts applicants saved on the form, and drafts HR adds. Open one to complete it; <b>Save Draft</b> keeps it and <b>Submit Application</b> sends it to Applications. A submitted draft leaves this list (it is kept, not removed).</p>
+        ${canE ? `<div class="btn-row"><label class="btn sm file-btn">${icon('plus')}Add drafts from JSON backups<input type="file" accept=".json,application/json" multiple data-imp hidden></label></div><div data-imp-out></div>` : ''}
+        <div data-list>${listHtml()}</div>`,
+      onOpen: (wrap) => {
+        $('[data-imp]', wrap)?.addEventListener('change', async (e) => {
+          const files = [...e.target.files]; const out = []; e.target.value = '';
+          for (const f of files) {
+            try { if (f.size > 20 * 1024 * 1024) throw new Error('too large'); const data = JSON.parse(await f.text()); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('not a form backup');
+              await API.rpc('cms_apply_draft_save', { p_id: null, p_data: data }); out.push(`<li>${icon('check-circle')} ${esc(f.name)} — added${data.nameEnglish ? ` (${esc(data.nameEnglish)})` : ''}</li>`); changed = true; }
+            catch (x) { out.push(`<li class="bad-t">${esc(f.name)} — not added: ${esc(x.message)}</li>`); }
+          }
+          $('[data-imp-out]', wrap).innerHTML = `<ul class="small">${out.join('')}</ul>`;
+          try { L = await API.rpc('cms_apply_drafts'); $('[data-list]', wrap).innerHTML = listHtml(); } catch (x) { /* list stays */ }
+        });
+      } });
+    if (changed && after) after();
+  }
+  // the Application Summary (MEG-EAF V2 report): one wide printable table of every application
+  async function applySummary(el, back) {
+    let R; try { R = await API.rpc('cms_apply_summary'); } catch (e) { toast(e.message, 'err'); return; }
+    const pay = can('recruitment', 'E');
+    const age = (d) => { if (!d) return ''; const b = new Date(d); if (isNaN(b)) return ''; const n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a -= 1; return a >= 0 ? String(a) : ''; };
+    const now = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const sheet = `<section class="sheet list-sheet land"><div class="doc-head"><div class="doc-co"><div class="doc-co-name">Application Summary</div><div>${R.length} applications · printed ${esc(now)}</div></div></div>
+      <table class="data compact sum-tbl"><thead><tr><th>#</th><th>Submitted</th><th>Name</th><th>IC / Passport</th><th>Age</th><th>Email</th><th>Contact</th><th>Gender</th><th>Race</th><th>Address</th><th>Start</th>${pay ? '<th class="num">Salary</th>' : ''}<th>Job title</th><th>Hours</th><th>Department</th><th>Company</th><th>Decision</th><th>Stage</th></tr></thead><tbody>
+      ${R.map((r, i) => `<tr><td>${i + 1}</td><td class="nowrap">${dShort(r.submitted_at)}</td><td><b>${esc(r.name)}</b>${r.name_zh ? `<small class="sub">${esc(r.name_zh)}</small>` : ''}</td><td class="nowrap">${esc(r.ic || '')}</td><td>${esc(age(r.dob))}</td>
+        <td>${esc(r.email || '')}</td><td class="nowrap">${esc(r.contact || '')}</td><td>${esc(r.gender || '')}</td><td>${esc(r.race || '')}</td><td>${esc(r.address || '')}</td><td class="nowrap">${r.start ? dShort(r.start) : ''}</td>
+        ${pay ? `<td class="num">${r.salary ? esc(money(Number(r.salary))) : ''}</td>` : ''}<td>${esc(r.title || posTxt(r.post) || '')}</td><td class="nowrap">${esc(r.hours || '')}</td><td>${esc(r.department || '')}</td><td>${esc(coShort(r.company) || r.company)}</td><td>${esc(r.decision || '')}</td><td>${esc(appStageOf(r.stage)[1])}</td></tr>`).join('')}
+      </tbody></table></section>`;
+    docView(el, `Application Summary ${now}`, [sheet], back);
   }
 
   // ---------------------------------------------------------------- 3.3a offer letter (LOEC) prepared in the CMS (PRI-017, v2026.11.06)

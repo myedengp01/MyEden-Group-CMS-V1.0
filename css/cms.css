@@ -1355,3 +1355,9 @@ table.fp-t select{max-width:130px}
 .sheet.loec .lx-sigspace { display: flex; align-items: flex-end; gap: 3mm; }
 .sheet.loec .lx-sigspace .lt-sig-img { max-height: 18mm; max-width: 50mm; object-fit: contain; }
 .sheet.loec .lx-sigspace .lt-stamp-img { max-height: 22mm; max-width: 32mm; object-fit: contain; opacity: .92; mix-blend-mode: multiply; }
+/* PRI-024: apply links and the Application Summary */
+code.brk { word-break: break-all; }
+.sheet.list-sheet.land { width: auto; max-width: none; }
+.sheet.list-sheet.land .sum-tbl { font-size: 8pt; width: 100%; }
+.sheet.list-sheet.land .sum-tbl td, .sheet.list-sheet.land .sum-tbl th { padding: 3px 4px; vertical-align: top; }
+@media print { body.doc-mode .sheet.list-sheet.land { page: land; } }
