@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- MyEden Group CMS · Employment Act 1955 & HR calculators (moved from MEG-EAF V2, PRI-024, v2026.11.19). Same page; no sign-in needed. -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyEden Group CMS • Employment Act & HR Calculators</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#0a0e1a">
+<style>
+:root{
+  --bg:#09111f;--bg2:#0e182b;--panel:#111d33;--panel2:#16243e;--line:#263955;
+  --text:#eef4ff;--muted:#94a7c7;--blue:#63a5ff;--teal:#4fd8c4;--amber:#f7b955;
+  --green:#68d391;--red:#ff7d86;--purple:#b69cff;--shadow:0 18px 45px rgba(0,0,0,.25);
+}
+[data-theme="light"]{--bg:#eef3fa;--bg2:#f8fbff;--panel:#fff;--panel2:#f4f8fd;--line:#d8e3f0;--text:#17233b;--muted:#64748b;--blue:#2563eb;--teal:#0f968c;--amber:#b66a00;--green:#16844a;--red:#c93645;--purple:#7047d7;--shadow:0 14px 36px rgba(20,40,75,.09)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 15% 0,rgba(99,165,255,.10),transparent 30%),var(--bg);color:var(--text)}
+a{color:var(--blue)}button,input,select{font:inherit}.top{height:66px;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;padding:0 18px;background:rgba(9,17,31,.94);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}[data-theme="light"] .top{background:rgba(255,255,255,.94)}
+.brand{font-weight:900;letter-spacing:.04em}.brand small{display:block;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:0}.grow{flex:1}.topbtn{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:8px 11px;border-radius:9px;text-decoration:none;cursor:pointer}.shell{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 66px)}
+.side{position:sticky;top:66px;height:calc(100vh - 66px);overflow:auto;padding:18px 13px;border-right:1px solid var(--line);background:var(--bg2)}.side h4{margin:14px 9px 7px;font-size:10px;letter-spacing:.13em;color:var(--muted)}.nav{display:block;width:100%;border:0;background:transparent;color:var(--text);text-align:left;padding:9px 10px;border-radius:9px;cursor:pointer;text-decoration:none;font-size:13px}.nav:hover,.nav.active{background:var(--panel2);font-weight:800}.main{padding:24px;max-width:1250px;width:100%;margin:auto}.hero{background:linear-gradient(135deg,#17375d,#133453 52%,#13413f);border:1px solid rgba(99,165,255,.25);border-radius:19px;padding:23px 25px;box-shadow:var(--shadow);margin-bottom:18px}.hero h1{margin:0 0 5px;font-size:26px}.hero p{margin:0;color:#d3e5ff;line-height:1.5}.hero .badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}.badge{padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:11px}.notice{border:1px solid #6f5823;background:rgba(247,185,85,.09);color:var(--text);padding:11px 13px;border-radius:11px;margin:14px 0;font-size:12px;line-height:1.55}.searchbar{display:flex;gap:8px;margin:15px 0}.searchbar input{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:11px 12px}.sectionTitle{font-size:18px;margin:25px 0 11px}.calcGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.calc{background:var(--panel);border:1px solid var(--line);border-radius:15px;overflow:hidden}.calcHead{padding:14px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}.calcIcon{width:38px;height:38px;border-radius:11px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:20px}.calcHead h3{font-size:15px;margin:0}.calcHead p{font-size:11px;color:var(--muted);margin:2px 0 0}.calcBody{padding:15px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.field label{display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}.field input,.field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--text)}.wide{grid-column:1/-1}.check{display:flex;align-items:flex-start;gap:7px;color:var(--muted);font-size:11px;line-height:1.4}.check input{margin-top:2px}.action{margin-top:11px;display:flex;gap:7px}.btn{border:0;border-radius:8px;padding:9px 12px;background:var(--blue);color:white;font-weight:800;cursor:pointer}.btn.secondary{background:#516078}.result{display:none;margin-top:11px;border:1px solid var(--line);background:var(--bg2);border-radius:10px;padding:11px;font-size:12px;line-height:1.55}.result.show{display:block}.result strong.big{font-size:18px;color:var(--teal)}.result .warn{color:var(--amber);font-weight:700}.result .bad{color:var(--red);font-weight:700}.result .good{color:var(--green);font-weight:700}.formula{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;color:var(--muted);padding:6px 8px;background:rgba(127,155,190,.08);border-radius:6px;margin-top:6px}.refGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.refCard{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px}.refCard h3{font-size:14px;margin:0 0 6px}.refCard p,.refCard li{font-size:12px;color:var(--muted);line-height:1.55}.refCard ul{padding-left:18px;margin:7px 0}.source{font-size:10px;margin-top:8px;color:var(--blue)}.footer{text-align:center;color:var(--muted);font-size:10px;margin:28px 0 8px}
+.actReader{background:var(--panel);border:1px solid var(--line);border-radius:15px;overflow:hidden;margin-top:12px}.actToolbar{padding:14px;border-bottom:1px solid var(--line);background:var(--panel2);display:grid;grid-template-columns:minmax(240px,2fr) minmax(150px,1fr) minmax(170px,1fr) auto;gap:8px;align-items:center}.actToolbar input,.actToolbar select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--text)}.actToolbar .miniActions{display:flex;gap:6px;flex-wrap:wrap}.actToolbar .miniActions button{padding:8px 9px}.actStatus{padding:10px 14px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap}.actStatus b{color:var(--text)}.actLayout{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:520px}.actToc{border-right:1px solid var(--line);max-height:72vh;overflow:auto;padding:10px;background:var(--bg2)}.actToc button{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--text);font-size:11px;padding:7px 8px;border-radius:7px;cursor:pointer}.actToc button:hover,.actToc button.active{background:var(--panel);font-weight:800}.actToc .partBtn{color:var(--blue);font-weight:800;margin-top:5px}.actContent{max-height:72vh;overflow:auto;padding:18px 20px;scroll-behavior:smooth}.actPart{border-bottom:1px solid var(--line);padding:15px 0 10px;margin-bottom:5px}.actPart h2{font-size:18px;margin:0;color:var(--teal)}.actSection{border-bottom:1px dashed var(--line);padding:16px 0}.actSection h3{font-size:15px;margin:0 0 9px;color:var(--blue)}.actSection pre,.actPreamble pre{white-space:pre-wrap;word-break:normal;font-family:inherit;font-size:12px;line-height:1.65;margin:0;color:var(--text)}mark{background:#ffe082;color:#2b2200;border-radius:2px;padding:0 1px}.actMatch{outline:2px solid var(--amber);outline-offset:4px;border-radius:4px}.actEmpty{padding:50px 20px;text-align:center;color:var(--muted)}.actMeta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:11px 0}.actMeta div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}.actMeta b{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.actMeta span{display:block;margin-top:3px;font-size:12px;font-weight:800}.actSourceNote{font-size:11px;color:var(--muted);line-height:1.55;margin-top:8px}.actSourceNote a{font-weight:700}.readerBadge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;background:rgba(79,216,196,.10);border:1px solid rgba(79,216,196,.25);color:var(--teal);font-size:10px;font-weight:800}
+@media(max-width:900px){.actToolbar{grid-template-columns:1fr 1fr}.actLayout{grid-template-columns:1fr}.actToc{max-height:230px;border-right:0;border-bottom:1px solid var(--line)}.actMeta{grid-template-columns:1fr 1fr}.shell{grid-template-columns:1fr}.side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);display:flex;overflow:auto;gap:4px}.side h4{display:none}.nav{white-space:nowrap;width:auto}.calcGrid,.refGrid{grid-template-columns:1fr}.main{padding:15px}}
+@media(max-width:560px){.actToolbar{grid-template-columns:1fr}.actMeta{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.wide{grid-column:auto}.top{padding:0 10px}.brand small{display:none}.hero{padding:18px}.hero h1{font-size:21px}}
+@media print{.top,.side,.action,.searchbar,.actToolbar,.actToc{display:none!important}.actLayout{display:block}.actContent{max-height:none;overflow:visible}.actReader{border:0}.top,.side,.action,.searchbar{display:none!important}.shell{display:block}.main{padding:0}.calc,.refCard{break-inside:avoid;box-shadow:none}.result{display:block}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">MYEDEN <small>MyEden Group CMS • Employment Act Smart Reference</small></div>
+  <div class="grow"></div>
+  <button class="topbtn" onclick="toggleTheme()" title="Theme">◐</button>
+  <a class="topbtn" href="../app/#/hrlaw" target="_top">Back to the CMS</a>
+</header>
+<div class="shell">
+<aside class="side">
+  <a class="nav active" href="#top">⌂ Overview</a>
+  <h4>CALCULATORS</h4>
+  <a class="nav" href="#ot">⏱ OT / Off / Rest / Holiday</a>
+  <a class="nav" href="#incomplete">💵 Incomplete Month</a>
+  <a class="nav" href="#notice">📅 Notice / Last Day</a>
+  <a class="nav" href="#annual">🌴 Annual Leave / Resignation</a>
+  <a class="nav" href="#parttime">🕓 Part-Time Leave</a>
+  <a class="nav" href="#sick">🏥 Sick Leave</a>
+  <a class="nav" href="#maternity">🤰 Maternity</a>
+  <a class="nav" href="#paternity">👶 Paternity</a>
+  <a class="nav" href="#hours">🕒 Working Hours</a>
+  <a class="nav" href="#termination">📦 Termination Benefits</a>
+  <a class="nav" href="#deadlines">⏰ Statutory Deadlines</a>
+  <a class="nav" href="#finalpay">🧾 Final Pay</a>
+  <h4>REFERENCE</h4>
+  <a class="nav" href="#fullact">📜 Full Employment Act 1955</a>
+  <a class="nav" href="#reference">⚖ Employment Act Topics</a>
+  <a class="nav" href="#sources">🔗 Official Sources</a>
+</aside>
+<main class="main" id="top">
+  <section class="hero">
+    <h1>Malaysia Employment Act 1955 — Smart HR Reference & Calculator Suite</h1>
+    <p>Fast statutory estimates for HR decision support, together with a searchable digital edition of Employment Act 1955 (Act 265).</p>
+    <div class="badges"><span class="badge">Peninsular Malaysia + Labuan</span><span class="badge">Employment Act 1955</span><span class="badge">2022 amendments effective 1 Jan 2023</span><span class="badge">Reviewed against JTKSM/MOHR sources through Oct 2026</span></div>
+  </section>
+  <div class="notice"><b>Important:</b> This tool provides internal estimates and compliance prompts, not legal advice or an official JTKSM determination. Contract terms, collective agreements, employee category, wage definition and case-specific facts can change the result. Where the contract/handbook gives a more favourable benefit, the more favourable term may apply. Sabah and Sarawak are governed by separate labour legislation. Certain statutory part-time employees have separate leave, holiday and extra-hours rules under the Employment (Part-Time Employees) Regulations 2010; calculators marked for general/monthly-rated employees should not be applied to them without checking those Regulations.</div>
+  <div class="searchbar"><input id="topicSearch" placeholder="Search Employment Act topics, e.g. annual leave, notice, overtime, maternity..." oninput="filterRefs()"><button class="btn secondary" onclick="document.getElementById('reference').scrollIntoView()">Search Reference</button></div>
+
+  <h2 class="sectionTitle">HR Calculators</h2>
+  <div class="calcGrid">
+
+    <section class="calc" id="ot">
+      <div class="calcHead"><div class="calcIcon">⏱</div><div><h3>OT / Company Off Day / Rest Day / Public Holiday Pay</h3><p>Sections 59, 60, 60A, 60D & 60I</p></div></div>
+      <div class="calcBody">
+        <div class="notice" style="margin-top:0"><b>Working-time rule:</b> 45 hours per week is the statutory ceiling, not an automatic pool of ordinary hours. A Company Off Day is not automatically the statutory Rest Day. Meal/rest time is deducted only when the employee was genuinely relieved from work and free to use the break.</div>
+        <div class="grid">
+        <div class="field"><label>Monthly wages (RM)</label><input id="otSalary" type="number" min="0" step="0.01" value="3000"></div>
+        <div class="field"><label>Normal hours per day</label><input id="otNormalHours" type="number" min="1" max="12" step="0.25" value="8"></div>
+        <div class="field"><label>Agreed normal hours per week</label><input id="otContractWeek" type="number" min="1" max="45" step="0.25" value="40"></div>
+        <div class="field"><label>Work type</label><select id="otType">
+          <option value="normal">Normal Working Day OT</option>
+          <option value="offday">Company Off Day — non-statutory Rest Day</option>
+          <option value="rest">Statutory Rest Day — s.59 / s.60</option>
+          <option value="holiday">Paid Public Holiday — s.60D</option>
+        </select></div>
+        <div class="field"><label>Claimed / elapsed hours on that day</label><input id="otHours" type="number" min="0" step="0.25" value="2"></div>
+        <div class="field"><label>Meal/rest break duration (hours)</label><input id="otBreakHours" type="number" min="0" step="0.25" value="0"></div>
+        <label class="check wide"><input id="otBreakFree" type="checkbox"> During the break, the employee was genuinely relieved from duties and free to use the time. If checked, the break is excluded from payable working hours.</label>
+        <div class="field wide"><label>Company Off Day only — is this day outside the employee's agreed normal work schedule?</label><select id="otOffOutside">
+          <option value="yes">Yes — it is an additional company off day outside the agreed normal schedule</option>
+          <option value="no">No / uncertain — the day may form part of the normal contractual roster</option>
+        </select></div>
+        <div class="field wide"><label>Statutory OT hours already accumulated this month (exclude statutory Rest Day / Public Holiday work)</label><input id="otMonthHours" type="number" min="0" step="0.25" value="0"></div>
+        <label class="check wide"><input id="otProtected" type="checkbox"> Employee earns over RM4,000 but falls within an applicable protected First Schedule category (including qualifying manual-work categories) for statutory OT/rest-day/public-holiday premium pay.</label>
+      </div><div class="action"><button class="btn" onclick="calcOT()">Calculate</button></div><div id="otResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="incomplete">
+      <div class="calcHead"><div class="calcIcon">💵</div><div><h3>Incomplete Month Salary / Unpaid Leave</h3><p>Section 18A</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Monthly wages (RM)</label><input id="imSalary" type="number" min="0" step="0.01" value="3000"></div>
+        <div class="field"><label>Month / wage period</label><input id="imMonth" type="month"></div>
+        <div class="field"><label>Eligible calendar days in wage period</label><input id="imEligible" type="number" min="0" step="1"></div>
+        <div class="field"><label>Days in wage period</label><input id="imDays" type="number" min="1" step="1" readonly></div>
+      </div><div class="action"><button class="btn" onclick="calcIncomplete()">Calculate</button></div><div id="imResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="notice">
+      <div class="calcHead"><div class="calcIcon">📅</div><div><h3>Notice Period, Last Working Day & Pay in Lieu</h3><p>Sections 12 & 13</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date</label><input id="noticeStart" type="date"></div>
+        <div class="field"><label>Date notice is given</label><input id="noticeGiven" type="date"></div>
+        <div class="field"><label>Written contractual notice?</label><select id="noticeContract"><option value="yes">Yes — use contract</option><option value="no">No — use statutory 4 / 6 / 8 weeks</option></select></div>
+        <div class="field"><label>Monthly wages (RM)</label><input id="noticeSalary" type="number" min="0" step="0.01" value="3000"></div>
+        <div class="field"><label>Contract notice amount</label><input id="noticeAmount" type="number" min="0" step="1" value="1"></div>
+        <div class="field"><label>Unit</label><select id="noticeUnit"><option value="months">Month(s)</option><option value="weeks">Week(s)</option><option value="days">Day(s)</option></select></div>
+      </div><div class="action"><button class="btn" onclick="calcNotice()">Calculate</button></div><div id="noticeResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="annual">
+      <div class="calcHead"><div class="calcIcon">🌴</div><div><h3>Annual Leave Entitlement on Resignation</h3><p>Section 60E</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date</label><input id="alStart" type="date"></div>
+        <div class="field"><label>Last day of employment</label><input id="alEnd" type="date"></div>
+        <div class="field"><label>Unused leave brought forward / already due</label><input id="alCarry" type="number" step="0.5" value="0"></div>
+        <div class="field"><label>Leave already taken from current accrual</label><input id="alTaken" type="number" step="0.5" value="0"></div>
+        <div class="field"><label>Monthly wages for leave payout (RM)</label><input id="alSalary" type="number" min="0" step="0.01" value="3000"></div>
+        <label class="check"><input id="alMisconduct" type="checkbox"> Dismissal under s.14(1)(a) misconduct (cash-out under s.60E(3A) may not apply)</label>
+      </div><div class="action"><button class="btn" onclick="calcAnnual()">Calculate</button></div><div id="alResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="parttime">
+      <div class="calcHead"><div class="calcIcon">🕓</div><div><h3>Part-Time Employee Leave</h3><p>Employment (Part-Time Employees) Regulations 2010</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start</label><input id="ptStart" type="date"></div>
+        <div class="field"><label>As-of / termination date</label><input id="ptEnd" type="date"></div>
+        <div class="field"><label>Annual leave brought forward / already due</label><input id="ptCarry" type="number" min="0" step="0.01" value="0"></div>
+        <div class="field"><label>Annual leave taken</label><input id="ptTaken" type="number" min="0" step="0.01" value="0"></div>
+        <div class="field"><label>Sick leave used this calendar year</label><input id="ptSickUsed" type="number" min="0" step="0.01" value="0"></div>
+        <div class="field"><label>Ordinary daily rate (RM, optional for leave payout)</label><input id="ptDailyRate" type="number" min="0" step="0.01" value="0"></div>
+        <label class="check wide"><input id="ptTerminating" type="checkbox" checked> Calculate current service-year annual-leave accrual on termination/resignation.</label>
+      </div><div class="action"><button class="btn" onclick="calcPartTime()">Calculate</button></div><div id="ptResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="sick">
+      <div class="calcHead"><div class="calcIcon">🏥</div><div><h3>Sick Leave Entitlement</h3><p>Section 60F</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date</label><input id="slStart" type="date"></div>
+        <div class="field"><label>As-of date</label><input id="slAsOf" type="date"></div>
+        <div class="field"><label>Non-hospital sick leave used this calendar year</label><input id="slUsed" type="number" min="0" step="1" value="0"></div>
+        <div class="field"><label>Hospitalisation leave used this calendar year</label><input id="slHospUsed" type="number" min="0" step="1" value="0"></div>
+      </div><div class="action"><button class="btn" onclick="calcSick()">Calculate</button></div><div id="slResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="maternity">
+      <div class="calcHead"><div class="calcIcon">🤰</div><div><h3>Maternity Leave Dates & Allowance Eligibility</h3><p>Part IX, especially section 37</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date (continuous service assumption)</label><input id="matEmpStart" type="date"></div>
+        <div class="field"><label>Expected confinement date</label><input id="matExpected" type="date"></div>
+        <div class="field"><label>Actual confinement date (if known)</label><input id="matActual" type="date"></div>
+        <div class="field"><label>Intended maternity leave start</label><input id="matLeaveStart" type="date"></div>
+        <div class="field"><label>Surviving children before this confinement</label><input id="matChildren" type="number" min="0" step="1" value="0"></div>
+        <div class="field"><label>Monthly wages (RM, optional display)</label><input id="matSalary" type="number" min="0" step="0.01" value="3000"></div>
+      </div><div class="action"><button class="btn" onclick="calcMaternity()">Calculate</button></div><div id="matResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="paternity">
+      <div class="calcHead"><div class="calcIcon">👶</div><div><h3>Paternity Leave Eligibility & Dates</h3><p>Section 60FA</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date</label><input id="patStart" type="date"></div>
+        <div class="field"><label>Actual confinement / birth date</label><input id="patBirth" type="date"></div>
+        <div class="field"><label>Prior statutory paternity confinements counted</label><input id="patCount" type="number" min="0" max="5" step="1" value="0"></div>
+        <div class="field"><label>Married to spouse?</label><select id="patMarried"><option value="yes">Yes</option><option value="no">No</option></select></div>
+        <div class="field wide"><label>Employer notified ≥30 days before expected confinement OR as early as possible after birth?</label><select id="patNotice"><option value="yes">Yes</option><option value="no">No / uncertain</option></select></div>
+      </div><div class="action"><button class="btn" onclick="calcPaternity()">Calculate</button></div><div id="patResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="hours">
+      <div class="calcHead"><div class="calcIcon">🕒</div><div><h3>Working Hours Compliance Check</h3><p>Sections 60A & 60C</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Arrangement</label><select id="whType" onchange="toggleHoursFields()"><option value="normal">Normal work</option><option value="shift">Shift work (3-week average)</option></select></div>
+        <div class="field"><label>Maximum hours worked in one day</label><input id="whMaxDay" type="number" min="0" step="0.25" value="8"></div>
+        <div class="field normalHours"><label>Total normal hours this week</label><input id="whWeek" type="number" min="0" step="0.25" value="45"></div>
+        <div class="field shiftHours" style="display:none"><label>Week 1 hours</label><input id="whW1" type="number" min="0" step="0.25" value="45"></div>
+        <div class="field shiftHours" style="display:none"><label>Week 2 hours</label><input id="whW2" type="number" min="0" step="0.25" value="45"></div>
+        <div class="field shiftHours" style="display:none"><label>Week 3 hours</label><input id="whW3" type="number" min="0" step="0.25" value="45"></div>
+        <div class="field normalHours"><label>Longest consecutive work before ≥30 min break</label><input id="whConsecutive" type="number" min="0" step="0.25" value="5"></div>
+        <div class="field normalHours"><label>Daily spread-over period (hours)</label><input id="whSpread" type="number" min="0" step="0.25" value="9"></div>
+        <label class="check normalHours wide"><input id="whNineAgreement" type="checkbox"> Contract redistributes shorter hours on other days, allowing up to 9 normal hours on remaining days.</label>
+      </div><div class="action"><button class="btn" onclick="calcHours()">Check</button></div><div id="whResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="termination">
+      <div class="calcHead"><div class="calcIcon">📦</div><div><h3>Termination / Lay-Off Benefit Estimate</h3><p>Section 60J + 1980 Regulations</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Employment start date</label><input id="tbStart" type="date"></div>
+        <div class="field"><label>Termination date</label><input id="tbEnd" type="date"></div>
+        <div class="field"><label>Current monthly wages (RM) — eligibility screen</label><input id="tbMonthly" type="number" min="0" step="0.01" value="3000"></div>
+        <div class="field"><label>Total wages received in last 12 months (RM)</label><input id="tb12" type="number" min="0" step="0.01" value="36000"></div>
+        <label class="check wide"><input id="tbProtected" type="checkbox"> Employee earns over RM4,000 but is in a manual / other First Schedule category that remains covered for statutory termination benefits.</label>
+      </div><div class="action"><button class="btn" onclick="calcTermination()">Calculate</button></div><div id="tbResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="deadlines">
+      <div class="calcHead"><div class="calcIcon">⏰</div><div><h3>HR Statutory Deadline Calculator</h3><p>Wages, FWA, retrenchment & termination deadlines</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field wide"><label>Deadline type</label><select id="dlType">
+          <option value="regular_wages">Regular wages — wage period end date</option>
+          <option value="ot_next_period">OT / rest day / public holiday pay — monthly wage period end</option>
+          <option value="normal_termination">Normal termination — termination date</option>
+          <option value="employer_no_notice">Employer terminates without notice — termination date</option>
+          <option value="employee_no_notice">Employee terminates without notice — termination date</option>
+          <option value="flexible_work">Flexible Working Arrangement request — date received</option>
+          <option value="pk_before">Borang PK Parts I–IV — intended action date</option>
+          <option value="pk_part_v">Borang PK Part V — action date</option>
+          <option value="pk_part_vi">Borang PK Part VI — action date</option>
+          <option value="termination_benefit">Termination benefit payment — termination date</option>
+        </select></div>
+        <div class="field wide"><label>Reference date</label><input id="dlDate" type="date"></div>
+      </div><div class="action"><button class="btn" onclick="calcDeadline()">Calculate Deadline</button></div><div id="dlResult" class="result"></div></div>
+    </section>
+
+    <section class="calc" id="finalpay">
+      <div class="calcHead"><div class="calcIcon">🧾</div><div><h3>Final Pay Estimator</h3><p>Combines common final-payment components</p></div></div>
+      <div class="calcBody"><div class="grid">
+        <div class="field"><label>Salary earned to last day (RM)</label><input id="fpSalary" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Annual leave payout (RM)</label><input id="fpLeave" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>OT / rest / holiday pay due (RM)</label><input id="fpOT" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Termination benefit (RM)</label><input id="fpTerm" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Notice indemnity payable TO employee (RM)</label><input id="fpNoticePlus" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Notice indemnity owed BY employee (RM)</label><input id="fpNoticeMinus" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Other amounts due (RM)</label><input id="fpOther" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Other lawful deductions (RM)</label><input id="fpDeduct" type="number" step="0.01" value="0"></div>
+      </div><div class="action"><button class="btn" onclick="calcFinalPay()">Calculate</button></div><div id="fpResult" class="result"></div></div>
+    </section>
+
+  </div>
+
+  <h2 class="sectionTitle" id="fullact">Digital Employment Act 1955 — Full Act Reader</h2>
+  <div class="notice"><b>Digital edition:</b> The Act is rendered here as searchable text so HR can read and navigate Act 265 without opening a PDF. The source edition is the Commissioner of Law Revision reprint <b>as at 1 August 2023</b>, incorporating Act A1651. The current JTKSM Act 265 listing is used as the official verification point. Page-layout artefacts are removed for readability; the statutory wording itself is not intentionally simplified in this reader.</div>
+  <div class="actMeta">
+    <div><b>Legislation</b><span>Employment Act 1955</span></div>
+    <div><b>Act Number</b><span>Act 265</span></div>
+    <div><b>Digital Source Edition</b><span>Reprint as at 1 Aug 2023</span></div>
+    <div><b>Latest amendment in reprint</b><span>Act A1651 • 1 Jan 2023</span></div>
+  </div>
+  <div class="actReader">
+    <div class="actToolbar">
+      <input id="actSearch" placeholder="Search full Act: e.g. overtime, termination, discrimination…" oninput="actSearchChanged()">
+      <select id="actPartFilter" onchange="filterActPart()"><option value="">All Parts</option></select>
+      <select id="actSectionJump" onchange="jumpActSection(this.value)"><option value="">Jump to section…</option></select>
+      <div class="miniActions"><button class="btn secondary" type="button" onclick="prevActMatch()" title="Previous match">↑</button><button class="btn secondary" type="button" onclick="nextActMatch()" title="Next match">↓</button><button class="btn secondary" type="button" onclick="clearActSearch()">Clear</button><button class="btn" type="button" onclick="printAct()">Print</button></div>
+    </div>
+    <div class="actStatus"><span id="actLoadStatus"><b>Loading digital Act…</b></span><span id="actSearchStatus"></span><span class="readerBadge">Searchable • Section jump • Offline cache</span></div>
+    <div class="actLayout">
+      <nav class="actToc" id="actToc"><div class="actEmpty">Loading contents…</div></nav>
+      <div class="actContent" id="actContent"><div class="actEmpty">Preparing Employment Act 1955…</div></div>
+    </div>
+  </div>
+  <div class="actSourceNote">Official verification source: <a href="https://jtksm.mohr.gov.my/en/borang/employment-act-1955" target="_blank" rel="noopener">JTKSM — Employment Act 1955 (Act 265)</a>. The reader first fetches and converts the official JTKSM Act 265 PDF into searchable text inside MEG-EAF; if the government server blocks browser text extraction, it falls back to a verified transcription of the same 2023 Commissioner of Law Revision reprint. The resulting text is cached in this browser for faster subsequent access. If an amendment or new reprint is issued, this module must be updated and re-verified before HR relies on it.</div>
+
+  <h2 class="sectionTitle" id="reference">Employment Act Quick Reference</h2>
+  <div class="refGrid" id="refGrid">
+    <article class="refCard" data-terms="coverage salary 4000 overtime manual employee first schedule"><h3>Coverage & RM4,000 threshold</h3><p>Employment Act protection generally extends to private-sector employees, but employees whose wages exceed RM4,000/month are excluded from statutory OT, rest-day/public-holiday premium pay and termination-benefit provisions unless they fall within specified First Schedule categories such as manual labour.</p><div class="source">First Schedule; JTKSM Employment Act FAQ</div></article>
+    <article class="refCard" data-terms="notice termination four six eight weeks contract"><h3>Notice of termination</h3><p>Written contractual notice governs where provided. If there is no written provision, the statutory minimum is 4 weeks (&lt;2 years), 6 weeks (2–&lt;5 years), or 8 weeks (≥5 years). The day notice is given is included.</p><div class="source">Section 12</div></article>
+    <article class="refCard" data-terms="indemnity notice pay in lieu wages"><h3>Pay in lieu of notice</h3><p>Either party may terminate without serving all or part of the notice by paying indemnity equal to the wages that would have accrued during the notice or unexpired notice period.</p><div class="source">Section 13(1)</div></article>
+    <article class="refCard" data-terms="incomplete month salary unpaid leave join resign formula"><h3>Incomplete month wages</h3><p>For monthly-rated employees who join after the first day, leave before month-end, or take unpaid leave, section 18A uses monthly wages ÷ days in the wage period × eligible days.</p><div class="source">Section 18A; JTKSM wage guidance</div></article>
+    <article class="refCard" data-terms="rest day half ordinary rate overtime two times"><h3>Work on rest day</h3><p>For monthly/weekly-rated covered employees: up to half normal hours = ½ ORP; more than half up to normal hours = 1 ORP; hours beyond normal hours = at least 2× HRP for the excess.</p><div class="source">Section 60(3)</div></article>
+    <article class="refCard" data-terms="overtime normal day one half 1.5 hourly rate 104 hours limit"><h3>Normal-day overtime</h3><p>Covered employees performing work beyond normal daily hours are entitled to at least 1.5× hourly rate of pay. The Employment (Limitation of Overtime Work) Regulations 1980 prescribe a 104-hour limit in any one month, subject to statutory permission mechanisms.</p><div class="source">Section 60A(3)–(4); 1980 Overtime Limitation Regulations</div></article>
+    <article class="refCard" data-terms="public holiday eleven days 2 days wages three times overtime"><h3>Paid public holidays</h3><p>Employees receive 11 gazetted paid holidays each calendar year. A covered employee required to work on a paid holiday receives the statutory holiday pay plus an additional 2 days' ORP; overtime beyond normal hours is at least 3× HRP.</p><div class="source">Section 60D</div></article>
+    <article class="refCard" data-terms="annual leave 8 12 16 resignation completed months"><h3>Annual leave</h3><p>Statutory annual leave is 8 / 12 / 16 days for service &lt;2 / 2–&lt;5 / ≥5 years. In a terminating service year, accrual is proportionate to completed months; fractions below ½ day are disregarded and ½ or more round to 1 day.</p><div class="source">Section 60E</div></article>
+    <article class="refCard" data-terms="part-time employee annual leave 6 8 11 sick leave 10 13 15 regulations 2010"><h3>Part-time employee leave</h3><p>Under the Employment (Part-Time Employees) Regulations 2010, statutory part-time annual leave is 6 / 8 / 11 days and paid sick leave is 10 / 13 / 15 days depending on service. Part-time employees also have separate public-holiday and extra-hours rules.</p><div class="source">Employment (Part-Time Employees) Regulations 2010, regs. 7–8</div></article>
+    <article class="refCard" data-terms="sick leave 14 18 22 hospital 60"><h3>Sick & hospitalisation leave</h3><p>Non-hospital sick leave: 14 / 18 / 22 days depending on service. Hospitalisation leave is a separate 60-day entitlement, giving a total potential entitlement of 74 / 78 / 82 days.</p><div class="source">Section 60F; JTKSM FAQ</div></article>
+    <article class="refCard" data-terms="maternity 98 days 30 days confinement 90 days nine months four months"><h3>Maternity</h3><p>Maternity leave is at least 98 consecutive days. Normal commencement is not earlier than 30 days before confinement and not later than the day immediately following confinement. Maternity allowance has separate service/eligibility conditions.</p><div class="source">Section 37</div></article>
+    <article class="refCard" data-terms="paternity seven 7 days married 12 months five confinements"><h3>Paternity</h3><p>A married male employee meeting the statutory conditions is entitled to 7 consecutive days paid paternity leave beginning on the confinement date, limited to five confinements.</p><div class="source">Section 60FA; JTKSM FAQ</div></article>
+    <article class="refCard" data-terms="working hours 45 week 8 day 9 hours five consecutive break 30 minutes"><h3>Working hours</h3><p>Normal limits include 45 hours/week, generally 8 hours/day, no more than 5 consecutive hours without at least a 30-minute break, and a 10-hour spread-over. By agreement, up to 9 hours on some days may be used where other days are shorter.</p><div class="source">Section 60A</div></article>
+    <article class="refCard" data-terms="shift work 45 average three weeks 12 hours"><h3>Shift work</h3><p>Shift workers may exceed 8 hours/day or 45 hours in an individual week, but the average over three weeks must not exceed 45 hours/week. Except specified emergencies, they should not be required to work more than 12 hours/day.</p><div class="source">Section 60C</div></article>
+    <article class="refCard" data-terms="termination retrenchment benefit 10 15 20 days 12 months"><h3>Termination / lay-off benefits</h3><p>For eligible employees with at least 12 months' continuous service, minimum rates are 10 / 15 / 20 days' wages per year for service &lt;2 / 2–&lt;5 / ≥5 years, with incomplete years prorated by complete months.</p><div class="source">Section 60J; Employment (Termination and Lay-Off Benefits) Regulations 1980</div></article>
+    <article class="refCard" data-terms="retrenchment borang pk 30 days notification"><h3>Retrenchment notification</h3><p>Retrenchment, separation scheme, lay-off and pay-cut actions may trigger Borang PK notification obligations to JTKSM, including advance reporting timelines.</p><div class="source">Section 63; JTKSM Retrenchment guidance</div></article>
+    <article class="refCard" data-terms="wages salary payment seventh day overtime next wage period termination third day"><h3>Wage payment deadlines</h3><p>Regular wages are generally due no later than the 7th day after the wage period. Rest-day, public-holiday and OT payments are generally due by the last day of the next wage period. On normal termination, unpaid earned wages are due by the termination date; where the employee terminates without notice, earned wages are due by the third day after termination.</p><div class="source">Sections 19–21</div></article>
+    <article class="refCard" data-terms="flexible working arrangement 60 days response written refusal reason"><h3>Flexible Working Arrangement response</h3><p>An employer receiving a written Flexible Working Arrangement application must approve or refuse it in writing within 60 days of receipt; a refusal must state the reason.</p><div class="source">Sections 60P–60Q; JTKSM FAQ</div></article>
+  </div>
+
+  <h2 class="sectionTitle" id="sources">Official Sources Used</h2>
+  <div class="refCard"><ul>
+    <li><a href="https://jtksm.mohr.gov.my/en/borang/employment-act-1955" target="_blank" rel="noopener">Employment Act 1955 (Act 265) — official JTKSM listing</a></li>
+    <li><a href="https://jtksm.mohr.gov.my/ms/soalan-lazim/akta-kerja-1955-pindaan-2022" target="_blank" rel="noopener">JTKSM FAQ — Employment Act 1955 (Amendment) 2022</a></li>
+    <li><a href="https://jtksm.mohr.gov.my/en/frequently-asked-questions/employees-retrenchment/how-termination-benefit-payment-calculated-and" target="_blank" rel="noopener">JTKSM — Termination benefit calculation</a></li>
+    <li><a href="https://jtksm.mohr.gov.my/ms/kalkulator/pengiraan-anggaran-gaji-bekerja-tidak-cukup-sebulan" target="_blank" rel="noopener">JTKSM — Incomplete month wage calculator</a></li>
+    <li><a href="https://jtksm.mohr.gov.my/ms/kalkulator/pengiraan-anggaran-gaji-ganti-notis-penamatan-kontrak-bergaji-bulanan-sekiranya" target="_blank" rel="noopener">JTKSM — Notice indemnity calculator</a></li>
+    <li><a href="https://jtksm.mohr.gov.my/sites/default/files/2023-03/10.%20Employment%20-%20Part-time%20Employees%20-%20Regulations%202010%20%20%281%29.pdf" target="_blank" rel="noopener">Employment (Part-Time Employees) Regulations 2010 — JTKSM</a></li>
+  </ul><p>This module should be reviewed whenever the Act, First Schedule, subsidiary legislation or official JTKSM guidance changes.</p></div>
+  <div class="footer">Employment Act &amp; HR Calculators (from MEG-EAF V2 v2026.09.01-09:15) · MyEden Group CMS</div>
+</main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+const $=id=>document.getElementById(id);
+function n(id){return Number($(id)?.value||0)}
+function money(x){return 'RM '+(Number(x)||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function parseDate(v){if(!v)return null;const [y,m,d]=v.split('-').map(Number);return new Date(y,m-1,d)}
+function dateStr(d){if(!d||isNaN(d))return '—';return d.toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'})}
+function iso(d){if(!d||isNaN(d))return '';return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+function addDays(d,days){const x=new Date(d);x.setDate(x.getDate()+days);return x}
+function addMonths(d,months){const x=new Date(d),day=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+months);const max=new Date(x.getFullYear(),x.getMonth()+1,0).getDate();x.setDate(Math.min(day,max));return x}
+function daysInclusive(a,b){return Math.floor((b-a)/86400000)+1}
+function completedMonths(a,b){if(!a||!b||b<a)return 0;let m=(b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth());if(b.getDate()<a.getDate())m--;return Math.max(0,m)}
+function completedYears(a,b){const m=completedMonths(a,b);return Math.floor(m/12)}
+function serviceText(a,b){const m=completedMonths(a,b);return `${Math.floor(m/12)} year(s) ${m%12} completed month(s)`}
+function roundLeave(x){const whole=Math.floor(x),frac=x-whole;return whole+(frac>=0.5?1:0)}
+function show(id,html){$(id).innerHTML=html;$(id).classList.add('show')}
+function statutoryTier(start,end){const y=completedYears(start,end);return y<2?8:(y<5?12:16)}
+function lastAnniversary(start,end){let ann=new Date(end.getFullYear(),start.getMonth(),start.getDate());if(ann>end)ann.setFullYear(ann.getFullYear()-1);if(start.getDate()!==ann.getDate()){const max=new Date(ann.getFullYear(),start.getMonth()+1,0).getDate();ann.setDate(Math.min(start.getDate(),max))}return ann}
+
+function calcOT(){
+  const sal=n('otSalary'),normal=n('otNormalHours'),contractWeek=n('otContractWeek'),claimed=n('otHours'),breakHours=n('otBreakHours'),type=$('otType').value;
+  if(!sal||!normal||!contractWeek||contractWeek>45||claimed<0||breakHours<0||breakHours>claimed)return show('otResult','<span class="bad">Enter valid wages, normal hours, agreed weekly hours, claimed hours and break duration.</span>');
+  const breakDeducted=$('otBreakFree').checked?breakHours:0;
+  const hrs=Math.max(0,claimed-breakDeducted);
+  const eligible=sal<=4000||$('otProtected').checked;
+  const orp=sal/26,hrp=orp/normal;
+  const breakLine=breakHours>0
+    ? `<br>Claimed / elapsed hours: <b>${claimed.toFixed(2)}</b>; break entered: <b>${breakHours.toFixed(2)}</b>; qualifying break deducted: <b>${breakDeducted.toFixed(2)}</b>; payable working hours: <b>${hrs.toFixed(2)}</b>.`
+    : `<br>Payable working hours: <b>${hrs.toFixed(2)}</b>.`;
+  const breakWarn=(breakHours>0&&!$('otBreakFree').checked)
+    ? '<br><span class="warn">Break not deducted because the employee was not confirmed as genuinely relieved from duties/free to use the break.</span>'
+    : '';
+  if(!eligible)return show('otResult',`<span class="warn">Statutory premium-pay provisions are generally not applicable because wages exceed RM4,000/month and no protected First Schedule category was selected.</span><br>Contract/handbook terms should be checked.${breakLine}${breakWarn}<div class="formula">ORP reference: ${money(orp)}; HRP reference: ${money(hrp)}</div>`);
+  if(type==='offday'&&$('otOffOutside').value!=='yes'){
+    return show('otResult',`<span class="warn">Company Off Day premium cannot be auto-calculated because this day is not confirmed as outside the employee's agreed normal work schedule.</span>${breakLine}${breakWarn}<br>Review the contract/roster. If the day is part of normal contractual hours, use the Normal Working Day OT category only for hours beyond the applicable normal hours.<div class="formula">45 hours/week is a statutory maximum, not an automatic ordinary-hours pool.</div>`);
+  }
+  let amt=0,detail='',rateLabel='';
+  if(type==='normal'){
+    amt=hrs*1.5*hrp;
+    rateLabel='Normal Working Day OT';
+    detail=`${hrs.toFixed(2)} hour(s) × 1.5 × HRP ${money(hrp)}`;
+  }else if(type==='offday'){
+    amt=hrs*1.5*hrp;
+    rateLabel='Company Off Day — outside agreed normal schedule';
+    detail=`${hrs.toFixed(2)} hour(s) × 1.5 × HRP ${money(hrp)}`;
+  }else if(type==='rest'){
+    const base=hrs<=0?0:(hrs<=normal/2?orp*.5:orp);
+    const excess=Math.max(0,hrs-normal);
+    amt=base+excess*2*hrp;
+    rateLabel=hrs<=normal/2?'Statutory Rest Day — up to half normal hours':(hrs<=normal?'Statutory Rest Day — over half up to normal hours':'Statutory Rest Day — normal hours plus excess');
+    detail=`Rest-day base ${money(base)}${excess?` + ${excess.toFixed(2)} excess hour(s) × 2 × HRP ${money(hrp)}`:''}`;
+  }else{
+    const excess=Math.max(0,hrs-normal);
+    amt=hrs<=0?0:(2*orp+excess*3*hrp);
+    rateLabel='Paid Public Holiday — additional statutory payment';
+    detail=`Additional 2 days ORP ${money(2*orp)}${excess?` + ${excess.toFixed(2)} excess hour(s) × 3 × HRP ${money(hrp)}`:''}`;
+  }
+  const existing=n('otMonthHours');
+  const countable=(type==='normal'||type==='offday')?hrs:0;
+  const projected=existing+countable;
+  const otLimit=(countable>0&&projected>104)
+    ? `<br><span class="warn">Projected statutory overtime for the month is ${projected.toFixed(2)} hours (${existing.toFixed(2)} already accumulated + ${countable.toFixed(2)} current). This exceeds the 104-hour monthly limit prescribed by the Employment (Limitation of Overtime Work) Regulations 1980 unless lawful permission/exception applies.</span>`
+    : (countable>0?`<br>Projected statutory OT this month: <b>${projected.toFixed(2)} hours</b>.`:'');
+  const weeklyNote=type==='offday'
+    ? `<br><span class="source">Agreed normal week entered: ${contractWeek.toFixed(2)} hours. The calculator does not use any difference between that figure and 45 hours as free ordinary hours.</span>`
+    : '';
+  show('otResult',`Work type: <b>${rateLabel}</b>${breakLine}${breakWarn}<br>ORP = ${money(orp)}; HRP = ${money(hrp)}.<br>Estimated statutory additional payment: <strong class="big">${money(amt)}</strong><div class="formula">${detail}</div>${otLimit}${weeklyNote}<br><span class="source">ORP/HRP follows s.60I. Normal-day/company-off-day OT uses the s.60A overtime rate where the work is outside agreed normal hours; statutory Rest Day uses s.59/s.60; paid public holiday work uses s.60D. Rest-day/public-holiday work is excluded from the s.60A(4) overtime-limit tally.</span>`);
+  window.lastOT=amt;
+}
+
+function syncMonthDays(){const v=$('imMonth').value;if(!v)return;const [y,m]=v.split('-').map(Number);$('imDays').value=new Date(y,m,0).getDate();}
+$('imMonth').addEventListener('change',syncMonthDays);
+function calcIncomplete(){const sal=n('imSalary'),elig=n('imEligible'),days=n('imDays');if(!sal||!days||elig<0||elig>days)return show('imResult','<span class="bad">Check the wage period and eligible days.</span>');const amt=sal/days*elig;show('imResult',`Wages due for the incomplete month: <strong class="big">${money(amt)}</strong><div class="formula">${money(sal)} ÷ ${days} days × ${elig} eligible days</div>JTKSM treats eligible days for this formula on a calendar-day basis, including rest days that fall within the eligible period.`);window.lastIncomplete=amt;}
+
+function calcNotice(){
+  const start=parseDate($('noticeStart').value),given=parseDate($('noticeGiven').value),sal=n('noticeSalary');if(!start||!given||given<start)return show('noticeResult','<span class="bad">Enter valid employment start and notice dates.</span>');
+  let amount,unit,days,last,desc;
+  if($('noticeContract').value==='no'){
+    const y=completedYears(start,given);amount=y<2?4:(y<5?6:8);unit='weeks';days=amount*7;last=addDays(given,days-1);desc=`Statutory minimum: ${amount} weeks`;
+  }else{
+    amount=n('noticeAmount');unit=$('noticeUnit').value;if(amount<=0)return show('noticeResult','<span class="bad">Enter the contractual notice amount.</span>');
+    if(unit==='days'){days=amount;last=addDays(given,days-1)}else if(unit==='weeks'){days=amount*7;last=addDays(given,days-1)}else{last=addDays(addMonths(given,amount),-1);days=daysInclusive(given,last)}desc=`Contractual notice: ${amount} ${unit}`;
+  }
+  const monthDays=new Date(given.getFullYear(),given.getMonth()+1,0).getDate();const noticePay=sal?sal/monthDays*days:0;
+  show('noticeResult',`${desc}<br>Estimated last working day if fully served: <strong class="big">${dateStr(last)}</strong><br>Notice days including date notice is given: <b>${days}</b>${sal?`<br>Indicative pay-in-lieu estimate: <strong>${money(noticePay)}</strong><div class="formula">${money(sal)} ÷ ${monthDays} days in notice month × ${days} notice days</div>`:''}<span class="source">Section 12(4) includes the day notice is given. Pay-in-lieu under s.13 is the wages that would have accrued; JTKSM's calculator is an estimate and case facts/contract wording matter.</span>`);window.lastNotice=noticePay;
+}
+
+function calcAnnual(){
+  const start=parseDate($('alStart').value),end=parseDate($('alEnd').value);if(!start||!end||end<start)return show('alResult','<span class="bad">Enter valid employment dates.</span>');
+  const tier=statutoryTier(start,end),ann=lastAnniversary(start,end),months=completedMonths(ann,end),raw=tier*months/12,accrued=roundLeave(raw),carry=n('alCarry'),taken=n('alTaken'),balance=Math.max(0,carry+accrued-taken),orp=n('alSalary')/26,payout=balance*orp;
+  let caveat=$('alMisconduct').checked?'<br><span class="warn">Dismissal under s.14(1)(a): s.60E(3A) cash-out rule contains an exception. HR/legal review required.</span>':'';
+  show('alResult',`Service: ${serviceText(start,end)}<br>Statutory annual rate: <b>${tier} days / 12 months</b><br>Current service-year completed months: <b>${months}</b> (from ${dateStr(ann)})<br>Current accrued leave: <b>${accrued} day(s)</b> (raw ${raw.toFixed(2)}, statutory fraction rounding applied)<br>Estimated leave balance at termination: <strong class="big">${balance.toFixed(1)} day(s)</strong><br>Estimated cash value at ORP: <strong>${money(payout)}</strong><div class="formula">ORP ${money(orp)} × ${balance.toFixed(1)} day(s)</div>${caveat}<span class="source">Enter any prior-year leave already due separately in “brought forward”. Company policy may be more favourable.</span>`);window.lastLeave=payout;
+}
+
+function calcPartTime(){
+  const start=parseDate($('ptStart').value),end=parseDate($('ptEnd').value);if(!start||!end||end<start)return show('ptResult','<span class="bad">Enter valid employment dates.</span>');
+  const y=completedYears(start,end),annualRate=y<2?6:(y<5?8:11),sickRate=y<2?10:(y<5?13:15);
+  const sickRemain=Math.max(0,sickRate-n('ptSickUsed'));let annualLine=`Annual-leave statutory rate: <b>${annualRate} days / 12 months</b>`;let balance=null,payout=0;
+  if($('ptTerminating').checked){const ann=lastAnniversary(start,end),months=completedMonths(ann,end),raw=annualRate*months/12;balance=Math.max(0,n('ptCarry')+raw-n('ptTaken'));payout=balance*n('ptDailyRate');annualLine+=`<br>Current service-year completed months: <b>${months}</b> (from ${dateStr(ann)})<br>Direct-proportion current accrual: <b>${raw.toFixed(2)} day(s)</b><br>Estimated unused annual leave: <strong class="big">${balance.toFixed(2)} day(s)</strong>${n('ptDailyRate')?`<br>Indicative payout at entered ordinary daily rate: <strong>${money(payout)}</strong>`:''}`;}
+  show('ptResult',`Service: ${serviceText(start,end)}<br>${annualLine}<br><br>Paid sick-leave statutory rate: <b>${sickRate} days/year</b> — remaining from entered usage: <b>${sickRemain.toFixed(2)} day(s)</b><br><span class="source">Part-time employees have separate rules. Regulation 7 provides direct proportional annual leave for completed months on termination; this tool keeps the raw pro-rata figure rather than imposing a rounding rule not stated here. Paid sick leave is not available on a non-working day under Regulation 8.</span>`);
+}
+
+function calcSick(){const start=parseDate($('slStart').value),asof=parseDate($('slAsOf').value);if(!start||!asof||asof<start)return show('slResult','<span class="bad">Enter valid dates.</span>');const y=completedYears(start,asof),base=y<2?14:(y<5?18:22),hosp=60,used=n('slUsed'),hu=n('slHospUsed');show('slResult',`Service: ${serviceText(start,asof)}<br>Non-hospital sick leave entitlement: <strong>${base} days</strong> — remaining estimate: <b>${Math.max(0,base-used)} days</b><br>Hospitalisation leave entitlement: <strong>${hosp} days</strong> — remaining estimate: <b>${Math.max(0,hosp-hu)} days</b><br>Total potential annual statutory entitlement: <strong class="big">${base+hosp} days</strong><br><span class="source">Hospitalisation entitlement is separate from non-hospital sick leave from 1 Jan 2023.</span>`);}
+
+function calcMaternity(){
+  const emp=parseDate($('matEmpStart').value),exp=parseDate($('matExpected').value),act=parseDate($('matActual').value),chosen=parseDate($('matLeaveStart').value);if(!exp)return show('matResult','<span class="bad">Enter the expected confinement date.</span>');
+  const conf=act||exp,earliest=addDays(conf,-30),latest=addDays(conf,1);let leaveStart=chosen||earliest,last=addDays(leaveStart,97),ret=addDays(leaveStart,98);let dateStatus='';
+  if(chosen&&(chosen<earliest||chosen>latest))dateStatus='<span class="warn">Chosen start is outside the normal statutory commencement window. Check medical/specific circumstances.</span><br>';else dateStatus='<span class="good">Leave start falls within the normal statutory commencement window.</span><br>';
+  let allowance='Enter employment start date to screen maternity allowance eligibility.';
+  if(emp){const nineStart=addMonths(conf,-9),fourStart=addMonths(conf,-4),overlapStart=emp>nineStart?emp:nineStart,days=Math.max(0,daysInclusive(overlapStart,addDays(conf,-1))),in4=emp<=conf && conf>=fourStart,childOk=n('matChildren')<5;const ok=days>=90&&in4&&childOk;allowance=`Allowance screen (continuous-employment assumption): <b class="${ok?'good':'warn'}">${ok?'appears eligible':'not confirmed / may be ineligible'}</b><br>Days employed within preceding 9 months: ${days} (need ≥90); employed at any time in preceding 4 months: ${in4?'Yes':'No'}; surviving-child condition: ${childOk?'passes':'does not pass allowance condition'}.`;}
+  const noticeWindow=addDays(exp,-60);
+  show('matResult',`Normal earliest start: <b>${dateStr(earliest)}</b><br>Normal latest start: <b>${dateStr(latest)}</b><br>${dateStatus}98-day leave: <strong class="big">${dateStr(leaveStart)} → ${dateStr(last)}</strong><br>Indicative return date: <b>${dateStr(ret)}</b><br>Maternity notification window begins: <b>${dateStr(noticeWindow)}</b> (within 60 days immediately preceding expected confinement; notify before commencing leave).<br><br>${allowance}<br><span class="source">Actual confinement date should replace expected date once known. The calculator assumes continuous service and does not model breaks/multiple employers.</span>`);
+}
+
+function calcPaternity(){const start=parseDate($('patStart').value),birth=parseDate($('patBirth').value);if(!start||!birth||birth<start)return show('patResult','<span class="bad">Enter valid employment and confinement dates.</span>');const months=completedMonths(start,birth),serviceOk=months>=12,married=$('patMarried').value==='yes',count=n('patCount'),countOk=count<5,notice=$('patNotice').value==='yes',ok=serviceOk&&married&&countOk&&notice,end=addDays(birth,6);show('patResult',`Eligibility screen: <strong class="${ok?'good':'warn'}">${ok?'appears eligible':'not confirmed / may be ineligible'}</strong><br>Same-employer service ≥12 months: ${serviceOk?'Yes':'No'}<br>Married: ${married?'Yes':'No'}<br>Within maximum five confinements: ${countOk?'Yes':'No'}<br>Notification condition: ${notice?'Yes':'No / uncertain'}<br>Leave dates if eligible: <strong class="big">${dateStr(birth)} → ${dateStr(end)}</strong> (7 consecutive days)<br><span class="source">JTKSM states paternity leave begins on the confinement date and runs continuously for 7 days.</span>`);}
+
+function toggleHoursFields(){const shift=$('whType').value==='shift';document.querySelectorAll('.normalHours').forEach(x=>x.style.display=shift?'none':'');document.querySelectorAll('.shiftHours').forEach(x=>x.style.display=shift?'':'none');}
+function calcHours(){const shift=$('whType').value==='shift',max=n('whMaxDay');let issues=[];if(shift){const avg=(n('whW1')+n('whW2')+n('whW3'))/3;if(avg>45)issues.push(`3-week average ${avg.toFixed(2)} hours exceeds 45 hours/week.`);if(max>12)issues.push(`Maximum day ${max} hours exceeds the general 12-hour shift-work ceiling (subject to statutory emergency exceptions).`);show('whResult',`${issues.length?'<span class="bad">Potential compliance issue(s):</span><ul><li>'+issues.join('</li><li>')+'</li></ul>':'<span class="good">Inputs are within the basic shift-work limits checked by this tool.</span>'}<div class="formula">3-week average = ${avg.toFixed(2)} hours/week</div>`);}else{const week=n('whWeek'),cons=n('whConsecutive'),spread=n('whSpread'),nine=$('whNineAgreement').checked;if(week>45)issues.push(`${week} normal hours/week exceeds 45.`);if(max>(nine?9:8))issues.push(`${max} normal hours/day exceeds the ${nine?'9-hour redistributed':'8-hour general'} daily limit.`);if(cons>5)issues.push(`${cons} consecutive hours exceeds 5 without the required qualifying break.`);if(spread>10)issues.push(`${spread}-hour spread-over exceeds 10 hours.`);show('whResult',issues.length?`<span class="bad">Potential compliance issue(s):</span><ul><li>${issues.join('</li><li>')}</li></ul>`:'<span class="good">Inputs are within the basic normal-hours limits checked by this tool.</span>');}}
+
+function calcTermination(){const start=parseDate($('tbStart').value),end=parseDate($('tbEnd').value),monthly=n('tbMonthly'),w12=n('tb12');if(!start||!end||end<start||!w12)return show('tbResult','<span class="bad">Enter valid service dates and total wages for the last 12 months.</span>');const months=completedMonths(start,end),eligibleService=months>=12,covered=monthly<=4000||$('tbProtected').checked,years=months/12,rate=years<2?10:(years<5?15:20),amt=w12/365*years*rate;if(!eligibleService||!covered){let why=[];if(!eligibleService)why.push('service is less than 12 completed months');if(!covered)why.push('wages exceed RM4,000 and no protected First Schedule category was selected');return show('tbResult',`<span class="warn">Statutory termination benefit is not confirmed because ${why.join(' and ')}.</span><br>Contract/collective agreement or other rights may still apply.`)}show('tbResult',`Completed service used: <b>${months} months</b> (${years.toFixed(2)} years)<br>Statutory rate: <b>${rate} days' wages per year</b><br>Estimated termination benefit: <strong class="big">${money(amt)}</strong><div class="formula">${money(w12)} ÷ 365 × ${years.toFixed(4)} years × ${rate} days</div><span class="source">JTKSM states the benefit must not be below the Regulations and is due no later than 7 days after termination. Specific exclusions in the Regulations still require case review.</span>`);window.lastTermination=amt;}
+
+function endOfNextMonth(d){return new Date(d.getFullYear(),d.getMonth()+2,0)}
+function calcDeadline(){
+  const type=$('dlType').value,d=parseDate($('dlDate').value);if(!d)return show('dlResult','<span class="bad">Enter the relevant reference date.</span>');
+  let due=d,title='',note='',formula='';
+  if(type==='regular_wages'){due=addDays(d,7);title='Regular wages deadline';formula='Wage period end + 7 calendar days';note='Section 19(1): generally not later than the seventh day after the last day of the wage period.';}
+  else if(type==='ot_next_period'){due=endOfNextMonth(d);title='OT / rest-day / public-holiday pay deadline';formula='Last day of the next monthly wage period';note='Section 19(2). This date assumes the entered wage period ends on the last day of a calendar month; use the actual next wage-period end if your wage period differs.';}
+  else if(type==='normal_termination'){due=d;title='Normal termination final wage deadline';formula='Same day as termination';note='Section 20: earned but unpaid wages are due not later than the day the contract terminates.';}
+  else if(type==='employer_no_notice'){due=d;title='Employer no-notice termination payment deadline';formula='Same day as termination';note='Section 21(1): earned wages and applicable s.13 indemnity are due not later than the termination date.';}
+  else if(type==='employee_no_notice'){due=addDays(d,3);title='Employee no-notice termination wage deadline';formula='Termination date + 3 calendar days';note='Section 21(2): earned wages are due not later than the third day after termination.';}
+  else if(type==='flexible_work'){due=addDays(d,60);title='Flexible Working Arrangement response deadline';formula='Date received + 60 calendar days';note='Section 60Q / JTKSM FAQ: written approval or refusal within 60 days; refusal must state the reason. Treat this as an internal deadline estimate and respond earlier where possible.';}
+  else if(type==='pk_before'){due=addDays(d,-30);title='Borang PK Parts I–IV latest advance filing target';formula='Action date − 30 calendar days';note='JTKSM requires Parts I–IV to be submitted at least 30 days before the action.';}
+  else if(type==='pk_part_v'){due=addDays(d,14);title='Borang PK Part V deadline';formula='Action date + 14 calendar days';note='Part V is required within 14 days after the action for retrenchment / separation scheme cases.';}
+  else if(type==='pk_part_vi'){due=addDays(d,30);title='Borang PK Part VI deadline';formula='Action date + 30 calendar days';note='Part VI is required within 30 days after the action for retrenchment / separation scheme cases.';}
+  else if(type==='termination_benefit'){due=addDays(d,7);title='Termination benefit payment deadline';formula='Termination date + 7 calendar days';note='The 1980 Regulations / JTKSM guidance require termination benefits to be paid no later than 7 days after termination.';}
+  show('dlResult',`${title}: <strong class="big">${dateStr(due)}</strong><div class="formula">${formula}</div><span class="source">${note}</span>`);
+}
+
+function calcFinalPay(){const plus=n('fpSalary')+n('fpLeave')+n('fpOT')+n('fpTerm')+n('fpNoticePlus')+n('fpOther'),minus=n('fpNoticeMinus')+n('fpDeduct'),net=plus-minus;show('fpResult',`Total gross components: <b>${money(plus)}</b><br>Total deductions / amount owed: <b>${money(minus)}</b><br>Estimated net final pay: <strong class="big">${money(net)}</strong><br><span class="source">This combines figures supplied by HR. It does not determine whether each deduction is legally permitted, or calculate EPF/SOCSO/PCB.</span>`);}
+
+
+const ACT_CACHE_KEY='meg_eaf_act265_reprint_2023_v1';
+const ACT_CACHE_META='meg_eaf_act265_reprint_2023_meta';
+const ACT_OFFICIAL_PDF='https://jtksm.mohr.gov.my/sites/default/files/2023-11/Akta%20Kerja%201955%20%28Akta%20265%29_0.pdf';
+const ACT_DIGITAL_TEXT_FALLBACK='https://raw.githubusercontent.com/infometa/workbuddyskills/main/experts/malaysia-hr-admin/Reference_Texts/employment_act_1955.txt';
+const ACT_PDFJS_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let ACT_MODEL={parts:[],sections:[],nodes:[]},ACT_MATCHES=[],ACT_MATCH_INDEX=-1,ACT_RAW='';
+function actEsc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function cleanActText(raw){
+  let text=String(raw||'').replace(/\r/g,'');
+  const operative=text.indexOf('An Act relating to employment.');
+  if(operative>=0)text=text.slice(operative);
+  const amendments=text.search(/\nLAWS OF MALAYSIA\nAct 265\nEMPLOYMENT ACT 1955\nLIST OF AMENDMENTS/i);
+  if(amendments>0)text=text.slice(0,amendments);
+  return text.split('\n').filter(line=>{const x=line.trim();if(!x)return true;if(/^--- PAGE BREAK ---$/i.test(x))return false;if(/^WJW23\/0686 Act 265\.indd/i.test(x))return false;if(/^Employment\s+\d+$/i.test(x))return false;if(/^\d+\s+Laws of Malaysia\s+Act\s+265$/i.test(x))return false;return true;}).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function sectionKey(v){return String(v||'').toUpperCase().replace(/\s+/g,'').replace(/[–—]/g,'-');}
+function parseActText(raw){
+  const text=cleanActText(raw),lines=text.split('\n');
+  const parts=[],sections=[],nodes=[];let part=null,buf=[],section=null,preamble=[],scheduleBuf=[],schedulePart=null;
+  const secRe=/^(\d+(?:[a-z]{1,2})?(?:\s*[–-]\s*\d+(?:[a-z]{1,2})?)?)\.\s*(.*)$/i;
+  function flushSection(){if(section){section.text=buf.join('\n').trim();sections.push(section);nodes.push({type:'section',data:section});section=null;buf=[];}}
+  function flushPreamble(){if(preamble.length){const t=preamble.join('\n').trim();if(t)nodes.push({type:'preamble',data:{text:t}});preamble=[];}}
+  function flushSchedule(){if(schedulePart&&scheduleBuf.length){const t=scheduleBuf.join('\n').trim();if(t)nodes.push({type:'schedule',data:{text:t,partId:schedulePart.id,label:schedulePart.label}});scheduleBuf=[];}}
+  function trailingHeading(){
+    let pieces=[];
+    while(buf.length&&pieces.length<3){const x=String(buf[buf.length-1]||'').trim();if(!x){buf.pop();continue;}if(/^\(?\d+\)|^\([a-z0-9]+\)|^[a-z]\)/i.test(x)||/[.;:]$/.test(x)||x.length>115)break;if(!/[A-Za-z]/.test(x))break;pieces.unshift(buf.pop().trim());}
+    return pieces.join(' ').replace(/\s+/g,' ').trim();
+  }
+  function trailingPreambleHeading(){
+    let pieces=[];
+    while(preamble.length&&pieces.length<3){const x=String(preamble[preamble.length-1]||'').trim();if(!x){preamble.pop();continue;}if(/^\(?\d+\)|^\([a-z0-9]+\)|^[a-z]\)/i.test(x)||/[.;:]$/.test(x)||x.length>115)break;if(!/[A-Za-z]/.test(x))break;if(/^[A-Z0-9 ,&()'’–—-]{5,}$/.test(x))break;if(/^An Act relating to employment$/i.test(x))break;pieces.unshift(preamble.pop().trim());}
+    return pieces.join(' ').replace(/\s+/g,' ').trim();
+  }
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i],t=line.trim();
+    if(!t){if(schedulePart)scheduleBuf.push('');else if(section)buf.push('');else if(preamble.length)preamble.push('');continue;}
+    if(/^First Schedule$/i.test(t)||/^Second Schedule$/i.test(t)){
+      flushSection();flushPreamble();flushSchedule();
+      part={id:'act-schedule-'+parts.length,roman:'SCHEDULE',name:t.toUpperCase(),label:t.toUpperCase(),schedule:true};parts.push(part);nodes.push({type:'part',data:part});schedulePart=part;scheduleBuf=[];continue;
+    }
+    const pm=t.match(/^Part\s+([IVXLC]+[a-z]?)$/i);
+    if(pm&&!schedulePart){
+      flushSection();flushPreamble();
+      let name='';for(let j=i+1;j<Math.min(lines.length,i+4);j++){const c=lines[j].trim();if(c&&!/^Section$/i.test(c)){name=c;break;}}
+      part={id:'act-part-'+parts.length,roman:pm[1].toUpperCase(),name:name,label:'Part '+pm[1].toUpperCase()+(name?' — '+name:'')};parts.push(part);nodes.push({type:'part',data:part});continue;
+    }
+    if(schedulePart){scheduleBuf.push(line);continue;}
+    const m=t.match(secRe);
+    if(m){const heading=section?trailingHeading():trailingPreambleHeading();flushSection();flushPreamble();const num=sectionKey(m[1]);section={number:num,title:heading,partId:part?part.id:'',partLabel:part?part.label:'',id:'act-s-'+num.replace(/[^A-Z0-9]+/g,'-').toLowerCase()};buf=[t];continue;}
+    if(section)buf.push(line);else preamble.push(line);
+  }
+  flushSection();flushPreamble();flushSchedule();
+  return {text,parts,sections,nodes};
+}
+function renderAct(model){
+  ACT_MODEL=model;const content=$('actContent'),toc=$('actToc'),partSel=$('actPartFilter'),secSel=$('actSectionJump');
+  if(!model.sections.length){content.innerHTML='<div class="actEmpty">The digital text loaded, but the section index could not be prepared.</div>';return;}
+  partSel.innerHTML='<option value="">All Parts</option>'+model.parts.map(p=>'<option value="'+actEsc(p.id)+'">'+actEsc(p.label)+'</option>').join('');
+  secSel.innerHTML='<option value="">Jump to section…</option>'+model.sections.map(s=>'<option value="'+actEsc(s.id)+'">Section '+actEsc(s.number)+(s.title?' — '+actEsc(s.title):'')+'</option>').join('');
+  let html='';model.nodes.forEach(n=>{if(n.type==='part'){const p=n.data;html+='<div class="actPart" id="'+actEsc(p.id)+'" data-part="'+actEsc(p.id)+'"><h2>'+actEsc(p.label)+'</h2></div>';}else if(n.type==='section'){const x=n.data;html+='<section class="actSection" id="'+actEsc(x.id)+'" data-part="'+actEsc(x.partId)+'"><h3>Section '+actEsc(x.number)+(x.title?' — '+actEsc(x.title):'')+'</h3><pre data-original="1">'+actEsc(x.text)+'</pre></section>';}else if(n.type==='schedule'&&n.data.text){html+='<section class="actSection" data-part="'+actEsc(n.data.partId)+'"><h3>'+actEsc(n.data.label)+'</h3><pre data-original="1">'+actEsc(n.data.text)+'</pre></section>';}else if(n.type==='preamble'&&n.data.text){html+='<div class="actPreamble"><pre data-original="1">'+actEsc(n.data.text)+'</pre></div>';}});content.innerHTML=html;
+  toc.innerHTML=model.parts.map(p=>'<button class="partBtn" onclick="jumpActPart(\''+actEsc(p.id)+'\')">'+actEsc(p.label)+'</button>'+model.sections.filter(x=>x.partId===p.id).map(x=>'<button onclick="jumpActSection(\''+actEsc(x.id)+'\')">§ '+actEsc(x.number)+(x.title?' '+actEsc(x.title):'')+'</button>').join('')).join('');
+  $('actLoadStatus').innerHTML='<b>Digital Act ready</b> • '+model.sections.length+' provisions indexed • '+model.parts.length+' Parts/Schedules';
+  applyActSearch();
+}
+function jumpActPart(id){const el=$(id);if(!el)return;$('actPartFilter').value=id;filterActPart();el.scrollIntoView({behavior:'smooth',block:'start'});}
+function jumpActSection(id){if(!id)return;const el=$(id);if(!el)return;$('actPartFilter').value=el.dataset.part||'';filterActPart();el.scrollIntoView({behavior:'smooth',block:'start'});$('actSectionJump').value=id;}
+function filterActPart(){const val=$('actPartFilter').value;document.querySelectorAll('#actContent [data-part]').forEach(el=>el.style.display=!val||el.dataset.part===val?'':'none');document.querySelectorAll('#actContent .actPart').forEach(el=>el.style.display=!val||el.id===val?'':'none');}
+function actSearchChanged(){applyActSearch();}
+function clearActSearch(){$('actSearch').value='';ACT_MATCH_INDEX=-1;applyActSearch();}
+function applyActSearch(){
+  const q=($('actSearch')?.value||'').trim();ACT_MATCHES=[];ACT_MATCH_INDEX=-1;
+  document.querySelectorAll('#actContent pre[data-original]').forEach(pre=>{const original=pre.textContent;pre.innerHTML=actEsc(original);const holder=pre.closest('.actSection,.actPreamble')||pre;holder.classList.remove('actMatch');if(!q)return;const re=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');let count=0;pre.innerHTML=actEsc(original).replace(re,m=>{count++;return '<mark>'+actEsc(m)+'</mark>';});for(let i=0;i<count;i++)ACT_MATCHES.push(holder);});
+  $('actSearchStatus').textContent=q?(ACT_MATCHES.length+' match'+(ACT_MATCHES.length===1?'':'es')):'';if(ACT_MATCHES.length)nextActMatch();
+}
+function focusActMatch(){document.querySelectorAll('.actMatch').forEach(x=>x.classList.remove('actMatch'));if(!ACT_MATCHES.length)return;const el=ACT_MATCHES[ACT_MATCH_INDEX];el.classList.add('actMatch');el.scrollIntoView({behavior:'smooth',block:'center'});$('actSearchStatus').textContent=(ACT_MATCH_INDEX+1)+' / '+ACT_MATCHES.length+' matches';}
+function nextActMatch(){if(!ACT_MATCHES.length)return;ACT_MATCH_INDEX=(ACT_MATCH_INDEX+1)%ACT_MATCHES.length;focusActMatch();}
+function prevActMatch(){if(!ACT_MATCHES.length)return;ACT_MATCH_INDEX=(ACT_MATCH_INDEX-1+ACT_MATCHES.length)%ACT_MATCHES.length;focusActMatch();}
+function printAct(){window.print();}
+async function extractOfficialActText(){
+  if(!window.pdfjsLib)throw new Error('PDF text engine unavailable');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc=ACT_PDFJS_WORKER;
+  const task=window.pdfjsLib.getDocument({url:ACT_OFFICIAL_PDF,withCredentials:false});
+  const pdf=await task.promise,out=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    $('actLoadStatus').innerHTML='<b>Digitizing official JTKSM Act 265…</b> • page '+p+' / '+pdf.numPages;
+    const page=await pdf.getPage(p),tc=await page.getTextContent(),rows=[];
+    tc.items.forEach(item=>{
+      const text=String(item.str||'').trim();if(!text)return;
+      const y=Math.round((item.transform&&item.transform[5])||0),x=(item.transform&&item.transform[4])||0;
+      let row=rows.find(r=>Math.abs(r.y-y)<=1);if(!row){row={y,items:[]};rows.push(row);}row.items.push({x,text});
+    });
+    rows.sort((a,b)=>b.y-a.y);
+    out.push(rows.map(r=>r.items.sort((a,b)=>a.x-b.x).map(i=>i.text).join(' ').replace(/\s+/g,' ').trim()).join('\n'));
+  }
+  const text=out.join('\n\n--- PAGE BREAK ---\n\n');
+  if(text.length<50000)throw new Error('Official PDF text extraction was incomplete');
+  return text;
+}
+function cacheActText(raw,source){try{localStorage.setItem(ACT_CACHE_KEY,raw);localStorage.setItem(ACT_CACHE_META,JSON.stringify({cachedAt:new Date().toISOString(),source:source||'unknown'}));}catch(e){}}
+function cachedActMeta(){try{return JSON.parse(localStorage.getItem(ACT_CACHE_META)||'{}');}catch(e){return {};}}
+
+async function loadDigitalAct(){
+  let raw='',meta={};try{raw=localStorage.getItem(ACT_CACHE_KEY)||'';meta=cachedActMeta();}catch(e){}
+  if(raw){ACT_RAW=raw;renderAct(parseActText(raw));$('actLoadStatus').innerHTML='<b>Digital Act ready</b> • cached '+(meta.source==='official-jtksm-pdf'?'official JTKSM edition':'verified transcription');}
+  // Primary source: fetch and digitize the official JTKSM Act 265 PDF inside this page.
+  try{
+    const official=await extractOfficialActText();ACT_RAW=official;cacheActText(official,'official-jtksm-pdf');renderAct(parseActText(official));
+    $('actLoadStatus').innerHTML='<b>Digital Act ready</b> • digitized directly from official JTKSM Act 265';return;
+  }catch(officialErr){console.warn('Official JTKSM PDF digitization fallback:',officialErr);}
+  // Fallback is a text transcription of the same Commissioner of Law Revision 2023 reprint.
+  try{
+    const r=await fetch(ACT_DIGITAL_TEXT_FALLBACK,{cache:'no-cache'});if(!r.ok)throw new Error('HTTP '+r.status);const fresh=await r.text();if(!fresh||fresh.length<50000)throw new Error('Incomplete digital text');ACT_RAW=fresh;cacheActText(fresh,'verified-transcription');renderAct(parseActText(fresh));$('actLoadStatus').innerHTML='<b>Digital Act ready</b> • verified 2023 transcription fallback';
+  }catch(err){
+    if(!raw){$('actLoadStatus').innerHTML='<b style="color:var(--red)">Digital Act could not load</b>';$('actContent').innerHTML='<div class="actEmpty">The full digital text is temporarily unavailable. The calculator suite remains available.<br><br><button class="btn" onclick="loadDigitalAct()">Retry</button></div>';$('actToc').innerHTML='<div class="actEmpty">Contents unavailable</div>';}
+    console.warn('Employment Act digital reader:',err);
+  }
+}
+
+function filterRefs(){const q=$('topicSearch').value.trim().toLowerCase();document.querySelectorAll('#refGrid .refCard').forEach(c=>{const hay=(c.textContent+' '+(c.dataset.terms||'')).toLowerCase();c.style.display=!q||hay.includes(q)?'':'none';});}
+function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'dark',next=cur==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',next);localStorage.setItem('meg_eaf_law_theme',next)}
+(function init(){document.documentElement.setAttribute('data-theme',localStorage.getItem('meg_eaf_law_theme')||'dark');loadDigitalAct();const now=new Date(),m=String(now.getMonth()+1).padStart(2,'0');$('imMonth').value=`${now.getFullYear()}-${m}`;syncMonthDays();const today=iso(now);['slAsOf','dlDate'].forEach(id=>$(id).value=today);})();
+</script>
+</body>
+</html>

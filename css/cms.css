@@ -1365,3 +1365,11 @@ code.brk { word-break: break-all; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem 1rem; align-items: end; }
 @media (max-width: 720px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
 .card.sub-card { box-shadow: none; border: 1px solid var(--line, #e3e6ec); margin: .6rem 0; }
+/* PRI-024: JD Manual in the CMS */
+.jd-ul { margin: .2rem 0 .6rem 1.1rem; padding: 0; } .jd-ul li { margin: .15rem 0; }
+.jd-career .tag { margin: 2px 0; }
+.sheet.jd-sheet h4.sec-h { margin-top: 10px; }
+.jd-cmp th { width: 14%; } .jd-cmp td, .jd-cmp th { vertical-align: top; } .jd-cmp ol, .jd-cmp ul { margin: 0 0 0 1rem; padding: 0; }
+.law-frame-card { padding: 0; overflow: hidden; }
+.law-frame { display: block; width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 0; }
+.guide-ol { margin: .6rem 0 0 1.2rem; padding: 0; } .guide-ol li { margin: 0 0 .6rem; } .guide-ol p { margin: .15rem 0 0; color: var(--muted, #555); font-size: .92em; }

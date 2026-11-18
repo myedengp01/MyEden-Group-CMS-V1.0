@@ -572,4 +572,7 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
   v2026.11.18-22:30 (Apply Now at `apply/` with the server-checked apply link, apply links, drafts, full application view / print, summary);
   phase 4 v2026.11.18-23:05 (handbook administration). To do on CLC's word, page by page: MEG-EAF V2 index.html (Apply Now) → forward to
   the CMS `apply/` (keeping ?invite=), hr.html → the CMS Applications page, handbook-status.html → the CMS Employee Handbook page.
+- **Phase 5 (CLC 19 Nov 2026: "do all"):** v2026.11.19-01:45 handbook library (EN / 中文 / BM) and each employee's handbook read only with a
+  read / not-read reading report (HR, Admin, Directors); v2026.11.19-02:40 full JD in the CMS (print, bookmarks, compare), Employment Act &
+  calculators at `hrlaw/`, Apply Now open / close (Super Admin), recruitment guide (EN / 中文), last links to MEG-EAF V2 removed.
 

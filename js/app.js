@@ -390,7 +390,7 @@
     $('#kpis', el).innerHTML = `
       ${kpi('users', 'Active employees', num(p.active), `${num(p.onboarding)} onboarding · ${num(p.applicants)} applicants`, 'blue', canRoute('people') ? '#/people' : '#/dashboard')}
       ${kpi('briefcase', 'JD positions', num(d.positions), `${num(d.departments)} departments · 4 companies`, 'green', canRoute('org') ? '#/org' : '#/dashboard')}
-      ${kpi('file-check', 'Applications pending', num(d.applications_pending), 'In MEG-EAF V2', 'orange', canRoute('approvals') ? '#/approvals' : '#/dashboard')}
+      ${kpi('file-check', 'Applications pending', num(d.applications_pending), 'New applications', 'orange', canRoute('applications') ? '#/applications' : canRoute('approvals') ? '#/approvals' : '#/dashboard')}
       ${kpi('check-circle', 'Claims waiting', num(d.claims_pending), `${num((d.claims_by_stage || {}).approval || 0)} to approve · ${num((d.claims_by_stage || {}).processing || 0)} to process · ${money(d.claims_pending_amount)}`, 'violet', canRoute('approvals') ? '#/approvals' : '#/dashboard')}`;
 
     const qa = (ic, title, sub, route, tone) => canRoute(route) && (route !== 'admin/export' || isSuper()) ? `<a class="qa ${tone}" href="#/${route}"><span class="qa-ic">${icon(ic)}</span><span><b>${title}</b><small>${sub}</small></span>${icon('arrow', 'qa-go')}</a>` : '';
@@ -2071,11 +2071,12 @@
   async function applicationsPage(item, el) {
     el.innerHTML = `${pageHead(item, `${can('recruitment') ? `<button type="button" class="btn sm" id="ap-open">${icon('briefcase')}Posts open for applications</button>` : ''}
       ${can('recruitment') ? `<button type="button" class="btn sm" id="ap-links">${icon('plug')}Apply links</button><button type="button" class="btn sm" id="ap-drafts">${icon('file-check')}Drafts</button><button type="button" class="btn sm" id="ap-sum">${icon('list')}Application summary</button>` : ''}
-      ${can('recruitment', 'E') ? `<a class="btn sm primary" href="${esc(asset('apply/'))}" target="_blank" rel="noopener">${icon('plus')}Fill in an application</a>` : ''}`)}<div id="ap-body">${loading()}</div>`;
+      ${can('recruitment', 'E') ? `<a class="btn sm primary" href="${esc(asset('apply/'))}" target="_blank" rel="noopener">${icon('plus')}Fill in an application</a>` : ''}<button type="button" class="btn sm ghost" id="ap-guide">${icon('help')}Guide</button>`)}<div id="ap-body">${loading()}</div>`;
     $('#ap-open', el)?.addEventListener('click', recruitOpenWindow);
     $('#ap-links', el)?.addEventListener('click', applyLinksWindow);
     $('#ap-drafts', el)?.addEventListener('click', () => applyDraftsWindow(() => applicationsPage(item, el)));
     $('#ap-sum', el)?.addEventListener('click', () => applySummary(el, () => applicationsPage(item, el)));
+    $('#ap-guide', el)?.addEventListener('click', recruitGuide);
     let rows;
     try { [rows] = await Promise.all([API.rpc('cms_recruit_applications'), loadOrg()]); }
     catch (e) { $('#ap-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
@@ -2100,7 +2101,7 @@
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="atable"><thead><tr><th>Submitted</th><th>Applicant</th><th>Company</th><th>Position</th><th>Stage</th><th>Offer letter</th><th>Start</th><th>Employee</th></tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="acount"></p>
-        <p class="muted small">From MEG-EAF V2. Click an application to move its stage, record the interview and Office Use, prepare the offer letter, and record the signed copy and stamp duty. Applicants apply with the link from <b>Apply links</b> (the same form as MEG-EAF V2, now in the CMS); click <b>Full application</b> in an application to see it as submitted, with photos, IC and signature, and print it; once the offer is accepted, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
+        <p class="muted small">Click an application to move its stage, record the interview and Office Use, prepare the offer letter, and record the signed copy and stamp duty. Applicants apply with the link from <b>Apply links</b> (the application form, now in the CMS); click <b>Full application</b> in an application to see it as submitted, with photos, IC and signature, and print it; once the offer is accepted, the person is created in <a href="#/onboarding">Offers &amp; Onboarding</a>.</p>
       </section>`;
     const draw = () => {
       const t = f.q.trim().toLowerCase(); const fn = V.find((x) => x[0] === f.v)[2];
@@ -2167,7 +2168,7 @@
           <label class="fld wide"><span>Comments</span><textarea data-of="officeComments" rows="2" maxlength="2000" class="ta" ${dis}>${v('officeComments')}</textarea></label>
         </div>
         ${ed ? '<button type="button" class="btn primary sm" data-aw="office">Save Office Use</button>' : '<p class="muted small">Your role can view this but not change it.</p>'}
-        <p class="muted small">The same fields as Office Use in MEG-EAF V2: a change here shows there, and the other way round. The offer letter takes its terms from its own page.</p></details>
+        <p class="muted small">Office Use (the same record MEG-EAF V2 used). The offer letter takes its terms from its own page.</p></details>
       ${L && L.status !== 'draft' ? `<section class="aw-sec"><h4 class="sec-h">Signed offer letter &amp; stamp duty</h4>
         <p class="small"><code>${esc(L.document_id)}</code> · revision ${esc(L.revision)} · <b>${esc(LST[L.status] || L.status)}</b>${L.stamp_status ? ` · stamp ${esc(STAMP[L.stamp_status] || L.stamp_status)}` : ''}${L.stamp_due_date && !['stamped', 'not_required'].includes(L.stamp_status) ? ` · due ${dShort(L.stamp_due_date)}` : ''}</p>
         <div class="aw-grid">
@@ -2193,7 +2194,7 @@
         ${off ? '<button type="button" class="btn sm" data-aw="meta">Save stamp duty details</button>' : ''}
         ${L.stamp_certificate_path ? ` <button type="button" class="btn sm ghost" data-pdf="${esc(L.stamp_certificate_path)}">${icon('eye')}Stamp certificate</button>`
           : off && L.verified_at ? ` <label class="btn sm file-btn">${icon('download')}Upload the stamp certificate (PDF)<input type="file" accept="application/pdf" data-up="stamp" hidden></label>` : ''}` : ''}
-        <p class="muted small">Same record and rules as MEG-EAF V2: once uploaded, a signed copy or stamp certificate cannot be replaced (make a new revision instead).</p></section>`
+        <p class="muted small">Once uploaded, a signed copy or stamp certificate cannot be replaced (make a new revision instead).</p></section>`
         : L ? `<p class="muted small">Offer letter <code>${esc(L.document_id)}</code> is a draft: open it to approve and issue; the signed copy and stamp duty are recorded here after it is issued.</p>` : ''}`;
     const busy = async (b, fn, msg) => { if (b) { b.disabled = true; b.classList.add('busy'); } try { await fn(); toast(msg); onChanged?.(); await appHrBox(box, appId, onChanged); } catch (x) { toast(x.message, 'err'); if (b) { b.disabled = false; b.classList.remove('busy'); } } };
     const lx = (k) => $(`[data-lx="${k}"]`, box)?.value ?? '';
@@ -2296,6 +2297,30 @@
   // ---------------------------------------------------------------- PRI-024 (v2026.11.18): the MEG-EAF V2 HR Staff parts in the CMS
   const APPLY_CO = [['meg', 'MyEden Group'], ['meh', 'MyEden Edu Hub'], ['hds', 'Happy Dino'], ['abn', 'Aborne Project']];
   const applyUrl = (q) => new URL(asset(`apply/${q || ''}`), location.href).href;
+  // the user guide for recruitment in the CMS (replaces the MEG-EAF V2 user manual), English / 中文 (PRI-024, v2026.11.19)
+  const RECRUIT_GUIDE = {
+    en: [['Apply links', 'Applications › <b>Apply links</b>: make a link for one company (valid until a date, number of uses) and send it to the applicant. The form opens only with a valid link. A Super Admin can close Apply Now.'],
+      ['The applicant applies', 'The applicant fills in the form (photos, IC, family, education, signature), can save a draft and come back, and submits. HR can also fill it in: <b>Fill in an application</b>.'],
+      ['Applications', 'Click an application: move its stage, record the interview and Office Use (decision, job title, salary, start date). <b>Full application</b> shows it as submitted, with photos, IC and signature — print it there.'],
+      ['Drafts and the summary', '<b>Drafts</b>: open a draft to complete, save or submit it; add drafts from JSON backups. <b>Application summary</b>: one printable table of every application.'],
+      ['The offer letter (LOEC)', 'In the application: <b>Offer letter</b>. Fill in the terms and choose who signs for the employer; send it for approval. An Admin or Director approves; then issue it — with the e-signature and the company stamp if chosen. The applicant becomes an Applicant in People, and the letter is in HR Letters.'],
+      ['Signed copy and stamp duty', 'Upload the signed copy in the application, verify it, and record the stamp duty (submitted, completed, certificate).'],
+      ['Hire', 'Offers & Onboarding › <b>Hire</b>: the same person record gets the Employee ID and the payroll record, and the employer’s Employee Handbook is assigned.'],
+      ['Handbook', 'People › Employee Handbook: who has read it; <b>View</b> shows a person’s handbook read only (read / not read, reading report); <b>Read the handbooks</b> opens every handbook in English, 中文 and Bahasa Malaysia.']],
+    zh: [['申请链接', '应聘 › <b>Apply links</b>：为一家公司生成链接（有效期、可使用次数），发给应聘者。只有有效链接才能打开申请表。超级管理员可关闭申请。'],
+      ['应聘者填写申请', '应聘者填写申请表（照片、身份证、家庭、学历、签名），可保存草稿后继续，然后提交。HR 也可代为填写：<b>Fill in an application</b>。'],
+      ['申请列表', '点击一份申请：更改阶段，记录面试和 Office Use（决定、职位、薪金、开始日期）。<b>Full application</b> 按提交时的样子显示（照片、身份证、签名），可在那里打印。'],
+      ['草稿与汇总', '<b>Drafts</b>：打开草稿继续填写、保存或提交；可从 JSON 备份加入草稿。<b>Application summary</b>：所有申请的一张可打印表格。'],
+      ['录用信（LOEC）', '在申请中：<b>Offer letter</b>。填写条件，选择代表雇主签署的人，送审。管理员或董事批准后发出——可加电子签名和公司印章。应聘者会以 Applicant 身份出现在 People，信件也在 HR Letters 中。'],
+      ['签署副本与印花税', '在申请中上传签署副本、核实，并记录印花税（已提交、已完成、证书）。'],
+      ['录用入职', 'Offers & Onboarding › <b>Hire</b>：同一人员记录获得员工编号和薪资记录，并自动分配该雇主的员工手册。'],
+      ['员工手册', 'People › Employee Handbook：谁已阅读；<b>View</b> 以只读方式查看某人的手册（已读/未读、阅读报告）；<b>Read the handbooks</b> 打开所有手册（英文、中文、马来文）。']] };
+  function recruitGuide() {
+    const html = (k) => `<ol class="guide-ol">${RECRUIT_GUIDE[k].map(([t, d]) => `<li><b>${esc(t)}</b><p>${d}</p></li>`).join('')}</ol>`;
+    modal({ title: 'Recruitment in the CMS — guide', wide: true, ok: null, cancel: 'Close',
+      body: `<div class="seg"><button type="button" class="on" data-lg="en">English</button><button type="button" data-lg="zh">中文</button></div><div data-gd>${html('en')}</div>`,
+      onOpen: (wrap) => $$('[data-lg]', wrap).forEach((b) => b.addEventListener('click', () => { $$('[data-lg]', wrap).forEach((x) => x.classList.toggle('on', x === b)); $('[data-gd]', wrap).innerHTML = html(b.dataset.lg); })) });
+  }
   // apply links: Apply Now stays invitation only — each applicant gets a link (one company, valid until a date, a number of uses)
   async function applyLinksWindow() {
     let D; try { D = await API.rpc('cms_apply_links'); } catch (e) { toast(e.message, 'err'); return; }
@@ -2306,7 +2331,8 @@
         <td class="nowrap">${esc(new Date(l.expires_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="num">${esc(l.use_count)} / ${esc(l.max_uses)}</td><td>${esc(l.by || '—')}<small class="sub">${dShort(l.created_at)}</small></td>
         <td class="nowrap">${l.status === 'active' ? `<button type="button" class="btn sm" data-copy="${esc(applyUrl(`?invite=${l.token}`))}">Copy link</button>${D.can_edit ? ` <button type="button" class="btn sm ghost" data-rev="${esc(l.id)}">Revoke</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No apply links yet.</p>');
     await modal({ title: 'Apply links', ok: null, cancel: 'Close', wide: true,
-      body: `<p class="muted small">Apply Now is <b>${D.mode === 'invitation_only' ? 'invitation only' : esc(D.mode)}</b>: an applicant opens the form with the link you send them. A link is for one company (the form is set to it), valid until the date and for the number of uses you choose. Staff with Recruitment can always open the form from the CMS.</p>
+      body: `${isSuper() ? `<p class="small ${D.mode === 'invitation_only' ? 'muted' : 'warn-box'}">${icon('lock')}Apply Now is <b>${D.mode === 'invitation_only' ? 'open by apply link' : 'closed'}</b>. <button type="button" class="btn sm ghost" data-mode="${D.mode === 'invitation_only' ? 'disabled' : 'invitation_only'}">${D.mode === 'invitation_only' ? 'Close Apply Now' : 'Open Apply Now (by link)'}</button></p>` : ''}
+        <p class="muted small">Apply Now is <b>${D.mode === 'invitation_only' ? 'invitation only' : 'closed'}</b>: an applicant opens the form with the link you send them. A link is for one company (the form is set to it), valid until the date and for the number of uses you choose. Staff with Recruitment can always open the form from the CMS.</p>
         ${D.can_edit ? `<div class="grid-3 tight"><label class="fld"><span>Company</span><select name="co">${APPLY_CO.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
           <label class="fld"><span>Valid until</span><input type="datetime-local" name="exp" value="${week}"></label><label class="fld"><span>Uses</span><input type="number" name="max" min="1" max="1000" value="1"></label></div>
           <div class="btn-row"><button type="button" class="btn primary" data-make>Make a link</button></div><div data-new></div>` : ''}
@@ -2318,6 +2344,9 @@
             try { await API.rpc('cms_apply_link_revoke', { p_id: b.dataset.rev }); D = await API.rpc('cms_apply_links'); $('[data-list]', wrap).innerHTML = rowsHtml(); wire(); toast('Link revoked'); } catch (e) { toast(e.message, 'err'); } });
         };
         wire();
+        $('[data-mode]', wrap)?.addEventListener('click', async (e) => { const m = e.target.dataset.mode;
+          if (!(await ask(m === 'disabled' ? 'Close Apply Now? Apply links stop opening the form until it is opened again.' : 'Open Apply Now again? Applicants with a valid apply link can apply.', m === 'disabled' ? 'Close' : 'Open'))) return;
+          try { await API.rpc('cms_apply_mode_set', { p_mode: m }); toast(m === 'disabled' ? 'Apply Now closed' : 'Apply Now open by link'); wrap.querySelector('[data-x]')?.click(); applyLinksWindow(); } catch (x) { toast(x.message, 'err'); } });
         $('[data-make]', wrap)?.addEventListener('click', async () => {
           const f = $('form', wrap);
           try { const r = await API.rpc('cms_apply_link_create', { p_company: f.co.value, p_expires: new Date(f.exp.value).toISOString(), p_max: Number(f.max.value || 1) });
@@ -2864,16 +2893,44 @@
   }
 
   // ---------------------------------------------------------------- 3.2 JD Manual and Positions & Vacancies
+  // the full job description, in the JD Manual's order (PRI-024, v2026.11.19); forPrint drops the screen-only notes
+  function jdBody(p, caps, forPrint) {
+    const arr = (v) => (Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v ? [v] : []);
+    const sec = (t, h) => (h ? `<h4 class="sec-h">${esc(t)}</h4>${h}` : '');
+    const list = (t, v) => { const a = arr(v); return a.length ? sec(t, `<ul class="jd-ul">${a.map((x) => `<li>${esc(typeof x === 'object' ? Object.values(x).join(' — ') : x)}</li>`).join('')}</ul>`) : ''; };
+    const para = (t, v) => (v ? sec(t, `<p class="pre">${esc(v)}</p>`) : '');
+    const capOf = (i) => (caps && caps[i] && (caps[i].cap_min != null || caps[i].cap_max != null) ? `${caps[i].cap_min != null ? money(caps[i].cap_min) : '—'} – ${caps[i].cap_max != null ? money(caps[i].cap_max) : '—'}` : '<span class="muted">not set</span>');
+    const am = arr(p.accountability_model);
+    return `${forPrint ? '' : `<p class="muted small"><code>${esc(p.reference || '')}</code> · ${esc(coShort(p.entity) || '')} · ${esc(p.department || '')}${p.level ? ` · ${esc(p.level)}` : ''}${p.version ? ` · version ${esc(p.version)}` : ''}${p.effective_date ? ` · from ${dShort(p.effective_date)}` : ''} · ${p.is_open_for_recruitment ? '<span class="tag ok xs">Open for applications</span>' : 'closed for applications'}${p.is_optional_designation ? ' · <span class="tag xs">Optional assistant designation</span>' : ''}</p>`}
+      <dl class="kv2">${[['Reports to', p.reports_to], ['Direct reports', p.direct_reports], ['Location', p.location], ['Employment type', p.employment_type], ['Works closely with', p.works_closely_with]]
+        .filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+      ${p.is_optional_designation || p.appointment_note ? sec('Appointment / designation control', `${p.is_optional_designation ? '<p><b>Optional assistant designation</b></p>' : ''}${p.appointment_note ? `<p class="pre">${esc(p.appointment_note)}</p>` : ''}`) : ''}
+      ${para('Purpose of the role', p.purpose)}
+      ${am.length ? sec('Accountability model', `<div class="table-wrap"><table class="data compact"><thead><tr><th>Domain</th><th>Allocation</th><th>Outcome</th></tr></thead><tbody>${am.map((x) => `<tr><td>${esc(x.domain || '')}</td><td>${esc(x.allocation || '')}</td><td>${esc(x.outcome || '')}</td></tr>`).join('')}</tbody></table></div>`) : ''}
+      ${p.responsibilities.length ? sec('Key responsibilities', `<ol class="jd-list">${p.responsibilities.map((r) => `<li><b>${esc(r.title || '')}</b>${r.description ? `<span>${esc(r.description)}</span>` : ''}</li>`).join('')}</ol>`) : ''}
+      ${list('Performance expectations', p.performance_expectations)}
+      ${p.competencies.length ? sec('Core competencies', `<p>${p.competencies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ')}</p>`) : ''}
+      ${(p.core_values || []).length ? sec('Core values', `<ul class="jd-ul">${p.core_values.map((v) => `<li><b>${esc(v.value || '')}</b>${v.expectation ? ` — ${esc(v.expectation)}` : ''}</li>`).join('')}</ul>`) : ''}
+      ${p.kpis.length ? sec('Key performance indicators', `<div class="table-wrap"><table class="data compact"><thead><tr><th>Area</th><th>Measure</th><th>Review</th></tr></thead><tbody>${p.kpis.map((k) => `<tr><td>${esc(k.area || '')}</td><td>${esc(k.measure || '')}</td><td>${esc(k.frequency || '')}</td></tr>`).join('')}</tbody></table></div>`) : ''}
+      ${p.minimum_qualifications || p.required_experience || p.skills_knowledge ? sec('Qualifications, experience & capability', `<p><b>Minimum qualifications:</b> ${esc(p.minimum_qualifications || '—')}</p><p><b>Required experience:</b> ${esc(p.required_experience || '—')}</p><p><b>Skills & knowledge:</b> ${esc(p.skills_knowledge || '—')}</p>`) : ''}
+      ${p.role_interface || p.authority_boundaries ? sec('Role boundaries', `${p.role_interface ? `<p><b>Role interface / handover:</b> ${esc(p.role_interface)}</p>` : ''}${p.authority_boundaries ? `<p><b>Authority & escalation:</b> ${esc(p.authority_boundaries)}</p>` : ''}`) : ''}
+      ${list('Working conditions', p.working_conditions)}${list('Safety / child protection', p.safety_child_protection)}
+      ${p.salary_bands ? (p.salary_bands.length ? sec('Salary planning band', `<div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Market range (JD)</th>${caps && caps.length ? '<th>MyEden cap</th>' : ''}<th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b, i) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${esc(b.range || `${b.min != null ? money(b.min) : ''} – ${b.max != null ? money(b.max) : ''}`)}</td>${caps && caps.length ? `<td class="nowrap">${capOf(i)}</td>` : ''}<td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>`) : '') : (forPrint ? '' : sec('Salary planning band', '<p class="muted small">Restricted to HR and Admin.</p>'))}
+      ${arr(p.career_path).length ? sec('Career path', `<p class="jd-career">${arr(p.career_path).map((x) => `<span class="tag xs">${esc(x)}</span>`).join(' → ')}</p>`) : ''}
+      ${list('Promotion readiness', p.promotion_readiness)}${list('Lateral / alternate moves', p.lateral_moves)}`;
+  }
   async function jdPage(item, el) {
     const positions = item.route === 'positions';
-    el.innerHTML = `${pageHead(item, eafBtn('jd', 'Open the JD Manual in MEG-EAF V2', 'ghost'))}<div id="jd-body">${loading()}</div>`;
-    let J;
+    el.innerHTML = `${pageHead(item, `<button type="button" class="btn sm" id="jcmp" hidden>▥ Compare <span></span></button>${positions && can('recruitment') ? `<button type="button" class="btn sm" id="jopen">${icon('briefcase')}Posts open for applications</button>` : ''}`)}<div id="jd-body">${loading()}</div>`;
+    let J; let MARKS = new Set(); const CMP = [];
     try { [J] = await Promise.all([API.rpc('cms_jd'), loadOrg()]); } catch (e) { $('#jd-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    try { MARKS = new Set((await API.rpc('cms_jd_marks_get')) || []); } catch (e) { /* bookmarks are extra */ }
+    $('#jopen', el)?.addEventListener('click', recruitOpenWindow);
     const ent = Object.fromEntries(J.entities.map((x) => [x.id, x])); const dep = Object.fromEntries(J.departments.map((x) => [x.id, x]));
     const f = { q: '', co: 'all', dept: 'all', v: positions ? 'all' : 'all' };
     const V = positions
-      ? [['all', 'All positions', () => true], ['open', 'Open for applications', (p) => p.open], ['staffed', 'With staff', (p) => p.staff > 0], ['apps', 'With applications', (p) => p.applications > 0], ['vacant', 'No staff yet', (p) => !p.staff]]
-      : [['all', 'All', () => true]];
+      ? [['all', 'All positions', () => true], ['open', 'Open for applications', (p) => p.open], ['staffed', 'With staff', (p) => p.staff > 0], ['apps', 'With applications', (p) => p.applications > 0], ['vacant', 'No staff yet', (p) => !p.staff], ['marked', '★ Bookmarked', (p) => MARKS.has(p.id)]]
+      : [['all', 'All', () => true], ['marked', '★ Bookmarked', (p) => MARKS.has(p.id)]];
     $('#jd-body', el).innerHTML = `
       <section class="card">
         <div class="toolbar">
@@ -2884,7 +2941,7 @@
         </div>
         <div class="table-wrap fill"><table class="data freeze2" id="jtable"><thead><tr><th>Reference</th><th>Job title</th><th>Company</th><th>Department</th><th>Level</th>${positions ? '<th>Staff</th><th>Applications</th><th>Open</th>' : '<th>Type</th><th>Reports to</th><th>Version</th>'}</tr></thead><tbody></tbody></table></div>
         <p class="muted small" id="jcount"></p>
-        <p class="muted small">${positions ? 'Staff counts active and onboarding people whose approved job title and employer match the position. “Open for applications” is set in the JD Manual (MEG-EAF V2) and controls what applicants can choose.' : 'The controlled JD master from MEG-EAF V2. Click a position for its purpose, responsibilities, KPIs and competencies'}${J.can_see_pay ? ' and salary bands (HR and Admin only).' : '.'} Changes are made in the JD Manual in MEG-EAF V2.</p>
+        <p class="muted small">${positions ? 'Staff counts active and onboarding people whose approved job title and employer match the position. “Open for applications” is set with <b>Posts open for applications</b> and controls what applicants can choose.' : 'The controlled JD master (the JD Manual). Click a position for the full job description — print it, bookmark it, or add it to Compare'}${J.can_see_pay ? ' and salary bands (HR and Admin only).' : '.'} Changes are made in the JD Manual in MEG-EAF V2.</p>
       </section>`;
     const fillDept = () => { $('#jdept', el).innerHTML = `<option value="all">All departments</option>${J.departments.filter((d) => f.co === 'all' || String(d.entity_id) === f.co).map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}`; f.dept = 'all'; };
     fillDept();
@@ -2906,24 +2963,35 @@
     $('#jco', el).addEventListener('change', (e) => { f.co = e.target.value; fillDept(); draw(); });
     $('#jdept', el).addEventListener('change', (e) => { f.dept = e.target.value; draw(); });
     $$('.seg button', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; $$('.seg button', el).forEach((x) => x.classList.toggle('on', x === b)); draw(); }));
+    const drawSeg = () => { const sp = $('.seg button[data-v=marked] span', el); if (sp) sp.textContent = J.positions.filter((x) => MARKS.has(x.id)).length; };
+    const drawCmp = () => { const b = $('#jcmp', el); b.hidden = CMP.length < 1; $('span', b).textContent = CMP.length; };
+    $('#jcmp', el).addEventListener('click', async () => {
+      let L; try { L = await Promise.all(CMP.map((x) => API.rpc('cms_jd_position', { p_id: x }))); } catch (e) { toast(e.message, 'err'); return; }
+      const arr = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+      const R = [['Reference', (p) => `<code>${esc(p.reference || '')}</code>`], ['Company', (p) => esc(coShort(p.entity) || '')], ['Department', (p) => esc(p.department || '')], ['Level', (p) => esc(p.level || '')],
+        ['Reports to', (p) => esc(p.reports_to || '—')], ['Direct reports', (p) => esc(p.direct_reports || '—')], ['Employment type', (p) => esc(p.employment_type || '—')], ['Purpose', (p) => esc(p.purpose || '—')],
+        ['Key responsibilities', (p) => `<ol>${p.responsibilities.map((r) => `<li>${esc(r.title || '')}</li>`).join('')}</ol>`], ['KPIs', (p) => `<ul>${p.kpis.map((k) => `<li>${esc(k.area || '')}</li>`).join('')}</ul>`],
+        ['Competencies', (p) => esc(p.competencies.join(', '))], ['Minimum qualifications', (p) => esc(p.minimum_qualifications || '—')], ['Experience', (p) => esc(p.required_experience || '—')],
+        ['Career path', (p) => esc(arr(p.career_path).join(' → ') || '—')]];
+      if (L.some((p) => p.salary_bands)) R.push(['Salary bands', (p) => (p.salary_bands || []).map((b) => `${esc(b.tier || '')}: ${esc(b.range || '')}`).join('<br>') || '—']);
+      const sheet = `<section class="sheet list-sheet land"><div class="doc-head"><div class="doc-co"><div class="doc-co-name">Compare positions</div><div>${L.length} positions</div></div></div>
+        <table class="data compact jd-cmp"><thead><tr><th></th>${L.map((p) => `<th>${esc(p.job_title)}</th>`).join('')}</tr></thead><tbody>${R.map(([k, fn]) => `<tr><th>${esc(k)}</th>${L.map((p) => `<td>${fn(p)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
+      docView(el, 'Compare positions', [sheet], () => jdPage(item, el));
+    });
     const open = async (id) => {
       let p; try { p = await API.rpc('cms_jd_position', { p_id: id }); } catch (e) { toast(e.message, 'err'); return; }
       let caps = []; try { if (p.salary_bands && p.salary_bands.length) caps = await API.rpc('cms_position_caps', { p_position: id }); } catch (e) { /* caps are extra */ }
       const capOf = (b, i) => caps[i] && (caps[i].cap_min != null || caps[i].cap_max != null) ? `${caps[i].cap_min != null ? money(caps[i].cap_min) : '—'} – ${caps[i].cap_max != null ? money(caps[i].cap_max) : '—'}` : '<span class="muted">not set</span>';
-      const para = (k, v) => (v ? `<h4 class="sec-h">${esc(k)}</h4><p class="pre">${esc(v)}</p>` : '');
+      const marked = () => MARKS.has(id);
       await modal({
         title: p.job_title, wide: true, ok: null, cancel: 'Close',
-        body: `<p class="muted small"><code>${esc(p.reference || '')}</code> · ${esc(coShort(p.entity) || '')} · ${esc(p.department || '')}${p.level ? ` · ${esc(p.level)}` : ''}${p.version ? ` · version ${esc(p.version)}` : ''} · ${p.is_open_for_recruitment ? '<span class="tag ok xs">Open for applications</span>' : 'closed for applications'}</p>
-          <dl class="kv2">${[['Reports to', p.reports_to], ['Direct reports', p.direct_reports], ['Location', p.location], ['Employment type', p.employment_type], ['Works closely with', p.works_closely_with]]
-            .filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-          ${para('Purpose', p.purpose)}
-          ${p.responsibilities.length ? `<h4 class="sec-h">Responsibilities</h4><ol class="jd-list">${p.responsibilities.map((r) => `<li><b>${esc(r.title || '')}</b>${r.description ? `<span>${esc(r.description)}</span>` : ''}</li>`).join('')}</ol>` : ''}
-          ${p.kpis.length ? `<h4 class="sec-h">KPIs</h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Area</th><th>Measure</th><th>Review</th></tr></thead><tbody>${p.kpis.map((k) => `<tr><td>${esc(k.area || '')}</td><td>${esc(k.measure || '')}</td><td>${esc(k.frequency || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-          ${p.competencies.length ? `<h4 class="sec-h">Competencies</h4><p>${p.competencies.map((c) => `<span class="tag xs">${esc(c)}</span>`).join(' ')}</p>` : ''}
-          ${para('Minimum qualifications', p.minimum_qualifications)}${para('Experience', p.required_experience)}${para('Skills & knowledge', p.skills_knowledge)}
-          ${para('Safety & child protection', p.safety_child_protection)}${para('Career path', p.career_path)}
-          ${p.salary_bands ? (p.salary_bands.length ? `<h4 class="sec-h">Salary bands <small class="muted">HR and Admin only</small></h4><div class="table-wrap"><table class="data compact"><thead><tr><th>Tier</th><th>Market range (JD)</th>${caps.length ? '<th>MyEden cap</th>' : ''}<th>Typical profile</th></tr></thead><tbody>${p.salary_bands.map((b, i) => `<tr><td>${esc(b.tier || '')}</td><td class="nowrap">${b.min != null && b.max != null ? `${money(b.min)} – ${money(b.max)}` : esc(b.range || '—')}</td>${caps.length ? `<td class="nowrap">${capOf(b, i)}</td>` : ''}<td>${esc(b.profile || '')}</td></tr>`).join('')}</tbody></table></div>` : '') : ''}
-          <div class="btn-row">${eafBtn('jd', 'Edit in the JD Manual (MEG-EAF V2)')}</div>`,
+        body: `<div class="btn-row jd-tools"><button type="button" class="btn sm" data-mark>${marked() ? '★ Bookmarked' : '☆ Bookmark'}</button><button type="button" class="btn sm" data-cmp>${CMP.includes(id) ? '▥ In compare' : '▥ Compare'}</button><button type="button" class="btn sm" data-print>${icon('download')}Print / PDF</button></div>
+          ${jdBody(p, caps)}`,
+        onOpen: (wrap) => {
+          $('[data-mark]', wrap).onclick = async (e) => { const on = !marked(); try { await API.rpc('cms_jd_mark', { p_position: id, p_on: on }); if (on) MARKS.add(id); else MARKS.delete(id); e.target.textContent = on ? '★ Bookmarked' : '☆ Bookmark'; drawSeg(); draw(); } catch (x) { toast(x.message, 'err'); } };
+          $('[data-cmp]', wrap).onclick = (e) => { if (!CMP.includes(id)) { CMP.push(id); if (CMP.length > 4) CMP.shift(); } e.target.textContent = '▥ In compare'; drawCmp(); toast(`${CMP.length} position${CMP.length === 1 ? '' : 's'} to compare — use Compare above the list`); };
+          $('[data-print]', wrap).onclick = () => { wrap.querySelector('[data-x]')?.click(); docView(el, `${p.reference || ''} ${p.job_title}`, [`<section class="sheet list-sheet jd-sheet"><div class="doc-head"><div class="doc-co"><div class="doc-co-name">${esc(p.job_title)}</div><div><code>${esc(p.reference || '')}</code> · ${esc(coShort(p.entity) || '')} · ${esc(p.department || '')}${p.level ? ` · ${esc(p.level)}` : ''}${p.version ? ` · version ${esc(p.version)}` : ''}</div></div></div>${jdBody(p, caps, true)}</section>`], () => jdPage(item, el)); };
+        },
       });
     };
     $('#jtable tbody', el).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) open(tr.dataset.id); });
@@ -2945,7 +3013,7 @@
     };
   }
   async function onboardingPage(item, el) {
-    el.innerHTML = `${pageHead(item, eafBtn('hr', 'Open MEG-EAF V2 HR', 'ghost'))}<div id="on-body">${loading()}</div>`;
+    el.innerHTML = `${pageHead(item, canRoute('applications') ? `<a class="btn sm ghost" href="#/applications">${icon('search-user')}Applications</a>` : '')}<div id="on-body">${loading()}</div>`;
     let o;
     try { [o] = await Promise.all([API.rpc('cms_onboarding'), loadOrg()]); state.onb = o; } catch (e) { $('#on-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const hireBtn = (attrs) => (o.can_hire ? `<button type="button" class="btn sm primary" ${attrs}>${icon('user-plus')}Hire…</button>` : '');
@@ -2961,18 +3029,18 @@
         <div class="pipe-step joint"><b>${num(o.offers.filter((x) => !['completed'].includes(x.status)).length)}</b><span>Offer letters open</span></div>
         <div class="pipe-step ${state.onbSum?.stampSoon ? 'bad' : ''}"><b>${num(o.offers.filter((x) => x.stamp_status === 'pending' && x.stamp_due && daysTo(x.stamp_due) <= 7).length)}</b><span>Stamp duty due ≤ 7 days</span></div>
       </div>
-      <section class="card"><div class="card-head"><h3>Approved applicants</h3><span class="muted small">Decision Approved in MEG-EAF V2 and no employee record yet. Hire creates the person record, Employee ID and payroll record together, and assigns the handbook.</span></div>
+      <section class="card"><div class="card-head"><h3>Approved applicants</h3><span class="muted small">Decision Approved (Office Use) and not hired yet. Hire creates the person record, Employee ID and payroll record together, and assigns the handbook.</span></div>
         ${o.accepted.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Applicant</th><th>Company</th><th>Job title</th><th>Start</th><th>Office Use / check</th><th></th></tr></thead><tbody>
           ${o.accepted.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}${x.department ? `<small class="sub">${esc(x.department)}</small>` : ''}</td>
             <td class="nowrap">${x.start ? dShort(x.start) : '—'}</td>
             <td>${(x.matches || []).length ? `<span class="tag warn xs">Already an employee?</span>${x.matches.map((m) => `<small class="sub">${esc(m.employee_id || 'no Employee ID')} · ${esc(m.name)} · ${esc(m.status)} (same ${esc(m.by)})</small>`).join('')}` : x.handoff === 'pending_import' || x.ready ? '<span class="tag ok xs">Ready to hire</span>' : '<span class="tag warn xs">Office Use incomplete</span><small class="sub">add start date and salary in MEG-EAF V2</small>'}${x.decision ? `<small class="sub">decision: ${esc(x.decision)}</small>` : ''}</td>
-            <td class="nowrap">${(x.matches || []).length ? (o.can_hire ? x.matches.map((m) => `<button type="button" class="btn sm" data-link-a="${esc(x.application_id)}" data-link-p="${esc(m.person_id)}" data-name="${esc(x.name)}" data-eid="${esc(m.employee_id || '')}">${icon('users')}Link to ${esc(m.employee_id || 'this person')}</button>`).join(' ') : '') : x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : eafBtn('hr', 'Open MEG-EAF V2', 'sm')}</td></tr>`).join('')}
-          </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an offer is accepted in MEG-EAF V2 it appears here.</span></div>'}
+            <td class="nowrap">${(x.matches || []).length ? (o.can_hire ? x.matches.map((m) => `<button type="button" class="btn sm" data-link-a="${esc(x.application_id)}" data-link-p="${esc(m.person_id)}" data-name="${esc(x.name)}" data-eid="${esc(m.employee_id || '')}">${icon('users')}Link to ${esc(m.employee_id || 'this person')}</button>`).join(' ') : '') : x.handoff === 'pending_import' ? hireBtn(`data-hire-h="${esc(x.handoff_id)}"`) : x.ready ? hireBtn(`data-hire-a="${esc(x.application_id)}"`) : `<a class="btn sm" href="${esc(asset(`apply/?view=${encodeURIComponent(x.application_id)}`))}" target="_blank" rel="noopener">${icon('eye')}Full application</a>`}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty small"><p>No accepted applicants waiting</p><span>When an applicant’s decision is Approved in Applications they appear here.</span></div>'}
       </section>
       ${(state.idPending || []).length ? `<section class="card"><div class="card-head"><h3>Employee ID incomplete</h3><span class="muted small">A group number is reserved for each person (first come, first served); the ID is completed automatically once gender and start date are entered.</span></div>
         <div class="table-wrap"><table class="data"><thead><tr><th>Reserved number</th><th>Name</th><th>Company</th><th>Missing</th></tr></thead><tbody>
         ${state.idPending.map((x) => `<tr><td><code>${esc(String(x.serial).padStart(4, '0'))}</code></td><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td class="warn-txt">${esc((x.missing || []).join(', ') || '—')}</td></tr>`).join('')}
-        </tbody></table></div><p class="muted small">Enter the missing details with <b>Add to payroll…</b> below, or in the Office Use section in MEG-EAF V2.</p></section>` : ''}
+        </tbody></table></div><p class="muted small">Enter the missing details with <b>Add to payroll…</b> below, or in Office Use in the application (Applications).</p></section>` : ''}
       <section class="card"><div class="card-head"><h3>Not yet in payroll</h3><span class="muted small">People who are active or onboarding in the CMS but have no payroll record.</span></div>
         ${o.to_payroll.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Employee ID</th><th>Name</th><th>Company</th><th>Job title</th><th>Start</th><th>Status</th><th></th></tr></thead><tbody>
           ${o.to_payroll.map((x) => `<tr><td><code>${esc(x.employee_id || '—')}</code></td><td><b>${esc(x.name)}</b></td><td>${esc(coShort(x.company))}</td><td>${esc(x.title || '—')}</td>
@@ -2986,7 +3054,7 @@
             <td>${esc(LOEC[x.status] || x.status)}</td><td class="nowrap">${dShort(x.issued_at)}</td>
             <td class="nowrap">${x.employee_signed ? `${dShort(x.employee_signed)}<small class="sub">employer ${dShort(x.employer_signed)}</small>` : '<span class="muted">—</span>'}</td>
             <td class="nowrap">${stampCell(x)}</td><td>${x.original_received ? '<span class="tag ok xs">Received</span>' : '<span class="muted">—</span>'}</td></tr>`).join('')}
-          </tbody></table></div>` : '<div class="empty small"><p>No offer letters yet</p><span>Offer letters issued in MEG-EAF V2 are tracked here, with stamp-duty due dates.</span></div>'}
+          </tbody></table></div>` : '<div class="empty small"><p>No offer letters yet</p><span>Offer letters are tracked here, with stamp-duty due dates.</span></div>'}
       </section>`;
     loecModeBox($('#on-loecmode', el));
     const reload = () => { state.onb = null; loadRecruitSummary(); onboardingPage(item, el); };
@@ -3037,7 +3105,7 @@
     const idNote = P.employee_id ? `Keeps Employee ID <b>${esc(P.employee_id)}</b>.` : `Gets the next group number, <b>${esc(String(P.next_serial).padStart(4, '0'))}</b>; the Employee ID is built from the employer, start month and gender (e.g. ${esc((P.employer || 'MEG')[0])}${esc((P.join_date || '').slice(5, 7) + (P.join_date || '').slice(2, 4))}${esc(P.gender || 'F')}${esc(String(P.next_serial).padStart(4, '0'))}).`;
     return modal({
       title: `${P.person_id ? 'Add to payroll' : 'Hire'} · ${P.name}`, wide: true, ok: P.person_id ? 'Add to payroll' : 'Hire', cancel: 'Cancel',
-      body: `<p class="muted small">Filled in from the Office Use section in MEG-EAF V2. Check every field: the person record and the payroll record are created together. ${idNote}</p>
+      body: `<p class="muted small">Filled in from the application's Office Use. Check every field: the person record and the payroll record are created together. ${idNote}</p>
         <div class="fld-2">
           <label class="fld"><span>Name</span><input name="name" required value="${esc(P.name || '')}"></label>
           <label class="fld"><span>Gender <small class="muted">— used in the Employee ID</small></span><select name="gender" required>${opt([['F', 'Female'], ['M', 'Male']], P.gender, 'Confirm…')}</select></label>
@@ -3176,11 +3244,9 @@
 
   // ---------------------------------------------------------------- 3.7 Employment Act & calculators
   function hrlawPage(item, el) {
-    el.innerHTML = `${pageHead(item)}
-      <section class="card coming"><div class="coming-art">${icon('scale')}</div>
-        <div><h3>Employment Act 1955 &amp; calculators</h3>
-        <p>The statutory reference and the overtime, leave, notice, maternity and final-pay calculators are in MEG-EAF V2. They open in a new tab with your same sign-in.</p>
-        <div class="btn-row">${eafBtn('law', 'Open Employment Act & calculators', 'primary')}${can('letters') ? eafBtn('letters', 'Open HR Letters') : ''}</div></div></section>`;
+    // the Employment Act 1955 reference and HR calculators, moved from MEG-EAF V2 into the CMS (PRI-024, v2026.11.19); no sign-in needed
+    el.innerHTML = `${pageHead(item, `<a class="btn sm" href="${esc(asset('hrlaw/'))}" target="_blank" rel="noopener">${icon('arrow')}Open full screen</a>`)}
+      <section class="card law-frame-card"><iframe class="law-frame" src="${esc(asset('hrlaw/'))}" title="Employment Act 1955 and HR calculators" loading="lazy"></iframe></section>`;
   }
 
 
