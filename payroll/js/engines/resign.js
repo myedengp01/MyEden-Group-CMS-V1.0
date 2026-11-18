@@ -83,15 +83,33 @@ export function resignCalc(input, policy) {
   if (input.letterDate < input.joinDate) out.errors.push('The letter date is before the date joined.');
   const H = input.holidays || new Set(); const WD = input.workDays || [1, 2, 3, 4, 5];
   // v2026.11.17: a longer notice stated in the employee's letter — the Company's decision (accepted → that date is the notice end)
-  const reqLast = input.requestedLast || null; const decision = input.extensionDecision || null;
-  const noticeEnd = input.noticeEnd || (decision === 'accepted' && reqLast && reqLast > N.end ? reqLast : N.end);
-  if (reqLast && reqLast > N.end && !decision && !input.noticeEnd) out.errors.push('The employee asked for a later last day than the notice allows. Choose whether the Company accepts the longer notice she stated.');
+  // v2026.11.18: the Company's decision on the last day (CLC 18 Nov 2026) — 'contract' (serve the notice in the contract / Employee Handbook),
+  // 'requested' (the employee's requested last day) or 'other' (another date agreed with her). An agreed date LATER than the policy end
+  // becomes the notice end (longer notice); an EARLIER one is an early release: the notice stays the contractual one, employment ends on
+  // the agreed date and the days in between are "notice not served" (waived by default, or paid in lieu). Without a decision (older
+  // records, the AL calculator), an agreed notice end earlier than the policy end is read the same way.
+  const reqLast = input.requestedLast || null; const decision = input.extensionDecision || null; const choice = input.decision || null;
+  let noticeEnd = N.end; let release = null;
+  if (choice) {
+    const agreed = choice === 'requested' ? (input.agreedLast || reqLast) : choice === 'other' ? input.agreedLast : null;
+    if (choice === 'requested' && !reqLast) out.errors.push('Enter the last day the employee asked for, or choose another decision.');
+    else if (choice === 'other' && !agreed) out.errors.push('Enter the last day agreed with the employee.');
+    if (agreed && agreed < input.letterDate) out.errors.push('The agreed last day is before the letter date.');
+    else if (agreed && agreed > N.end) noticeEnd = agreed;
+    else if (agreed && agreed < N.end) release = agreed;
+  } else {
+    noticeEnd = input.noticeEnd || (decision === 'accepted' && reqLast && reqLast > N.end ? reqLast : N.end);
+    if (input.noticeEnd && input.noticeEnd < N.end) { release = input.noticeEnd; noticeEnd = N.end; }
+    if (reqLast && reqLast > N.end && !decision && !input.noticeEnd) out.errors.push('The employee asked for a later last day than the notice allows. Choose whether the Company accepts the longer notice she stated.');
+  }
+  // the last day employment can run to: the agreed early date, else the notice end
+  const cap = release || noticeEnd;
   const alUse0 = input.alUse || 'payout';
   // v2026.11.17: notice running into the next leave year (e.g. a longer notice accepted, 11 Nov 2026 → 3 Feb 2027). The current year's
   // balance is not carried forward: it is cleared by 31 Dec or paid in the January payroll (CLC 17 Nov 2026). The final-salary leave
   // figures then cover the next year only (pro-rated to the end, without any carry-forward).
   const yS = String(N.start).slice(0, 4);
-  const split = !!input.alAt && String(noticeEnd).slice(0, 4) > yS;
+  const split = !!input.alAt && String(cap).slice(0, 4) > yS;
   const alRaw = input.alAt;
   const alAtX = !split ? alRaw : (d) => { const a = alRaw(d); if (!a || String(d).slice(0, 4) === yS) return a; return { ...a, balance: r2(a.balance - (a.carried || 0)), carried: 0 }; };
   if (split) input = { ...input, alAt: alAtX };
@@ -99,37 +117,37 @@ export function resignCalc(input, policy) {
   // offset with no earlier last day chosen: the leave fills the last working days of the notice, counted back from its end
   let back = null;
   if (alUse0 === 'offset' && !input.lastPhysical && input.alAt) {
-    const A0 = input.alAt(noticeEnd); const want = Math.max(0, Math.floor((A0?.balance || 0) * 2) / 2);
-    const avail = workDaysBetween(addDays(input.letterDate, 1), noticeEnd, input.holidays || new Set(), input.workDays || [1, 2, 3, 4, 5]);
+    const A0 = input.alAt(cap); const want = Math.max(0, Math.floor((A0?.balance || 0) * 2) / 2);
+    const avail = workDaysBetween(addDays(input.letterDate, 1), cap, input.holidays || new Set(), input.workDays || [1, 2, 3, 4, 5]);
     const take = Math.min(want, Math.max(0, avail - 1));
     if (take > 0) {
-      let left = Math.ceil(take); let from = null; const to = (() => { for (let t = isoToMs(noticeEnd); ; t -= DAY) { const iso = msToIso(t); if (isWorkDay(iso, input.holidays, input.workDays)) return iso; } })();
-      for (let t = isoToMs(noticeEnd); left > 0; t -= DAY) { const iso = msToIso(t); if (isWorkDay(iso, input.holidays, input.workDays)) { from = iso; left -= 1; } }
+      let left = Math.ceil(take); let from = null; const to = (() => { for (let t = isoToMs(cap); ; t -= DAY) { const iso = msToIso(t); if (isWorkDay(iso, input.holidays, input.workDays)) return iso; } })();
+      for (let t = isoToMs(cap); left > 0; t -= DAY) { const iso = msToIso(t); if (isWorkDay(iso, input.holidays, input.workDays)) { from = iso; left -= 1; } }
       let lp = addDays(from, -1); while (!isWorkDay(lp, input.holidays, input.workDays)) lp = addDays(lp, -1);
       back = { last: lp, window: { days: take, available: avail - 1, from, to } };
     }
   }
-  const last = input.lastPhysical || back?.last || noticeEnd;
-  if (last > noticeEnd) out.errors.push('The last physical working day is after the end of the notice. If the employee asked for a longer notice, enter it under "Notice stated in the letter" and choose Accepted.');
+  const last = input.lastPhysical || back?.last || cap;
+  if (last > cap) out.errors.push(release ? 'The last physical working day is after the agreed last day.' : 'The last physical working day is after the end of the notice. If the employee asked for a longer notice, enter it under "Notice stated in the letter" and choose to accept it.');
   if (last < input.letterDate) out.errors.push('The last physical working day is before the letter date.');
   const alUse = input.alUse || 'payout'; const payer = input.payer || 'employee';
   const sal = input.salary || null; const basic = Number(sal?.amount) || 0; const hourly = sal?.pay_basis === 'hourly';
   const orp = hourly ? r2(basic * (Number(input.normalHours) || 8)) : basic / (Number(input.divisor) || 26);
 
   // annual leave: the balance on the day employment ends; with offset, the end moves to the last leave day (worked out again until it settles)
-  let end = last; let A = input.alAt ? input.alAt(end) : null; let W = { days: 0, available: workDaysBetween(addDays(last, 1), noticeEnd, H, WD), from: null, to: null };
-  if (back) { end = noticeEnd; A = input.alAt(end); W = back.window; }
+  let end = last; let A = input.alAt ? input.alAt(end) : null; let W = { days: 0, available: workDaysBetween(addDays(last, 1), cap, H, WD), from: null, to: null };
+  if (back) { end = cap; A = input.alAt(end); W = back.window; }
   else if (alUse === 'offset' && A) {
     for (let i = 0; i < 5; i += 1) {
-      W = offsetWindow(last, noticeEnd, Math.max(0, A.balance), H, WD);
+      W = offsetWindow(last, cap, Math.max(0, A.balance), H, WD);
       const e2 = W.days > 0 ? W.to : last;
       if (e2 === end) break;
       end = e2; A = input.alAt(end);
     }
     // the whole notice is covered by leave: employment runs to the notice end
-    if (W.days > 0 && W.days >= W.available) end = noticeEnd;
+    if (W.days > 0 && W.days >= W.available) end = cap;
   }
-  if (alUse !== 'offset' && last === noticeEnd) end = noticeEnd;
+  if (alUse !== 'offset' && last === cap) end = cap;
   const bal = A ? r2(A.balance) : null;
   const payoutDays = bal === null ? null : alUse === 'offset' ? r2(bal - W.days) : alUse === 'payout' ? bal : Math.min(0, bal);
   // leave taken beyond what was earned is unpaid leave (CLC 5 Nov 2026): basic ÷ the calendar days of the final month, not ÷ 26
@@ -146,13 +164,14 @@ export function resignCalc(input, policy) {
   const noticeAmount = !shortFrom ? 0 : hourly ? r2(shortWork * orp) : P.amount;
   const noticeSigned = payer === 'employee' ? -noticeAmount : payer === 'company' ? noticeAmount : 0;
   if (shortFrom && payer === 'waived') out.notes.push('Notice not served is waived: nothing is paid or deducted for it (approver recorded).');
+  if (release && shortFrom && shortFrom > addDays(release, 1)) out.notes.push(`Employment ends before the agreed last day (${longDate(release)}): the notice not served counts from ${longDate(shortFrom)}.`);
   const net = r2(alAmount + noticeSigned);
 
   // a rough last-month figure: basic for the calendar days worked in the month employment ends, plus the settlement
   const monthStart = `${end.slice(0, 7)}-01`; const first = input.joinDate > monthStart ? input.joinDate : monthStart;
   const lastMonthBasic = hourly ? null : r2(basic * calDays(first, end) / daysInMonth(end));
   const finalEst = lastMonthBasic === null ? null : r2(lastMonthBasic + net);
-  if (!isWorkDay(noticeEnd, H, WD)) out.notes.push(`The notice ends on a ${dayName(noticeEnd)}${H.has(noticeEnd) ? ' (public holiday)' : ''}; it stays the official end date.`);
+  if (!release && !isWorkDay(noticeEnd, H, WD)) out.notes.push(`The notice ends on a ${dayName(noticeEnd)}${H.has(noticeEnd) ? ' (public holiday)' : ''}; it stays the official end date.`);
   if (!isWorkDay(last, H, WD)) out.notes.push(`The last physical working day is a ${dayName(last)}${H.has(last) ? ' (public holiday)' : ''}.`);
 
   Object.assign(out, {
@@ -162,6 +181,7 @@ export function resignCalc(input, policy) {
     short: { from: shortFrom, to: shortFrom ? noticeEnd : null, calendar: shortCal, working: shortWork, parts: P ? P.parts : [] }, noticeAmount, noticeSigned, net, lastMonthBasic, finalEst,
     owed: finalEst !== null && finalEst < 0 ? r2(-finalEst) : 0,
     arrangement: alUse === 'offset' && W.days > 0 ? (end < noticeEnd ? 'in_lieu' : 'offset') : (end < noticeEnd ? 'in_lieu' : 'full'),
+    release, decision: choice, earlyRelease: !!release,
     split, yearCurrent: yS, requestedLast: reqLast, requestedNotice: input.requestedNotice || null, extensionDecision: decision, alPrev: alPrev ? { ...alPrev, balance: r2(alPrev.balance) } : null,
   });
   if (split && alPrev) out.notes.push(`The notice runs into ${Number(yS) + 1}: the ${yS} balance (${num(r2(alPrev.balance))} day(s)) is cleared by 31 Dec ${yS} or paid in the January ${Number(yS) + 1} payroll; the final salary covers ${Number(yS) + 1} leave only.`);
@@ -179,6 +199,9 @@ export function letterFields(c, input) {
     employment_end_date: longDate(c.employmentEnd), employment_end_day: dayName(c.employmentEnd),
     start_datetime: longDate(input.joinDate),
     months_worked: A.months != null ? String(A.months) : '', leave_entitlement: A.bandDays != null ? String(A.bandDays) : '',
+    // v2026.11.18: entitlement and pro-rating period by period — a service band that changes during the year (e.g. 8 → 12 days on the
+    // 2-year anniversary) is shown as two parts, each rounded as the leave balance counts it
+    al_entitlement_text: alEntitlementText(A), al_prorated: alProratedText(A),
     calculated_leaves: A.entitled != null ? num((A.entitled || 0) + (A.carried || 0)) : '', al_taken: A.taken != null ? num(A.taken) : '',
     al_asofdate: longDate(A.asOf), al_balance: c.al ? num(c.al.balance) : '',
     al_offset_period: c.offset?.days > 0 ? (c.offset.from === c.offset.to ? longDate(c.offset.from) : `${longDate(c.offset.from)} to ${longDate(c.offset.to)}`) : 'Not applicable',
@@ -208,6 +231,17 @@ export function periodText(start, end) {
 export function noticeTerms(c) {
   const d = c.short.calendar || 0;
   if (!d) return 'You will serve your notice period in full. No payment in lieu of notice is due from either party.';
+  if (c.release) {
+    // v2026.11.18: early release agreed by the Company (the employee's requested last day, or another agreed date)
+    const ask = c.decision === 'requested' || (!c.decision && c.requestedLast === c.release)
+      ? `In your letter, you requested that your last working day be ${longDate(c.release)} (${dayName(c.release)}). The Company has agreed to your request and releases you from the remaining notice period`
+      : `The Company has agreed with you that your last working day shall be ${longDate(c.release)} (${dayName(c.release)}), and releases you from the remaining notice period`;
+    const span = `of ${d} calendar day${d === 1 ? '' : 's'} (${longDate(c.short.from)} to ${longDate(c.short.to)})`;
+    const basis = c.hourly ? `your ordinary rate of pay for the ${c.short.working} working day(s) not served` : `your basic salary for those ${d} calendar day(s) (monthly basic salary ÷ the number of days in the month)`;
+    if (c.payer === 'waived') return `${ask} ${span}. The notice not served is waived by the Company. No payment in lieu of notice is due from either party, and nothing will be deducted from your final salary for it.`;
+    if (c.payer === 'company') return `${ask} ${span}. The Company will pay you, in lieu of the notice not served, ${basis}, amounting to ${rm(c.noticeAmount)}, in your final salary (Section 13(1), Employment Act 1955).`;
+    return `${ask} ${span}, on the terms that the notice not served is settled by an indemnity equal to ${basis}, amounting to ${rm(c.noticeAmount)}, in accordance with Section 13(1) of the Employment Act 1955. This amount will be deducted from your final salary.`;
+  }
   const basis = c.hourly ? `your ordinary rate of pay for the ${c.short.working} working day(s) not served` : `your basic salary for the ${d} calendar day(s) not served (monthly basic salary ÷ the number of days in the month)`;
   if (c.payer === 'company') return `As the Company has asked you to leave before the end of your notice period, the Company will pay you, in lieu of the notice not served, ${basis}, amounting to ${rm(c.noticeAmount)}, in your final salary (Section 13(1), Employment Act 1955).`;
   if (c.payer === 'waived') return `The Company waives the ${d} calendar day(s) of notice not served. No payment in lieu of notice is due from either party.`;
@@ -220,4 +254,20 @@ export function calcSnapshot(c) {
     offset_days: c.offset?.days || 0, offset_from: c.offset?.from || null, offset_to: c.offset?.to || null, payout_days: c.payoutDays, al_amount: c.alAmount,
     short_days: c.short.calendar || 0, short_working: c.short.working || 0, short_from: c.short.from, notice_amount: c.noticeAmount, net: c.net,
     last_month_basic: c.lastMonthBasic, final_estimate: c.finalEst, owed: c.owed, arrangement: c.arrangement };
+}
+
+/** "12 days per annum", or one line per service band when the band changes during the final year. */
+export function alEntitlementText(A) {
+  const P = (A?.periods || []).filter((p) => p.months > 0 || (A.periods || []).length === 1);
+  if (!P.length) return A?.bandDays != null ? `${A.bandDays} days per annum` : '';
+  const days = [...new Set(P.map((p) => p.days))];
+  if (days.length === 1) return `${days[0]} days per annum`;
+  return P.map((p) => `${p.days} days per annum (${longDate(p.start)} to ${longDate(p.end)})`).join('; ');
+}
+/** "11/12 × 12 days", or "4/12 × 8 days = 3 days + 7/12 × 12 days = 7 days" when the band changes during the final year. */
+export function alProratedText(A) {
+  const P = (A?.periods || []).filter((p) => p.months > 0 || (A.periods || []).length === 1);
+  if (!P.length) return A?.months != null && A?.bandDays != null ? `${A.months}/12 × ${A.bandDays} days` : '';
+  if (P.length === 1) return `${P[0].months}/12 × ${P[0].days} days`;
+  return P.map((p) => `${p.months}/12 × ${p.days} days = ${num(p.entitled)} day${Number(p.entitled) === 1 ? '' : 's'}`).join(' + ');
 }

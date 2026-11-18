@@ -20,7 +20,8 @@ export async function resignContext(sb, R, { letterDate } = {}) {
     const b = balancesFor({ ...person, employment: { ...(person.employment || {}), ...emp, resigned_date: end } }, D, end);
     const inYear = (b.AL.periods || []).filter((p) => p.end.slice(0, 4) === end.slice(0, 4));
     return { balance: b.AL.balance, entitled: b.AL.entitled, carried: b.AL.carried || 0, taken: b.AL.taken, months: inYear.reduce((s, p) => s + p.months, 0),
-      bandDays: inYear.length ? inYear[inYear.length - 1].days : null, asOf: today < end ? today : end, cls: b.AL.cls, mode: b.AL.mode };
+      bandDays: inYear.length ? inYear[inYear.length - 1].days : null,
+      periods: inYear.map((p) => ({ start: p.start, end: p.end, days: p.days, months: p.months, entitled: p.entitled })), asOf: today < end ? today : end, cls: b.AL.cls, mode: b.AL.mode };
   };
   const pol = R.policies || {};
   const workDays = pol.settlement?.work_days || [1, 2, 3, 4, 5];

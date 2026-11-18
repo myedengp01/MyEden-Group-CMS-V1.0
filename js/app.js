@@ -6905,7 +6905,8 @@
         const r = resignR.record;
         if (r) { try { const lib = await mypImport('resign-data.js'); const C = await lib.resignContext(mypSb(), resignR, { letterDate: r.letter_date });
           const lastIn = r.calc && 'input_last' in r.calc ? r.calc.input_last : (r.al_use === 'offset' && r.employment_end === r.notice_end ? null : r.last_physical_day);
-          resignC = C.calc({ letterDate: r.letter_date, noticeStart: r.notice_start, noticeEnd: r.notice_agreed ? r.notice_end : null, lastPhysical: lastIn || null, alUse: r.al_use, payer: r.notice_payer,
+          resignC = C.calc({ letterDate: r.letter_date, noticeStart: r.notice_start, lastPhysical: lastIn || null, alUse: r.al_use, payer: r.notice_payer,
+            ...(r.notice_decision ? { decision: r.notice_decision, agreedLast: r.agreed_last_day || null } : { noticeEnd: r.notice_agreed ? r.notice_end : null }),
             requestedLast: r.requested_last_day || null, requestedNotice: r.requested_notice || null, extensionDecision: r.extension_decision || null });
         } catch (e) { resignC = null; } }
         if (resignFor !== personId) return;
@@ -7582,26 +7583,35 @@
     const rec = R.record || {}; const emp = R.employment || {};
     const today = new Date(Date.now() + 8 * 36e5).toISOString().slice(0, 10);
     const v0 = { letter: preset.letter || rec.letter_date || emp.resignation_letter_date || today, recv: rec.received_date || '', start: preset.start || rec.notice_start || '',
-      agreed: rec.notice_agreed && rec.extension_decision !== 'accepted' ? rec.notice_end : '', req: rec.requested_last_day || '', reqn: rec.requested_notice || '', dec: rec.extension_decision || '', last: preset.last ?? (rec.id && rec.last_physical_day !== rec.notice_end && !(rec.al_use === 'offset' && rec.employment_end === rec.notice_end) ? rec.last_physical_day : ''),
+      // v2026.11.18: the Company's decision on the last day (replaces the "Agreed a different notice end" tick box)
+      nd: rec.notice_decision || (rec.extension_decision === 'accepted' ? 'requested' : rec.notice_agreed ? 'other' : rec.id ? 'contract' : ''),
+      agreed: rec.notice_decision === 'other' ? rec.agreed_last_day || '' : !rec.notice_decision && rec.notice_agreed && rec.extension_decision !== 'accepted' ? rec.notice_end : '',
+      req: rec.requested_last_day || '', reqn: rec.requested_notice || '', last: preset.last ?? (rec.id && rec.last_physical_day !== rec.notice_end && !(rec.al_use === 'offset' && rec.employment_end === rec.notice_end) ? rec.last_physical_day : ''),
       al: preset.al || rec.al_use || 'payout', payer: preset.payer || rec.notice_payer || 'employee', waived: rec.waived_by || '', note: rec.note || '' };
+    // the notice-not-served choice was saved for real only when the record already had days not served; otherwise an early release starts as waived
+    let payerSet = !!preset.payer || Number(rec.calc?.short_days) > 0;
     const opt = (list, cur, blank) => `${blank != null ? `<option value="">${esc(blank)}</option>` : ''}${list.map(([v, l]) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}`;
     let ctx = null; let ctxYear = null; let last = null;
     const getCtx = async (letter) => { const y = Number(String(letter).slice(0, 4)); if (ctx && ctxYear === y) return ctx; ctx = await lib.resignContext(mypSb(), R, { letterDate: letter }); ctxYear = y; return ctx; };
-    const inputs = (f) => ({ letterDate: f.letter.value, noticeStart: f.start.value || null, noticeEnd: f.agreedOn.checked && f.agreed.value ? f.agreed.value : null,
+    const agreedOf = (f) => (f.nd.value === 'requested' ? f.req.value || null : f.nd.value === 'other' ? f.agreed.value || null : null);
+    const inputs = (f) => ({ letterDate: f.letter.value, noticeStart: f.start.value || null, decision: f.nd.value || 'contract', agreedLast: agreedOf(f),
       lastPhysical: f.last.value || null, alUse: f.al.value, payer: f.payer.value,
-      requestedLast: f.req.value || null, requestedNotice: f.reqn.value.trim() || null, extensionDecision: f.dec.value || null });
+      requestedLast: f.req.value || null, requestedNotice: f.reqn.value.trim() || null });
+    // the older accepted / declined value for a LONGER notice the employee asked for (the letter wording still uses it)
+    const extDec = (f, c) => (f.req.value && c.noticeEndPolicy && f.req.value > c.noticeEndPolicy ? (f.nd.value === 'requested' || (f.nd.value === 'other' && f.agreed.value === f.req.value) ? 'accepted' : 'declined') : null);
+    const ND = [['contract', 'Serve the notice in the contract / Employee Handbook'], ['requested', 'Accept the last day the employee asked for'], ['other', 'Another last day agreed with the employee']];
     const ok = await modal({ title: `${rec.id ? 'Resignation' : 'Record resignation'} · ${R.person.name}`, wide: true, ok: rec.id ? 'Save changes' : 'Save resignation',
       body: `<div class="rs-grid"><div class="fld-2">
           <label class="fld"><span>Resignation letter date</span><input type="date" name="letter" required value="${esc(v0.letter)}"></label>
           <label class="fld"><span>Date received <small class="muted">— optional</small></span><input type="date" name="recv" value="${esc(v0.recv)}"></label>
           <label class="fld"><span>Notice starts <small class="muted">— blank = the letter date</small></span><input type="date" name="start" value="${esc(v0.start)}"></label>
-          <div class="fld"><span><label class="chk"><input type="checkbox" name="agreedOn" ${v0.agreed ? 'checked' : ''}> Agreed a different notice end</label></span><input type="date" name="agreed" value="${esc(v0.agreed)}" ${v0.agreed ? '' : 'disabled'}></div>
-          <label class="fld"><span>Last physical working day <small class="muted">— blank = works to the notice end</small></span><input type="date" name="last" value="${esc(v0.last)}"></label>
           <label class="fld"><span>Notice stated in the letter <small class="muted">— optional, e.g. 12 weeks</small></span><input name="reqn" maxlength="40" value="${esc(v0.reqn)}" placeholder="e.g. 12 weeks"></label>
-          <label class="fld"><span>Last day the employee asked for <small class="muted">— from the notice stated, editable</small></span><input type="date" name="req" value="${esc(v0.req)}"></label>
-          <label class="fld fld-2" data-dec hidden><span>Company decision on the longer notice <small class="muted">— required: her date is later than the contract notice</small></span><select name="dec">${opt([['declined', 'Not accepted — the notice follows the contract and the Employee Handbook'], ['accepted', 'Accepted — her date becomes the notice end and the last day']], v0.dec, 'Choose…')}</select></label>
+          <label class="fld"><span>Last day the employee asked for <small class="muted">— from the notice stated, or type the date</small></span><input type="date" name="req" value="${esc(v0.req)}"></label>
+          <label class="fld"><span>Company decision on the last day</span><select name="nd" required>${opt(ND, v0.nd, 'Choose…')}</select></label>
+          <label class="fld" data-agreed ${v0.nd === 'other' ? '' : 'hidden'}><span>Last day agreed with the employee</span><input type="date" name="agreed" value="${esc(v0.agreed)}"></label>
+          <label class="fld"><span>Last physical working day <small class="muted">— blank = works to the last day</small></span><input type="date" name="last" value="${esc(v0.last)}"></label>
           <label class="fld"><span>Annual leave balance</span><select name="al">${opt(AL_USE, v0.al)}</select></label>
-          <label class="fld"><span>Notice not served</span><select name="payer">${opt(PAYER, v0.payer)}</select></label>
+          <label class="fld" data-payer><span>Notice not served</span><select name="payer">${opt(PAYER, v0.payer)}</select></label>
           <label class="fld fld-2" data-waived ${v0.payer === 'waived' ? '' : 'hidden'}><span>Waiving approved by</span><input name="waived" maxlength="120" value="${esc(v0.waived)}" placeholder="Name and position"></label>
           <label class="fld"><span>Reason for leaving</span><select name="reason" required>${opt((R.reasons || []).map((x) => [x.code, x.label]), emp.leaving_reason || '', 'Choose…')}</select></label>
           <label class="fld"><span>Details <small class="muted">— needed for "Other"</small></span><input name="lnote" maxlength="300" value="${esc(emp.leaving_note || '')}"></label>
@@ -7614,32 +7624,43 @@
         const f = $('form', wrap); const out = $('#rs-out', wrap); let seq = 0;
         const run = async () => {
           const n = ++seq; if (!f.letter.value) { out.innerHTML = '<p class="muted small">Enter the letter date.</p>'; return; }
-          try { const C = await getCtx(f.letter.value); if (n !== seq) return; last = C.calc(inputs(f));
-            const longer = !!(f.req.value && last.noticeEndPolicy && f.req.value > last.noticeEndPolicy); $('[data-dec]', f).hidden = !longer;
-            out.innerHTML = `<h4 class="sec-h">Worked out</h4>${longer ? `<p class="note ${f.dec.value ? '' : 'warn'} small">${icon('help')}<span>Notice by the contract / policy: <b>${last.weeks} weeks → ${isoDay(last.noticeEndPolicy)}</b>. Notice in her letter${f.reqn.value.trim() ? `: <b>${esc(f.reqn.value.trim())}</b>` : ''} → <b>${isoDay(f.req.value)}</b>. ${f.dec.value === 'accepted' ? 'The Company <b>accepts</b> the longer notice.' : f.dec.value === 'declined' ? 'The Company <b>does not accept</b> the longer notice: the contract notice applies.' : '<b>Choose the Company\'s decision</b> on the longer notice.'}</span></p>` : ''}${resignSummary(last, { amounts: last.salaryKnown })}
+          try { const C = await getCtx(f.letter.value); if (n !== seq) return;
+            if (!f.nd.value && !f.req.value) f.nd.value = 'contract';
+            $('[data-agreed]', f).hidden = f.nd.value !== 'other';
+            $('option[value="requested"]', f.nd).disabled = !f.req.value;
+            if (f.nd.value === 'requested' && !f.req.value) f.nd.value = '';
+            last = C.calc(inputs(f));
+            // early release agreed: the days not served start as waived (the Company agreed); a choice made by hand stays
+            if (last.earlyRelease && !payerSet && f.payer.value !== 'waived') { f.payer.value = 'waived'; $('[data-waived]', f).hidden = false; last = C.calc(inputs(f)); }
+            $('[data-payer]', f).hidden = !(last.short?.calendar > 0); $('[data-waived]', f).hidden = !(last.short?.calendar > 0) || f.payer.value !== 'waived';
+            const rq = f.req.value; const pol = last.noticeEndPolicy; const reqTxt = rq ? `Asked for${f.reqn.value.trim() ? ` (<b>${esc(f.reqn.value.trim())}</b>)` : ''}: <b>${isoDay(rq)}</b>${pol ? (rq > pol ? ' — later than the contract notice' : rq < pol ? ' — earlier than the contract notice' : ' — the same as the contract notice') : ''}. ` : '';
+            const decTxt = { contract: rq && rq !== pol ? 'The Company keeps the <b>contract notice</b>.' : '', requested: rq && pol && rq < pol ? `The Company <b>accepts her date</b>: early release, ${last.short?.calendar || 0} day(s) of notice not served.` : 'The Company <b>accepts her date</b>.',
+              other: f.agreed.value ? (pol && f.agreed.value < pol ? `<b>Agreed last day</b> ${isoDay(f.agreed.value)}: early release, ${last.short?.calendar || 0} day(s) of notice not served.` : `<b>Agreed last day</b> ${isoDay(f.agreed.value)}: a longer notice.`) : '<b>Enter the agreed last day.</b>' }[f.nd.value] || (rq ? '<b>Choose the Company\'s decision</b> on her date.' : '');
+            out.innerHTML = `<h4 class="sec-h">Worked out</h4>${reqTxt || f.nd.value !== 'contract' ? `<p class="note ${f.nd.value ? '' : 'warn'} small">${icon('help')}<span>Contract / policy notice: <b>${last.weeks} weeks → ${isoDay(pol)}</b>. ${reqTxt}${decTxt}</span></p>` : ''}${resignSummary(last, { amounts: last.salaryKnown })}
               ${!last.salaryKnown ? `<p class="note warn small">${icon('help')}<span>No salary to work out the amounts (none on record, or you cannot see salaries). The dates are saved; amounts are worked out by someone who can see salaries.</span></p>` : ''}
               ${!C.hasHolidays ? `<p class="small muted">${icon('help')} No public holidays are entered for ${C.years.join(' / ')} (Settings › Holidays), so none are skipped.</p>` : ''}
               ${last.ok ? `<p class="small">Suggested letter: <b>${esc(RES_ARR[last.arrangement])}</b> → ${esc({ RL: 'Full Notice', RL_TP2: 'Annual Leave Offset', RL_TP3: 'Early Release (Notice in Lieu)' }[RES_TPL[last.arrangement]])}</p>` : ''}`;
           } catch (e) { out.innerHTML = errorCard(e.message); }
         };
-        f.agreedOn.addEventListener('change', () => { f.agreed.disabled = !f.agreedOn.checked; if (f.agreedOn.checked && !f.agreed.value && last?.noticeEnd) f.agreed.value = last.noticeEnd; run(); });
+        f.nd.addEventListener('change', () => { if (f.nd.value === 'other' && !f.agreed.value) f.agreed.value = f.req.value || last?.noticeEnd || ''; run(); });
         // the notice stated in her letter → the date she asked for (notice start + weeks × 7, as the letters count it)
         const reqFromNotice = () => { const m = f.reqn.value.match(/(\d+)\s*(week|day)/i); const st = f.start.value || f.letter.value; if (!m || !st) return;
           f.req.value = new Date(Date.parse(`${st}T00:00:00Z`) + Number(m[1]) * (/week/i.test(m[2]) ? 7 : 1) * 864e5).toISOString().slice(0, 10); };
         f.reqn.addEventListener('change', () => { reqFromNotice(); run(); });
-        f.dec.addEventListener('change', () => { if (f.dec.value === 'accepted' && f.agreedOn.checked) { f.agreedOn.checked = false; f.agreed.disabled = true; } run(); });
         f.req.addEventListener('change', run);
-        f.payer.addEventListener('change', () => { $('[data-waived]', f).hidden = f.payer.value !== 'waived'; });
-        ['letter', 'start', 'agreed', 'last', 'al', 'payer'].forEach((k) => { f[k].addEventListener('change', run); f[k].addEventListener('input', run); });
+        f.payer.addEventListener('change', () => { payerSet = true; $('[data-waived]', f).hidden = f.payer.value !== 'waived'; run(); });
+        ['letter', 'start', 'agreed', 'last', 'al'].forEach((k) => { f[k].addEventListener('change', run); f[k].addEventListener('input', run); });
         run(); setTimeout(() => f.letter.focus(), 30);
       },
       onOk: async (f) => {
         if (!last || !last.ok) throw new Error(last?.errors?.join(' ') || 'Check the dates.');
         if (!f.reason.value) throw new Error('Choose the reason for leaving.');
+        if (!f.nd.value) throw new Error('Choose the Company\'s decision on the last day.');
         const c = last;
+        if (c.short?.calendar > 0 && f.payer.value === 'waived' && f.waived.value.trim().length < 3) throw new Error('Name who approved waiving the notice not served (e.g. the Director).');
         await API.rpc('cms_resignation_save', { p_person: pid, p: { letter_date: f.letter.value, received_date: f.recv.value || null, notice_start: c.noticeStart, notice_end: c.noticeEnd,
-          notice_agreed: (f.agreedOn.checked && !!f.agreed.value) || (f.dec.value === 'accepted' && c.noticeEnd !== c.noticeEndPolicy), notice_weeks: c.weeks, requested_last_day: f.req.value || null,
-          requested_notice: f.reqn.value.trim() || null, extension_decision: f.dec.value || null, last_physical_day: c.lastPhysical, employment_end: c.employmentEnd,
+          notice_agreed: c.noticeEnd !== c.noticeEndPolicy, notice_decision: f.nd.value, agreed_last_day: agreedOf(f), notice_weeks: c.weeks, requested_last_day: f.req.value || null,
+          requested_notice: f.reqn.value.trim() || null, extension_decision: extDec(f, c), last_physical_day: c.lastPhysical, employment_end: c.employmentEnd,
           al_use: f.al.value, notice_payer: f.payer.value, waived_by: f.waived.value.trim(), leaving_reason: f.reason.value, leaving_note: f.lnote.value.trim(), rehire: f.rehire.value || null,
           rehire_note: f.rnote.value.trim(), note: f.note.value.trim(), calc: { ...(c.salaryKnown ? c.snapshot : { ...c.snapshot, al_amount: null, notice_amount: null, net: null, orp: null, basic: null }), input_last: f.last.value || null } } });
       } });
@@ -7662,6 +7683,7 @@
       box.innerHTML = `<section class="card" id="pf-resign-card">${head}
         <dl class="pf-kv rs-kv"><dt>Resignation letter</dt><dd>${dShort(rec.letter_date)}${rec.received_date ? ` <span class="muted small">received ${dShort(rec.received_date)}</span>` : ''}</dd>
           <dt>Notice</dt><dd>${cx.weeks || rec.notice_weeks || '?'} weeks: ${isoDay(rec.notice_start)} → <b>${isoDay(rec.notice_end)}</b>${rec.notice_agreed ? ' <span class="tag warn xs">agreed</span>' : ''}</dd>
+          ${rec.requested_last_day || (rec.notice_decision && rec.notice_decision !== 'contract') ? `<dt>Company decision</dt><dd>${rec.requested_last_day ? `asked for ${dShort(rec.requested_last_day)} · ` : ''}${esc({ contract: 'contract notice kept', requested: 'her date accepted', other: `other date agreed${rec.agreed_last_day ? ` (${dShort(rec.agreed_last_day)})` : ''}` }[rec.notice_decision] || (rec.extension_decision === 'accepted' ? 'her date accepted' : rec.extension_decision === 'declined' ? 'contract notice kept' : '—'))}${rec.agreed_last_day && rec.agreed_last_day < rec.notice_end ? ' · <span class="tag xs">early release</span>' : ''}</dd>` : ''}
           <dt>Last physical working day</dt><dd><b>${isoDay(rec.last_physical_day)}</b></dd>
           ${Number(cx.offset_days) > 0 ? `<dt>Annual leave used up</dt><dd>${m2(cx.offset_days)} day(s): ${dShort(cx.offset_from)} – ${dShort(cx.offset_to)}</dd>` : ''}
           <dt>Employment ends</dt><dd><b>${isoDay(rec.employment_end)}</b></dd>
