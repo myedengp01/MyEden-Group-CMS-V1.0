@@ -1348,9 +1348,10 @@
   }
 
   // ---- printable claim, in the paper form's layout, with the receipts / photos after it ----
-  const cvCo = (code) => (window.CMS_COMPANIES || []).find((x) => x.code === code) || { name: coShort(code) || code || '', logo: '' };
+  const cvCo = (code) => { const k = ({ HDS: 'HD', ABN: 'ABP' })[String(code || '').toUpperCase()] || String(code || '').toUpperCase(); return (window.CMS_COMPANIES || []).find((x) => x.code === k) || { name: coShort(k) || code || '', logo: '' }; };
   const PRINT_TITLE = { scf: 'Claim Form for Misc. Expenses (SCF)', otcf: 'Overtime Claim Form (OTCF)', mtcf: 'Mileage Tracking & Claim Form (MTCF)' };
-  async function claimPrint(form, c, co, serial) {
+  // the claim's printable pages (form sheet, then receipts / photos four to a page); also used for the signed PDF
+  async function claimSheets(form, c, co, serial) {
     const f = String(form).toLowerCase(); const cmp = cvCo(co);
     const head = `<div class="cp-head"><span class="cp-logo">${cmp.logo ? `<img src="${esc(asset(cmp.logo))}" alt="">` : ''}</span><div class="cp-title"><b>${esc(cmp.name)}</b><span>${esc(PRINT_TITLE[f] || `${f.toUpperCase()} claim`)}</span></div><div class="cp-serial"><small>Serial No.</small><b>${esc(serial || c.serial_no || '')}</b></div></div>`;
     const body = (CLAIM_VIEW[f] ? CLAIM_VIEW[f]({ ...c, form_code: f }, { print: true }) : claimView(f, c)).replace(/<label class="chk cv-alldays">[\s\S]*?<\/label>/, '');
@@ -1363,8 +1364,10 @@
     for (let i = 0; i < files.length; i += 4) {
       sheets.push(`<section class="sheet claim-sheet cp-rcpage"><div class="cp-rchead">${esc(f === 'mtcf' ? 'Journey proof' : 'Receipts')} · ${esc(serial || c.serial_no || '')}</div><div class="cp-rcgrid">${files.slice(i, i + 4).map((x, k) => `<figure>${urls[i + k] ? `<img src="${esc(urls[i + k])}" alt="">` : '<span class="muted">Not available</span>'}<figcaption><b>#${x.no}</b> · ${x.label}</figcaption></figure>`).join('')}</div></section>`);
     }
-    docOverlay(`${f.toUpperCase()} ${serial || c.serial_no || ''}`, sheets);
+    return sheets;
   }
+  async function claimPrint(form, c, co, serial) { docOverlay(`${String(form).toUpperCase()} ${serial || c.serial_no || ''}`, await claimSheets(form, c, co, serial)); }
+  window.CMS_CLAIM_SHEETS = claimSheets;
   // a full-screen print view above everything (opened from a window)
   function docOverlay(title, sheets) {
     const ov = document.createElement('div'); ov.className = 'doc-ov';
@@ -1403,7 +1406,7 @@
         log('Creating the signed PDF…');
         pdf = await window.CMS_CLAIM_PDF.makePdf(form, r, dec);
         if (pdf) { await window.CMS_CLAIM_PDF.savePdf(form, id, pdf.blob, pdf.fileName); log('Signed PDF saved to the claim', 'ok'); }
-      } catch (e) { pdf = null; log(`PDF not created (${e.message}). The decision stands; print it from the form app.`, 'err'); }
+      } catch (e) { pdf = null; log(`PDF not created (${e.message}). The decision stands; use Print / PDF in the claim to print it.`, 'err'); }
     }
     if (form === 'otcf' || form === 'mtcf') {
       try {
@@ -1681,6 +1684,8 @@
     el.addEventListener('input', (e) => { if (e.target.closest('[data-af="q"]')) onF(e); });
     el.addEventListener('change', (e) => { if (!e.target.closest('[data-af="q"]')) onF(e); });
     await reload();
+    // a link from an email: #/approvals?claim=<form>:<id> opens that claim
+    const cq = q.get('claim'); if (cq && cq.includes(':')) { const [cf, ...ci] = cq.split(':'); openClaim(cf, ci.join(':'), reload); }
     if (f.tab === 'action' && rows.length && !rows.some(needsMe) && !otherTasks().length) { f.tab = 'all'; f.stage = 'waiting'; drawAll(); }
     settings();
   }
