@@ -6525,6 +6525,8 @@
       onOk: () => { out = L; } });
     return done ? out : null;
   }
+  // Resignation Acceptance Letters (RL, RL_TP2, RL_TP3): the first column of their tables is aligned left (its header stays centred)
+  const tblLeftFor = (code) => /^RL(_TP\d+)?$/.test(String(code || ''));
   function letterSheet(text, co, coCode, labelOf, opts) {
     const c = co || {}; const head = LETTERHEADS[coCode] || LETTERHEADS[c.code];
     if ((opts?.esign && (opts.esign.sig || opts.esign.stamp)) || opts?.esignEmpty || opts?.layout) text = sigSpot(text);
@@ -6537,7 +6539,7 @@
       // one blank line = a small gap between paragraphs; two or more stacked blank lines = full lines (signing space, v2026.11.05)
       if(!t){let n=1;while(i+1<raw.length&&!raw[i+1].trim()){n++;i++;}html.push(n===1?'<div class="lt-gap"></div>':'<div class="lt-line"></div>'.repeat(n));continue;}
       if(t===SIG_KEY){const ln=/^_{5,}$/.test((raw[i+1]||'').trim());html.push(sigBox(opts,ln));if(ln)i++;continue;}
-      if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px;text-align:center">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
+      if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map((c,ci)=>'<'+tag+' style="border:1px solid #999;padding:6px;text-align:'+(opts?.tblLeft&&tag==='td'&&ci===0?'left':'center')+'">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
       if(/^Appendix [AB] —/.test(t)){html.push('<h2 style="break-before:page;font-size:14pt">'+richLine(t,labelOf)+'</h2>');continue;}
       if(/^PRIVATE & CONFIDENTIAL$/i.test(t))html.push('<p class="lt-conf">'+esc(t)+'</p>');
       else if(/^Subject:/i.test(t))html.push('<p class="lt-subj">'+richLine(t.replace(/^Subject:\s*/i,''),labelOf)+'</p>');
@@ -7275,7 +7277,7 @@
     let back = false; let wv = null;
     const ok = await modal({ title: `${what === 'retire' ? 'Retire' : what === 'change' ? 'Changed template' : 'New template'} · ${x.title}`, ok: what === 'retire' ? 'Approve retirement' : 'Approve and publish', wide: true,
       body: `<p class="small">${what === 'retire' ? `<b>${esc(x.retire_request.by_name || '')}</b> asks to retire it: ${esc(x.retire_request.reason)}` : what === 'change' ? `<b>${esc(x.pending.by_name || '')}</b> changed it: ${esc(x.pending.reason || '')}. The current wording stays in use until you approve.` : `Made by <b>${esc(x.created_by_name || '')}</b> · ${fmt === 'docx' ? `Word file ${esc(x.file_name || '')}` : 'text template'}${x.company ? ` · ${esc(coShort(x.company) || x.company)}` : ''}`}</p>
-        ${what === 'retire' ? '' : `<p class="muted small">Fields: ${tplKeys(body).map((k) => `<code>{{${esc(k)}}}</code>`).join(' ') || 'none'}</p><div id="rv-prev" class="lt-prev tall">${fmt === 'docx' ? loading() : letterSheet(body, null, x.company, (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k)}</div>`}
+        ${what === 'retire' ? '' : `<p class="muted small">Fields: ${tplKeys(body).map((k) => `<code>{{${esc(k)}}}</code>`).join(' ') || 'none'}</p><div id="rv-prev" class="lt-prev tall">${fmt === 'docx' ? loading() : letterSheet(body, null, x.company, (k) => (L.placeholders.find((p) => p.key === k) || {}).label || k, { tblLeft: tblLeftFor(x.code) })}</div>`}
         <label class="fld"><span>Note (needed when sending back)</span><input name="note" maxlength="300"></label>
         <div class="btn-row"><button type="button" class="btn danger" data-back>Send back</button></div>`,
       onOpen: async (w) => {
@@ -7727,7 +7729,8 @@
     const stampDef = () => (SG?.stamps || []).find((y) => y.company === esCo() && y.path)?.layout || null;
     const effLayout = (f = vals) => ({ sig: esBox('sig', f._esign_layout, sigOf()?.layout), stamp: esBox('stamp', f._esign_layout, stampDef()) });
     const canPlace = () => editable && (status === 'new' || status === 'draft');
-    const sheetOpts = () => { if (status === 'issued') return esImgs ? { esign: esImgs, layout: rec?.esign?.layout || effLayout(rec?.fields || vals) } : null; pvLoad();
+    const sheetOpts = () => ({ ...(sheetOpts0() || {}), tblLeft: tblLeftFor(tpl()?.code || rec?.template_code) });
+    const sheetOpts0 = () => { if (status === 'issued') return esImgs ? { esign: esImgs, layout: rec?.esign?.layout || effLayout(rec?.fields || vals) } : null; pvLoad();
       const pics = pvImgs && (pvImgs.sig || pvImgs.stamp);
       return { esign: pvImgs || {}, preview: true, layout: effLayout(), edit: !!(pics && canPlace()), esignEmpty: sigUsable(sigOf()) && pvImgs?.sig ? '' : pvWhy() || 'Signature space' }; };
     // a drag on the letter: this letter's own size and place
@@ -8023,7 +8026,7 @@
     const draw = () => { const unk = [...new Set([...condKeys(ta.value), ...tplKeys(ta.value)])].filter((k) => !L.placeholders.some((p) => p.key === k && p.active));
       $('#te-unk', el).innerHTML = unk.length ? `<span class="bad-t">Not in the placeholder list:</span> ${unk.map((k) => `<code>{{${esc(k)}}}</code> <button type="button" class="lnk" data-mk="${esc(k)}">create</button>`).join(' ')}` : '';
       $$('[data-mk]', el).forEach((b) => b.addEventListener('click', async () => { if (await placeholderWindow(L, null, b.dataset.mk)) { $('#te-ph', el).innerHTML = phOptions(L, '', 'Insert a placeholder…'); draw(); } }));
-      $('#te-pv', el).innerHTML = letterSheet(fillTpl(ta.value, pv), pco, pcode || f.co.value || t?.company || 'MEG', labelOf); };
+      $('#te-pv', el).innerHTML = letterSheet(fillTpl(ta.value, pv), pco, pcode || f.co.value || t?.company || 'MEG', labelOf, { tblLeft: tblLeftFor(t?.code) }); };
     ta.addEventListener('input', draw);
     $$('[data-wrap]', el).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.wrap; const s = ta.selectionStart; const e = ta.selectionEnd; ta.setRangeText(`[${g}]${ta.value.slice(s, e)}[/${g}]`, s, e, 'select'); ta.focus(); draw(); }));
     $('[data-ins]', el).addEventListener('click', async () => { let k = $('#te-ph', el).value; if (!k) { toast('Choose the placeholder first.', 'err'); return; }
