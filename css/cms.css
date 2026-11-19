@@ -1452,3 +1452,5 @@ code.brk { word-break: break-all; }
   .doc-ov .sheet:last-child { break-after: auto; page-break-after: auto; }
 }
 .claim-sheet .cp-ref { font-weight: 700; color: #1c3d6e; }
+.ac-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 12px 0; }
+.ac-lists h4 { margin: 0 0 4px; }

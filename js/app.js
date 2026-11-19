@@ -1324,6 +1324,18 @@
       + cvTrail(c);
     },
   };
+  CLAIM_VIEW['tec-v2'] = (c) => {
+    const pages = Array.isArray(c.pages) ? c.pages : []; const days = (a) => (a || []).filter((d) => String(d ?? '').trim() !== '').length;
+    const total = pages.reduce((t, p) => t + Number(p.subtotal || 0), 0);
+    return cvBlock('Teacher', cvKv([cvField('Teacher', esc(c.teacher_name || '')), cvField('Pages', String(pages.length)),
+        cvField('Serial no.', esc([...new Set(pages.map((p) => p.serial_no).filter(Boolean))].join(', '))), cvField('Total', `<b>RM ${cvMoney(total)}</b>`)]))
+      + pages.map((p, i) => { const ss = (p.students || []).filter((x) => x && (x.name || Number(x.monthlyFee)));
+        return `<div class="cv-block"><h5>Page ${i + 1} · ${esc(p.course_name || '')} <span class="muted">${esc((p.standards || []).join(', '))}${p.time_from ? ` · ${esc(p.time_from)} – ${esc(p.time_to || '')}` : ''}${p.serial_no ? ` · ${esc(p.serial_no)}` : ''}</span></h5>
+          <div class="table-wrap fill-modal"><table class="data mini cv-t"><thead><tr><th>No.</th><th>Student</th><th class="num">Class days</th><th class="num">Replacement</th><th class="num">Monthly fee</th><th class="num">Venue fee</th><th class="num">Net pay</th></tr></thead><tbody>
+          ${ss.map((x, j) => `<tr><td>${j + 1}</td><td>${esc(x.name || '')}</td><td class="num">${days(x.actualDays)}</td><td class="num">${days(x.replacementDays)}</td><td class="num">${cvMoney(x.monthlyFee)}</td><td class="num">${cvMoney(x.venueFee)}</td><td class="num">${cvMoney(x.netPay ?? (Number(x.monthlyFee || 0) - Number(x.venueFee || 0)))}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No students.</td></tr>'}
+          </tbody><tfoot><tr><td colspan="6" class="num"><b>Page total</b></td><td class="num"><b>${cvMoney(p.subtotal)}</b></td></tr>${p.is_group_total_page ? `<tr><td colspan="6" class="num"><b>${esc(p.course_name || '')} total</b></td><td class="num"><b>RM ${cvMoney(p.group_total)}</b></td></tr>` : ''}</tfoot></table></div></div>`; }).join('')
+      + cvTrail(c);
+  };
   // any other form: label / value pairs without the internal fields
   const CV_HIDE = /^(person_id|employee_master_id|revision_count|revision_required|company_code|form_code|serial_no|status|created_at|submitted_at|approved_at|approved_by_name|disapproved_at|disapproved_by_name|disapproval_reason|done_at|done_by_name|payment_confirmed|payment_confirmed_at|payment_confirmed_by_name)$/;
   function claimView(form, c, o) {
@@ -1611,6 +1623,7 @@
           <label class="ac-d">From <input type="date" data-af="from" value="${esc(f.from)}"></label>
           <label class="ac-d">to <input type="date" data-af="to" value="${esc(f.to)}"></label>
           <select data-af="sort" aria-label="Sort">${opt('new', 'Newest first', f.sort)}${opt('old', 'Oldest first', f.sort)}${opt('amt', 'Largest amount', f.sort)}${opt('name', 'Claimant A–Z', f.sort)}</select>
+          ${list.length ? `<button type="button" class="btn sm ghost" id="ac-csv">${icon('download')}CSV</button>` : ''}
         </div>
         <div class="table-wrap fill"><table class="data claims"><thead><tr><th>Serial no.</th><th>Form</th><th>Claimant</th><th>Company</th><th class="num">Amount</th><th>Submitted</th><th>Status</th><th>Processing</th><th>Next step</th><th class="ac-act"><span class="sr">Actions</span></th></tr></thead>
         <tbody>${list.length ? list.map((r) => `<tr class="click" tabindex="0" data-f="${esc(r.form_code)}" data-id="${esc(r.id)}">
@@ -1635,6 +1648,7 @@
         ${s && 'scf_receipts_required' in s ? `<label class="chk"><input type="checkbox" id="ac-rcpt" ${s.scf_receipts_required !== false ? 'checked' : ''} ${s.can_edit ? '' : 'disabled'}> Staff claims (SCF) made in the CMS need a receipt on every line <span class="muted small">(when off, a line without a receipt needs a remark)</span></label>` : ''}
         ${s && 'tec_venue_pct' in s ? `<div class="toolbar"><label class="fld inline"><span>Tuition (TEC) venue fee</span><input type="number" id="ac-venue" min="0" max="100" step="0.01" value="${esc(s.tec_venue_pct)}" ${s.can_edit ? '' : 'disabled'} style="width:6.5em"> %</label>
           <span class="muted small">Taken from each student's monthly fee in TEC claims made in the CMS (net pay = fee − venue fee). Claims already made keep their amounts.</span></div>` : ''}
+        <div id="ac-lists"></div>
         ${can('admin.roles') ? `<p><a class="btn sm" href="#/admin/roles?tab=claims">${icon('lock')}Claim permissions</a> <span class="muted small">Same permissions the form apps use (submit, approve with company scope, process, mark paid, view, Form Admin).</span></p>` : ''}</details>`;
       $('#ac-rcpt', box)?.addEventListener('change', async (e) => {
         try { await API.rpc('cms_scf_settings_set', { p: { receipts_required: e.target.checked } }); toast(e.target.checked ? 'Receipts required on every line' : 'Receipts no longer required on every line'); } catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'err'); }
@@ -1645,6 +1659,43 @@
       $('#ac-hist', box)?.addEventListener('change', async (e) => {
         try { await API.rpc('cms_claim_history_months_set', { p_months: Number(e.target.value) }); toast('Claimant history saved'); } catch (x) { toast(x.message, 'err'); }
       });
+      formLists($('#ac-lists', box));
+    }
+    // the lists the form apps kept in their "Manage" windows: MTCF rate per km, TEC courses and standards (v2026.11.20)
+    async function formLists(lb) {
+      if (!lb) return; let L; try { L = await API.rpc('cms_form_lists'); } catch (e) { lb.innerHTML = ''; return; }
+      if (!L) { lb.innerHTML = ''; return; } L = { rates: [], courses: [], standards: [], ...L };
+      const ed = L.can_edit; const dis = ed ? '' : 'disabled';
+      const CO = { MEG: 'MyEden Group', MEH: 'MyEden Edu Hub', HDS: 'Happy Dino', ABN: 'Aborne Project' };
+      lb.innerHTML = `<div class="ac-lists">
+        <section><h4>Mileage rate (MTCF)</h4><p class="muted small">RM per km for each company; used for new mileage claims. Claims already made keep their rate.</p>
+          <table class="data mini"><tbody>${['MEG', 'MEH', 'HDS', 'ABN'].map((c) => { const r = L.rates.find((x) => x.company === c); return `<tr><td>${esc(CO[c])}</td><td><label class="fld inline"><span class="sr">RM per km</span>RM <input type="number" min="0" max="10" step="0.01" data-rate="${c}" value="${r ? Number(r.rate).toFixed(2) : ''}" ${dis} style="width:6em"> per km</label></td></tr>`; }).join('')}</tbody></table></section>
+        <section><h4>Tuition courses (TEC)</h4><p class="muted small">Offered on new tuition claims. Retired courses stay on claims already made.</p>
+          <table class="data mini"><thead><tr><th>Course</th><th>Code</th><th></th></tr></thead><tbody>${L.courses.map((c) => `<tr class="${c.retired ? 'muted' : ''}"><td>${esc(c.name)}${c.retired ? ' <span class="tag">retired</span>' : ''}</td><td><code>${esc(c.code || '—')}</code></td>
+            <td class="nowrap">${ed ? `<button type="button" class="btn xs ghost" data-tce="${esc(c.id)}">Edit</button> <button type="button" class="btn xs ghost" data-tret="course|${esc(c.id)}|${c.retired ? 0 : 1}">${c.retired ? 'Use again' : 'Retire'}</button>` : ''}</td></tr>`).join('')}</tbody></table>
+          ${ed ? '<button type="button" class="btn sm" data-tce="">Add a course</button>' : ''}</section>
+        <section><h4>Standards (TEC)</h4><p class="muted small">The class levels ticked on a tuition claim, in this order.</p>
+          <table class="data mini"><thead><tr><th>Standard</th><th class="num">Order</th><th></th></tr></thead><tbody>${L.standards.map((x) => `<tr class="${x.retired ? 'muted' : ''}"><td>${esc(x.name)}${x.retired ? ' <span class="tag">retired</span>' : ''}</td><td class="num">${esc(x.sort)}</td>
+            <td class="nowrap">${ed ? `<button type="button" class="btn xs ghost" data-tse="${esc(x.id)}">Edit</button> <button type="button" class="btn xs ghost" data-tret="standard|${esc(x.id)}|${x.retired ? 0 : 1}">${x.retired ? 'Use again' : 'Retire'}</button>` : ''}</td></tr>`).join('')}</tbody></table>
+          ${ed ? '<button type="button" class="btn sm" data-tse="">Add a standard</button>' : ''}</section></div>`;
+      $$('[data-rate]', lb).forEach((i) => i.addEventListener('change', async () => {
+        try { await API.rpc('cms_mtcf_rate_set', { p_company: i.dataset.rate, p_rate: Number(i.value) }); toast(`${CO[i.dataset.rate]}: RM ${Number(i.value).toFixed(2)} per km`); } catch (x) { toast(x.message, 'err'); formLists(lb); }
+      }));
+      lb.onclick = async (e) => {
+        const ce = e.target.closest('[data-tce]'); const se = e.target.closest('[data-tse]'); const rt = e.target.closest('[data-tret]');
+        if (ce) { const c = L.courses.find((x) => x.id === ce.dataset.tce) || {};
+          const ok = await modal({ title: c.id ? `Edit course · ${c.name}` : 'Add a tuition course', ok: 'Save',
+            body: `<label class="fld"><span>Course name</span><input name="n" required maxlength="80" value="${esc(c.name || '')}"></label><label class="fld"><span>Code <small class="muted">(starts each serial no., e.g. ABC)</small></span><input name="c" maxlength="12" value="${esc(c.code || '')}"></label>${c.id ? '<p class="muted small">Claims already made keep the old name.</p>' : ''}`,
+            onOk: async (fm) => { await API.rpc('cms_tec_course_save', { p_id: c.id || null, p_name: fm.n.value, p_code: fm.c.value }); } });
+          if (ok) { toast('Course saved'); formLists(lb); } return; }
+        if (se) { const x = L.standards.find((y) => y.id === se.dataset.tse) || {};
+          const ok = await modal({ title: x.id ? `Edit standard · ${x.name}` : 'Add a standard', ok: 'Save',
+            body: `<label class="fld"><span>Standard</span><input name="n" required maxlength="60" value="${esc(x.name || '')}"></label><label class="fld"><span>Order</span><input name="o" type="number" min="0" max="999" value="${esc(x.sort ?? '')}"></label>`,
+            onOk: async (fm) => { await API.rpc('cms_tec_standard_save', { p_id: x.id || null, p_name: fm.n.value, p_sort: fm.o.value === '' ? null : Number(fm.o.value) }); } });
+          if (ok) { toast('Standard saved'); formLists(lb); } return; }
+        if (rt) { const [k, id, on] = rt.dataset.tret.split('|');
+          try { await API.rpc('cms_tec_list_retire', { p_kind: k, p_id: id, p_retire: on === '1' }); toast(on === '1' ? 'Retired — no longer offered on new claims' : 'Back in use'); formLists(lb); } catch (x) { toast(x.message, 'err'); } }
+      };
     }
     const reload = async () => {
       try {
@@ -1653,6 +1704,13 @@
       } catch (e) { $('#ac-body', el).innerHTML = errorCard(e.message); wireRetry(el); }
     };
     el.addEventListener('click', async (e) => {
+      if (e.target.closest('#ac-csv')) {
+        const list = filtered(); const head = ['Serial no.', 'Form', 'Claimant', 'Employee ID', 'Company', 'Amount', 'Unit', 'Submitted', 'Status', 'Processed', 'Paid on', 'Processed by'];
+        const data = list.map((r) => [r.serial_no, FORM_SHORT[r.form_code] || r.form_name, r.claimant_name, r.employee_id || '', r.company_code ? coShort(r.company_code) : '', r.amount ?? '', r.amount_unit || '',
+          String(r.submitted_at || '').slice(0, 10), r.display_status || r.stage, r.fully_processed ? 'yes' : '', r.payment_done_at ? String(r.payment_done_at).slice(0, 10) : '', r.processed_by_name || '']);
+        download(`MyEden-claims-${new Date().toISOString().slice(0, 10)}.csv`, new Blob([`\ufeff${csvText([head, ...data])}`], { type: 'text/csv;charset=utf-8' }));
+        return;
+      }
       const tile = e.target.closest('[data-tile]');
       if (tile) { f.form = f.form === tile.dataset.tile ? 'all' : tile.dataset.tile; drawAll(); return; }
       const tb = e.target.closest('#ac-tabs [data-tab]');
@@ -2080,6 +2138,8 @@
   function loadScript(src) {
     return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the spreadsheet library. Check the internet connection.')); document.head.appendChild(s); });
   }
+  // rows → CSV text (quoted where needed)
+  const csvText = (rows) => rows.map((r) => r.map((v) => { const x = v == null ? '' : String(v); return /[",\n\r]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; }).join(',')).join('\r\n');
   function download(name, blob) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
