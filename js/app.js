@@ -6343,7 +6343,10 @@
   // Templates: text (with [b] [i] [u]) or a Word file whose {{placeholders}} are filled inside the .docx, keeping its layout.
   const LONG_KEYS = /(details|areas|objectives|description|expectations|summary|evidence|allegation|particulars|conditions|information|process|findings|correspondence|resources|targets|gaps|actions|instructions|basis|arrangements|considered)/;
   const tplKeys = (body) => [...new Set([...String(body || '').matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => m[1]))];
-  const fillTpl = (body, v) => String(body || '').replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => (v[k] != null && String(v[k]).trim() !== '' ? String(v[k]) : m));
+  // positions, departments / centres and the signatory's name always print in capitals, however they were typed (stored values unchanged)
+  const CAP_KEYS = new Set(['position', 'current_position', 'new_position', 'jd_title', 'department', 'current_department', 'new_department', 'jd_department', 'authorized_signatory']);
+  const capField = (k, v) => (CAP_KEYS.has(k) ? UP(v) : v);
+  const fillTpl = (body, v) => String(body || '').replace(/\{\{([a-z0-9_]+)\}\}/g, (m, k) => (v[k] != null && String(v[k]).trim() !== '' ? String(capField(k, v[k])) : m));
   // Optional sections (v2026.11.09): [[IF key]] … [[END]] · [[IFNOT key]] … [[END]] · [[IF key=value]] … [[END]].
   // A marker alone on its line (or Word paragraph) starts / ends a block; a marker followed by text covers only that line / paragraph.
   // Yes = yes / y / true / 1. Sections can be nested. Markers never reach the letter.
@@ -6605,7 +6608,7 @@
           lines.slice(1).forEach((ln) => { const c = tmpl.cloneNode(true); shape(c, ln); after.parentNode.insertBefore(c, after.nextSibling); after = c; });
           return 1;
         }
-        const ranges = [...text.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => { const v = values[m[1]]; return { start: m.index, end: m.index + m[0].length, text: v != null && String(v).trim() !== '' ? String(v) : `[${labelOf(m[1])}]` }; });
+        const ranges = [...text.matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => { const v = values[m[1]]; return { start: m.index, end: m.index + m[0].length, text: v != null && String(v).trim() !== '' ? String(capField(m[1], v)) : `[${labelOf(m[1])}]` }; });
         if (!ranges.length) return 0; W.splice(p, ranges);
         // typed line breaks become Word line breaks
         W.texts(p).filter((n) => n.textContent.includes('\n')).forEach((n) => { const bits = n.textContent.split(/\r?\n/);
@@ -6690,7 +6693,7 @@
     },
     // blank "Name: ____" / "Position: ____" lines in the company's signing block take the chosen signatory (v2026.11.18)
     async signBlock(bytes, name, desig) {
-      if (!name && !desig) return bytes; let on = false;
+      if (!name && !desig) return bytes; let on = false; name = UP(name);
       const r = await W.edit(bytes, (p, text) => {
         if (/behalf of/i.test(text)) { on = true; return 0; }
         if (/^\s*employee\s+(acknowledg|accept|signature)/i.test(text)) { on = false; return 0; }
