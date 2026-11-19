@@ -6828,6 +6828,8 @@
         const wm = sec.querySelector(':scope > .cms-wm'); if (wm) next.append(wm.cloneNode(true));
         sec.after(next); pages.splice(i + 1, 0, next);
       }
+      // a page left with nothing on it (only blank lines spilled over, or Word's saved page-break marks) is dropped before the pages are numbered
+      doc.querySelectorAll('section.docx').forEach((sec) => { const a = sec.querySelector(':scope > article'); if (a && !(a.textContent || '').replace(/[\s\u00a0]+/g, '') && !a.querySelector('img, svg, table')) sec.remove(); });
       const all = [...doc.querySelectorAll('section.docx')];
       all.forEach((sec, i) => { sec.querySelectorAll(':scope > footer, :scope > header').forEach((hf) => {
         const w = doc.createTreeWalker(hf, 4); let acc = ''; let n;
@@ -6842,6 +6844,8 @@
       await wordLibs(); const box = document.createElement('div');
       await window.docx.renderAsync(bytes, box, box, { useBase64URL: true, renderAltChunks: false, renderComments: false, ignoreLastRenderedPageBreak: false });
       box.querySelectorAll('a').forEach((a) => a.removeAttribute('href'));
+      // a page with nothing on it (Word's saved page-break marks can leave one) is not shown or printed
+      box.querySelectorAll('section.docx').forEach((sec) => { const a = sec.querySelector('article') || sec; if (!(a.textContent || '').replace(/[\s\u00a0]+/g, '') && !a.querySelector('img, svg, table')) sec.remove(); });
       // floating pictures (e-signature / stamp, wrapNone) come as a <div> inside the paragraph; as HTML that would end the paragraph early,
       // so they become inline boxes measured from the top of the line, as Word does
       box.querySelectorAll('p div').forEach((dv) => { const st = dv.getAttribute('style') || ''; if (!/width:\s*0px/.test(st) || !/position:\s*relative/.test(st)) return;
