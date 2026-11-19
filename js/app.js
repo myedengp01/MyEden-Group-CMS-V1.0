@@ -1260,6 +1260,121 @@
     return `<dl class="kv">${scal.map(([k, v]) => `<div><dt>${esc(nice(k))}</dt><dd>${showVal(v, k)}</dd></div>`).join('')}</dl>${arrs.map(([k, v]) => table(k, v)).join('')}`;
   }
 
+  // ---- each form's own layout, in the order of its paper form (v2026.11.20) ----
+  const CLAIM_BUCKET = { scf: 'scf-receipts', mtcf: 'mtcf-receipts' };
+  const CV_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const cvMoney = (v) => (v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const cvDate = (v) => { if (!v) return ''; const t = String(v); return /^\d{4}-\d{2}-\d{2}T/.test(t) ? dtShort(t) : /^\d{4}-\d{2}-\d{2}$/.test(t) ? dShort(t) : esc(t); };
+  const cvField = (label, val, cls = '') => (val === null || val === undefined || val === '' ? '' : `<div class="${cls}"><dt>${esc(label)}</dt><dd>${val}</dd></div>`);
+  const cvKv = (items) => { const h = items.filter(Boolean).join(''); return h ? `<dl class="kv cv-kv">${h}</dl>` : ''; };
+  const cvBlock = (title, inner) => (inner ? `<div class="cv-block"><h5>${esc(title)}</h5>${inner}</div>` : '');
+  const cvRc = (form, list, o) => (o && o.print ? (list || []).filter((r) => r && r.path).map(() => `<span class="cp-ref">#${(o.n = (o.n || 0) + 1)}</span>`).join(' ') : '') || (o && o.print ? '' : (list || []).filter((r) => r && r.path).map((r, j) => `<button type="button" class="cv-rc" data-rcb="${esc(CLAIM_BUCKET[form] || '')}" data-rcp="${esc(r.path)}" title="Open ${form === 'mtcf' ? 'photo' : 'receipt'} ${j + 1}"><img alt="${form === 'mtcf' ? 'Journey photo' : 'Receipt'} ${j + 1}"></button>`).join(''));
+  // the decision, revisions and payment, as recorded
+  const cvTrail = (c) => cvBlock('Approval & payment', cvKv([
+    cvField('Submitted', cvDate(c.submitted_at || c.created_at)),
+    c.revision_count ? cvField('Returned for revision', `${c.revision_count} time${c.revision_count === 1 ? '' : 's'}${c.revision_returned_by_name ? ` · last by ${esc(c.revision_returned_by_name)}` : ''}${c.revision_reason ? ` — ${esc(c.revision_reason)}` : ''}`, 'wide') : (c.revision_required ? cvField('Revision', `Required${c.revision_reason ? ` — ${esc(c.revision_reason)}` : ''}`, 'wide') : ''),
+    c.approved_at ? cvField(c.form_code === 'mtcf' ? 'Checked / approved by' : 'Approved by', `${esc(c.approved_by_name || '')} · ${cvDate(c.approved_at)}`) : '',
+    c.approved_at && c.approval_token ? cvField('Approval token', `<code>${esc(c.approval_token)}</code>`) : '',
+    c.disapproved_at ? cvField('Disapproved by', `${esc(c.disapproved_by_name || '')} · ${cvDate(c.disapproved_at)}`) : '',
+    c.disapproval_reason ? cvField('Reason', esc(c.disapproval_reason), 'wide') : '',
+    c.done_at ? cvField('Done by', `${esc(c.done_by_name || '')} · ${cvDate(c.done_at)}`) : '',
+    c.payment_confirmed ? cvField('Payment confirmed', `${esc(c.payment_confirmed_by_name || '')}${c.payment_confirmed_at ? ` · ${cvDate(c.payment_confirmed_at)}` : ''}`) : '',
+  ]));
+  // OTCF: a day counts when anything was filled in
+  const otDayUsed = (it) => !!(it && (it.claimType || it.from || it.to || Number(it.totalHrs) > 0 || Number(it.actualHrs) > 0 || String(it.remarks || '').trim()));
+  const CLAIM_VIEW = {
+    scf: (c, o = {}) => {
+      const rows = (Array.isArray(c.line_items) ? c.line_items : []).filter((r) => r && (r.date || r.supplier || r.item || Number(r.amount) || (r.receipts || []).length));
+      return cvBlock('Claim', cvKv([
+        cvField('Claimed by', esc(c.claimed_by || '')), cvField('Claim date', cvDate(c.claim_date)),
+        cvField('Period', esc([c.period_from, c.period_to].filter(Boolean).join(' to ')) + (c.period_year ? ` ${esc(c.period_year)}` : '')),
+        cvField('Payment', esc(c.payment_method || '')),
+        (c.bank_name || c.bank_account_no) ? cvField('Bank account', `${esc(c.bank_name || '')}${c.bank_account_no ? ` · <span class="mono">${esc(c.bank_account_no)}</span>` : ''}`, 'wide') : '',
+      ]))
+      + `<div class="cv-block"><h5>Items <span class="muted">(${rows.length})</span></h5><div class="table-wrap fill-modal"><table class="data mini cv-t"><thead><tr><th>No.</th><th>Date</th><th>Supplier</th><th>Item(s) / Bill / Inv No</th><th class="num">Amount (RM)</th><th>Receipts</th></tr></thead><tbody>
+        ${rows.map((r, i) => `<tr><td>${i + 1}</td><td class="nowrap">${esc(r.date || '')}</td><td>${esc(r.supplier || '')}</td><td>${esc(r.item || '')}${r.remarks ? `<div class="muted small">Remarks: ${esc(r.remarks)}</div>` : ''}</td><td class="num">${cvMoney(r.amount)}</td><td><div class="cv-rcs">${cvRc('scf', r.receipts, o) || '<span class="muted small">none</span>'}</div></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No items.</td></tr>'}
+        </tbody><tfoot><tr><td colspan="4" class="num"><b>Total</b></td><td class="num"><b>RM ${cvMoney(c.total)}</b></td><td></td></tr></tfoot></table></div></div>`
+      + cvBlock('For office use', cvKv([cvField('Prepared by', esc(c.prepared_by || '')), cvField('Checked by', esc(c.checked_by || '')), cvField('Date of checking', esc(c.checked_date || ''))]))
+      + cvTrail(c);
+    },
+    otcf: (c, o = {}) => {
+      const all = Array.isArray(c.line_items) ? c.line_items : []; const used = all.filter(otDayUsed); const show = o.allDays ? all : used;
+      return cvBlock('Claimant', cvKv([
+        cvField('Name', esc(c.emp_name || '')), cvField('Department', esc(c.department || '')), cvField('Designation', esc(c.designation || '')),
+        cvField('Month', esc(`${CV_MONTHS[(Number(c.month) || 1) - 1] || ''} ${c.year || ''}`.trim())), cvField('Submission date', cvDate(c.submission_date)), cvField('Days in month', esc(c.no_of_days || '')),
+        (c.working_hour_from || c.working_hour_to) ? cvField('Working hours', esc(`${c.working_hour_from || ''} – ${c.working_hour_to || ''}`)) : '',
+      ]))
+      + `<div class="cv-block"><h5>Overtime <span class="muted">(${used.length} day${used.length === 1 ? '' : 's'} claimed of ${all.length})</span>
+          ${all.length > used.length ? `<label class="chk cv-alldays"><input type="checkbox" data-alldays ${o.allDays ? 'checked' : ''}> Show all days</label>` : ''}</h5>
+        <div class="table-wrap fill-modal"><table class="data mini cv-t"><thead><tr><th>Date</th><th>Day</th><th>PH</th><th>Claim type</th><th>OT from</th><th>OT to</th><th class="num">Total hrs</th><th class="num">Meal time</th><th class="num">Actual hrs</th><th>Remarks</th></tr></thead><tbody>
+        ${show.map((it) => { const slot = Number(it.slot) > 1; return `<tr class="${otDayUsed(it) ? '' : 'muted'}${['Saturday', 'Sunday'].includes(it.day) ? ' cv-we' : ''}"><td>${slot ? '↳' : esc(it.date || '')}</td><td>${slot ? '' : esc(it.day || '')}</td><td>${it.ph && !slot ? '☑' : ''}</td><td>${slot ? '' : esc(it.claimType || '')}</td><td>${esc(it.from || '')}</td><td>${esc(it.to || '')}</td><td class="num">${esc(it.totalHrs || '')}</td><td class="num">${otDayUsed(it) ? esc(it.mealTime == null ? '0.00' : it.mealTime) : ''}</td><td class="num">${otDayUsed(it) ? esc(it.actualHrs == null ? (it.totalHrs || '') : it.actualHrs) : ''}</td><td>${esc(it.remarks || '')}</td></tr>`; }).join('') || '<tr><td colspan="10" class="muted">No overtime entered.</td></tr>'}
+        </tbody><tfoot><tr><td colspan="8" class="num"><b>Total OT hours</b></td><td class="num"><b>${cvMoney(c.total_hours)}</b></td><td></td></tr></tfoot></table></div></div>`
+      + cvTrail(c);
+    },
+    mtcf: (c, o = {}) => {
+      const trips = (Array.isArray(c.trips) ? c.trips : []).filter((t) => t && (t.date || t.purpose || t.start_location || t.end_location || Number(t.distance_km)));
+      return cvBlock('Claimant', cvKv([
+        cvField("Claimant's name", esc(c.claimant_name || '')), cvField('Rate (RM / km)', cvMoney(c.rate_rm_per_km)),
+        cvField('Start date', cvDate(c.start_date)), cvField('End date', cvDate(c.end_date)), cvField('Date of claim', cvDate(c.date_of_claim)), cvField('Year', esc(c.year || '')),
+      ]))
+      + `<div class="cv-block"><h5>Trips <span class="muted">(${trips.length})</span></h5><div class="table-wrap fill-modal"><table class="data mini cv-t"><thead><tr><th>Date</th><th>Business / trip purpose</th><th>Start location</th><th>End location</th><th class="num">Distance (km)</th><th>Remarks</th><th>Photos</th></tr></thead><tbody>
+        ${trips.map((t) => `<tr><td class="nowrap">${cvDate(t.date)}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.start_location || '')}</td><td>${esc(t.end_location || '')}</td><td class="num">${Number(t.distance_km || 0).toFixed(2)}</td><td>${esc(t.remarks || '')}</td><td><div class="cv-rcs">${cvRc('mtcf', t.receipts, o) || '<span class="muted small">none</span>'}</div></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No trips.</td></tr>'}
+        </tbody><tfoot><tr><td colspan="4" class="num"><b>Total mileage (km)</b></td><td class="num"><b>${Number(c.total_mileage_km || 0).toFixed(2)}</b></td><td colspan="2"></td></tr>
+        <tr><td colspan="4" class="num"><b>Total amount (RM)</b></td><td class="num"><b>${cvMoney(c.total_amount)}</b></td><td colspan="2"></td></tr></tfoot></table></div></div>`
+      + cvTrail(c);
+    },
+  };
+  // any other form: label / value pairs without the internal fields
+  const CV_HIDE = /^(person_id|employee_master_id|revision_count|revision_required|company_code|form_code|serial_no|status|created_at|submitted_at|approved_at|approved_by_name|disapproved_at|disapproved_by_name|disapproval_reason|done_at|done_by_name|payment_confirmed|payment_confirmed_at|payment_confirmed_by_name)$/;
+  function claimView(form, c, o) {
+    const f = String(form || '').toLowerCase(); const cc = { ...c, form_code: f };
+    if (CLAIM_VIEW[f]) return CLAIM_VIEW[f](cc, o || {});
+    const rest = Object.fromEntries(Object.entries(c).filter(([k, v]) => !CV_HIDE.test(k) && !(k === 'revision_count' && !v)));
+    return claimDetailsHtml(rest) + cvTrail(cc);
+  }
+  // receipts and photos: short-lived links, opened full size on a click
+  const cvLinks = new Map();
+  async function cvSigned(bucket, path) {
+    const k = `${bucket}|${path}`; const hit = cvLinks.get(k); if (hit && hit.at > Date.now() - 8 * 60 * 1000) return hit.url;
+    const { data, error } = await API.sb().storage.from(bucket).createSignedUrl(path, 600); if (error || !data?.signedUrl) throw new Error(error?.message || 'Not available');
+    cvLinks.set(k, { url: data.signedUrl, at: Date.now() }); return data.signedUrl;
+  }
+  function cvHydrate(root) {
+    $$('.cv-rc[data-rcp]', root).forEach(async (b) => { if (b.dataset.done) return; b.dataset.done = '1';
+      try { $('img', b).src = await cvSigned(b.dataset.rcb, b.dataset.rcp); } catch (e) { b.classList.add('na'); b.title = 'Not available to you'; } });
+    if (root.dataset.hyd) return; root.dataset.hyd = '1';
+    root.addEventListener('click', async (e) => { const b = e.target.closest('.cv-rc[data-rcp]'); if (!b || !root.contains(b)) return; e.preventDefault();
+      try { window.open(await cvSigned(b.dataset.rcb, b.dataset.rcp), '_blank', 'noopener'); } catch (x) { toast('That file is not available to you.', 'err'); } });
+  }
+
+  // ---- printable claim, in the paper form's layout, with the receipts / photos after it ----
+  const cvCo = (code) => (window.CMS_COMPANIES || []).find((x) => x.code === code) || { name: coShort(code) || code || '', logo: '' };
+  const PRINT_TITLE = { scf: 'Claim Form for Misc. Expenses (SCF)', otcf: 'Overtime Claim Form (OTCF)', mtcf: 'Mileage Tracking & Claim Form (MTCF)' };
+  async function claimPrint(form, c, co, serial) {
+    const f = String(form).toLowerCase(); const cmp = cvCo(co);
+    const head = `<div class="cp-head"><span class="cp-logo">${cmp.logo ? `<img src="${esc(asset(cmp.logo))}" alt="">` : ''}</span><div class="cp-title"><b>${esc(cmp.name)}</b><span>${esc(PRINT_TITLE[f] || `${f.toUpperCase()} claim`)}</span></div><div class="cp-serial"><small>Serial No.</small><b>${esc(serial || c.serial_no || '')}</b></div></div>`;
+    const body = (CLAIM_VIEW[f] ? CLAIM_VIEW[f]({ ...c, form_code: f }, { print: true }) : claimView(f, c)).replace(/<label class="chk cv-alldays">[\s\S]*?<\/label>/, '');
+    const sign = f === 'scf' ? '' : `<div class="cp-sign"><div class="cp-sl">Claimant's signature</div><div class="cp-sl">${f === 'mtcf' ? 'Checked by' : 'Approved by'}${c.approved_by_name ? `: ${esc(c.approved_by_name)}` : ''}</div></div>`;
+    const sheets = [`<section class="sheet claim-sheet">${head}<div class="cp-body">${body}</div>${sign}</section>`];
+    // receipts / photos: four to a page, each labelled with its line
+    const files = []; const lines = f === 'scf' ? (c.line_items || []) : f === 'mtcf' ? (c.trips || []) : [];
+    lines.forEach((l, i) => (l?.receipts || []).forEach((r, j) => r?.path && files.push({ path: r.path, no: files.length + 1, label: f === 'mtcf' ? `Trip ${i + 1} · ${cvDate(l.date)} · ${esc(l.start_location || '')} → ${esc(l.end_location || '')} · ${Number(l.distance_km || 0).toFixed(2)} km` : `Item ${i + 1} · ${esc(l.date || '')} · ${esc(l.supplier || '')} · RM ${cvMoney(l.amount)}`, n: j + 1 })));
+    const urls = await Promise.all(files.map((x) => cvSigned(CLAIM_BUCKET[f], x.path).catch(() => '')));
+    for (let i = 0; i < files.length; i += 4) {
+      sheets.push(`<section class="sheet claim-sheet cp-rcpage"><div class="cp-rchead">${esc(f === 'mtcf' ? 'Journey proof' : 'Receipts')} · ${esc(serial || c.serial_no || '')}</div><div class="cp-rcgrid">${files.slice(i, i + 4).map((x, k) => `<figure>${urls[i + k] ? `<img src="${esc(urls[i + k])}" alt="">` : '<span class="muted">Not available</span>'}<figcaption><b>#${x.no}</b> · ${x.label}</figcaption></figure>`).join('')}</div></section>`);
+    }
+    docOverlay(`${f.toUpperCase()} ${serial || c.serial_no || ''}`, sheets);
+  }
+  // a full-screen print view above everything (opened from a window)
+  function docOverlay(title, sheets) {
+    const ov = document.createElement('div'); ov.className = 'doc-ov';
+    ov.innerHTML = `<div class="print-bar no-print"><button type="button" class="btn" data-back>‹ Back</button><span class="muted small">On a phone, use Share › Print or “Save as PDF”.</span>
+      <button type="button" class="btn primary" data-print>${icon('download')}Print / Save as PDF</button></div><div class="doc-scroll"><div class="print-doc">${sheets.join('')}</div></div>`;
+    document.body.appendChild(ov); document.body.classList.add('doc-ov-on'); const prev = document.title; document.title = title;
+    const done = () => { ov.remove(); document.body.classList.remove('doc-ov-on'); document.title = prev; };
+    $('[data-back]', ov).addEventListener('click', done); $('[data-print]', ov).addEventListener('click', () => window.print());
+  }
+
   const DECIDABLE = ['otcf', 'mtcf', 'tec', 'tec-v2'];
   // "your claim has been paid" email to the claimant (SCF; v2026.11.07). The payment stands even if the email fails.
   const claimPaidMail = (form, id) => { if (form === 'scf') API.sb().functions.invoke('scf-notify', { body: { event: 'paid', submission_id: id } }).catch(() => {}); };
@@ -1309,7 +1424,7 @@
   const can3 = (module, a, co) => can(module, a) && (!co || isSuper() || (state.access.roles || []).some((r) => !r.companies || r.companies.includes(co)));
 
   async function openClaim(form, id, after) {
-    let changed = false;
+    let changed = false; let allDays = false;
     await modal({
       title: 'Claim', wide: true, ok: null, cancel: 'Close', body: `<div class="claim-body">${loading()}</div>`,
       onOpen: (wrap) => {
@@ -1346,18 +1461,21 @@
                   : '<p class="muted small">Becomes available once the claim is approved.</p>'}
               </section>
             </div>
-            <section class="claim-sec"><h4>Claim details</h4>${claimDetailsHtml(c)}</section>
+            <section class="claim-sec"><div class="cv-h"><h4>Claim details</h4><button type="button" class="btn sm" data-act="print">${icon('download')}Print / PDF</button></div><div class="cv" data-cv>${claimView(form, c, { allDays })}</div></section>
             <section class="claim-sec"><h4>Notes</h4>
               ${d.notes.length ? `<ul class="notes">${d.notes.map((n) => `<li><p>${esc(n.note)}</p><small class="muted">${esc(n.by || '')} · ${dtShort(n.at)}</small></li>`).join('')}</ul>` : '<p class="muted small">No notes yet.</p>'}
               <div class="note-add"><textarea data-note rows="2" maxlength="1000" placeholder="Add a processing note (shared with MEG-FORMS)"></textarea><button type="button" class="btn sm" data-act="note">Add note</button></div>
             </section>
-            ${d.app_link ? `<p class="muted small">Receipts, attachments and the PDF are in <a href="${esc(d.app_link)}" target="_blank" rel="noopener">${esc(app)}</a>.</p>` : ''}`;
+            ${d.app_link && !CLAIM_VIEW[form] ? `<p class="muted small">Receipts, attachments and the PDF are in <a href="${esc(d.app_link)}" target="_blank" rel="noopener">${esc(app)}</a>.</p>` : ''}`;
+          cvHydrate($('[data-cv]', box));
+          box.onchange = (e) => { if (!e.target.matches('[data-alldays]')) return; allDays = e.target.checked; const cv = $('[data-cv]', box); cv.innerHTML = claimView(form, c, { allDays }); cvHydrate(cv); };
           const pc = (k) => $(`[data-pc="${k}"]`, box);
           const syncFull = () => { if (pc('f')) { const ok3 = pc('d').checked && pc('s').checked && pc('p').checked; pc('f').disabled = !canPro || !ok3; if (!ok3) pc('f').checked = false; } };
           if (pc('d')) { ['d', 's', 'p'].forEach((k) => pc(k).addEventListener('change', syncFull)); syncFull(); }
           box.onclick = async (e) => {
             const b = e.target.closest('button[data-act]'); if (!b) return;
             const act = b.dataset.act;
+            if (act === 'print') { b.disabled = true; try { await claimPrint(form, c, d.company_code, row.serial_no); } catch (x) { toast(x.message, 'err'); } b.disabled = false; return; }
             const run = async (fn, msg) => { b.disabled = true; b.classList.add('busy'); try { await fn(); changed = true; toast(msg); await load(); } catch (x) { toast(x.message, 'err'); b.disabled = false; b.classList.remove('busy'); } };
             if (act === 'approve' || act === 'disapprove' || act === 'done') {
               let reason = null;

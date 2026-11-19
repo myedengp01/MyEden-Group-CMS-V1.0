@@ -1397,3 +1397,58 @@ code.brk { word-break: break-all; }
 .law-frame-card { padding: 0; overflow: hidden; }
 .law-frame { display: block; width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 0; }
 .guide-ol { margin: .6rem 0 0 1.2rem; padding: 0; } .guide-ol li { margin: 0 0 .6rem; } .guide-ol p { margin: .15rem 0 0; color: var(--muted, #555); font-size: .92em; }
+
+/* ---------- claim view in each form's own layout + print (v2026.11.20) ---------- */
+.cv-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cv-block { margin: 10px 0 14px; }
+.cv-block h5 { margin: 0 0 6px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cv-block h5 .muted { text-transform: none; letter-spacing: 0; }
+.cv-alldays { font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--ink); margin-left: auto; }
+.cv-kv { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.cv-kv > div.wide { grid-column: 1 / -1; }
+.cv-t td.num, .cv-t th.num { text-align: right; white-space: nowrap; }
+.cv-t td.nowrap { white-space: nowrap; }
+.cv-t tr.cv-we td { background: color-mix(in srgb, var(--line) 35%, transparent); }
+.cv-t tfoot td { border-top: 2px solid var(--line); }
+.cv-rcs { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-rc { width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); overflow: hidden; cursor: zoom-in; }
+.cv-rc img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cv-rc.na { cursor: not-allowed; opacity: .45; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+/* print view opened from a window */
+.doc-ov { position: fixed; inset: 0; z-index: 6000; overflow: auto; background: var(--bg, #eef1f5); }
+.doc-ov .print-bar { position: sticky; top: 0; z-index: 1; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+.doc-ov .print-doc { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+.sheet.claim-sheet { font-size: 9.5pt; display: block; }
+.claim-sheet .cp-head { display: grid; grid-template-columns: 22mm 1fr auto; gap: 4mm; align-items: center; border-bottom: 2px solid #1c3d6e; padding-bottom: 3mm; margin-bottom: 4mm; }
+.claim-sheet .cp-logo img { max-width: 22mm; max-height: 20mm; display: block; }
+.claim-sheet .cp-title b { display: block; font-size: 13pt; color: #1c3d6e; }
+.claim-sheet .cp-title span { font-size: 10.5pt; font-weight: 600; }
+.claim-sheet .cp-serial { text-align: right; border: 1px solid #1c3d6e; padding: 1.5mm 3mm; border-radius: 2mm; }
+.claim-sheet .cp-serial small { display: block; font-size: 7pt; color: #555; }
+.claim-sheet .cv-block h5 { color: #1c3d6e; font-size: 8.5pt; }
+.claim-sheet dl.kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 4mm; margin: 0; }
+.claim-sheet dl.kv dt { font-size: 7.5pt; color: #555; }
+.claim-sheet dl.kv dd { margin: 0; font-weight: 600; }
+.claim-sheet table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+.claim-sheet th, .claim-sheet td { border: 1px solid #999; padding: 1.2mm 1.6mm; text-align: left; vertical-align: top; }
+.claim-sheet th { background: #eef2f8; }
+.claim-sheet .cv-rcs, .claim-sheet .cv-t th:last-child:not(.num), .claim-sheet .table-wrap { overflow: visible; }
+.claim-sheet .cv-rc { width: 10mm; height: 10mm; }
+.claim-sheet .cp-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 14mm; margin-top: 16mm; }
+.claim-sheet .cp-sl { border-top: 1px solid #111; padding-top: 1mm; color: #555; font-size: 8.5pt; }
+.claim-sheet .cp-rchead { font-weight: 700; color: #1c3d6e; border-bottom: 1px solid #1c3d6e; padding-bottom: 2mm; margin-bottom: 4mm; }
+.claim-sheet .cp-rcgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.claim-sheet .cp-rcgrid figure { margin: 0; border: 1px solid #d9dee8; border-radius: 2mm; padding: 2mm; break-inside: avoid; }
+.claim-sheet .cp-rcgrid img { width: 100%; height: 112mm; object-fit: contain; display: block; background: #fafafa; }
+.claim-sheet .cp-rcgrid figcaption { font-size: 7.5pt; color: #444; margin-top: 1.5mm; }
+@media print {
+  body.doc-ov-on > *:not(.doc-ov) { display: none !important; }
+  body.doc-ov-on { background: #fff !important; }
+  .doc-ov { position: static; overflow: visible; background: #fff; }
+  .doc-ov .print-bar { display: none !important; }
+  .doc-ov .print-doc { display: block; padding: 0; }
+  .doc-ov .sheet { box-shadow: none; margin: 0; break-after: page; page-break-after: always; }
+  .doc-ov .sheet:last-child { break-after: auto; page-break-after: auto; }
+}
+.claim-sheet .cp-ref { font-weight: 700; color: #1c3d6e; }
