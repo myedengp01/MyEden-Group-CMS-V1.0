@@ -584,9 +584,12 @@ empty OTCF days hidden by default; (2) bring over **all** features, PRFAF and TE
 each old app switched only when CLC confirms.
 - **Phase 1 (v2026.11.20-02:30):** claim window in each form's layout (SCF / OTCF / MTCF), receipts and journey photos shown (storage
   readable by CMS role, `20261120_cms_claim_files.sql`), Print / PDF in the form layout with numbered receipt pages.
-- **Phase 2 (to do):** emails link to the CMS and go to CMS approvers; signed approval PDF made by the CMS itself (it is still made by loading
-  the old MEG-OTCF / MEG-MTCF page, which retiring them would break); MTCF journey photos and rate per km; PRFAF ledgers, transfers,
-  disbursement, reconciliation, statements, CSV; TEC-V2 templates, courses, standards, PIC review, reports; the old Manage lists;
-  cross-form list with CSV, bulk done, soft delete / restore.
+- **Phase 2:** v2026.11.20-04:10 signed OTCF / MTCF PDF made by the CMS (html2canvas + jsPDF in `vendor/`, no form app page), claim deep
+  link `#/approvals?claim=<form>:<id>`, `cms_claim_mail_info` (recipients from CMS roles); v2026.11.20-05:20 MTCF rate per km, TEC courses /
+  standards (retire, not delete) in Claim settings, TEC claim view, Action Center CSV. New `otcf-notify` / `mtcf-notify` in the repo, **not
+  deployed** until CLC confirms the approvers (old-app approvers without CMS approve: Jason Chia Zhe Xun, Han Huimin, Elysha (admin),
+  peyyee720 (admin), and CLC's other logins). PRFAF: the CMS Purchasing pages are the new PRFAF; the old app holds 2 requests
+  (one released RM 300 pending reconciliation, one draft) — CLC to decide. The old Manage lists of suppliers / banks / OTCF staff are not
+  used by the CMS forms (they take people and banks from the Employee Master and payroll).
 - **Phase 3 (to do):** list old-app users not set up in the CMS; each old app shows "moved to the CMS" with its links kept.
 
