@@ -2621,7 +2621,7 @@
     add('19.2', 'This Contract shall be stamped in accordance with applicable Malaysian stamp duty requirements within the required timeframe.');
     // acceptance and manual signing (Build 16)
     out.push(`<div class="lx-sign"><p class="lx-h" style="margin-top:4mm">ACCEPTANCE AND MANUAL SIGNING</p><p>By signing below, the Employee confirms that the complete Letter of Offer &amp; Contract of Employment and all included Appendices have been reviewed, the offer is accepted, and the employment contract is agreed at the same time.</p>
-      <table class="lx-sigtable"><tr><td>For and on behalf of the Employer<div class="lx-sigspace${d.esign?.preview ? ' es-pv' : ''}">${d.esign?.sig ? `<img class="lt-sig-img" src="${esc(d.esign.sig)}" alt="Signature">` : d.esign?.empty ? `<span class="lt-sig-empty">${esc(d.esign.empty)}</span>` : ''}${d.esign?.stamp ? `<img class="lt-stamp-img" src="${esc(d.esign.stamp)}" alt="Company stamp">` : ''}${d.esign?.preview && (d.esign.sig || d.esign.stamp) ? '<span class="lt-pv-tag">Preview — applied on issue</span>' : ''}</div>.....................................................<br>Name:${d.signerName ? ` ${d.signerName}` : ''}<br>Designation:${d.signerDesig ? ` ${d.signerDesig}` : ''}<br>Date:</td>
+      <table class="lx-sigtable"><tr><td>For and on behalf of the Employer<div class="lx-es">${sigBox({ esign: { sig: d.esign?.sig, stamp: d.esign?.stamp }, preview: !!d.esign?.preview, esignEmpty: d.esign?.empty || '', layout: d.esign?.layout, edit: !!d.esign?.edit }, true)}</div>Name:${d.signerName ? ` ${d.signerName}` : ''}<br>Designation:${d.signerDesig ? ` ${d.signerDesig}` : ''}<br>Date:</td>
       <td>Accepted and Signed by the Employee<div class="lx-sigspace"></div>.....................................................<br>Name:<br>NRIC/Passport No.:<br>Date:</td></tr></table></div>`);
     // Appendix 1 — Job Description (MEG-EAF buildLoceAppendixBlocks + the JD reference line)
     const ap = [`<h3 class="lx-ap">APPENDIX 1 — JOB DESCRIPTION</h3>`, `<p style="font-size:8.5pt;color:#555">${d.jdReference ? `JD Reference: <strong>${d.jdReference}</strong>${d.jdLevel ? ` · Level ${d.jdLevel}` : ''}` : ''}</p>`, `<p style="font-weight:700">Position: ${d.jobTitle}</p>`];
@@ -2726,9 +2726,11 @@
       return `Signature space — ${x.name}'s e-signature is applied by them or someone they allowed`; };
     const lxPvLoad = () => { const x = lxSig(); const sp = lxUsable(x) ? x.sig.path : ''; const stp = lxStamp(); const k = `${sp}|${stp?.path || ''}`;
       if (k === lxPvKey) return; lxPvKey = k; lxPv = null; if (k === '|') return;
-      Promise.all([esignImg(sp), esignImg(stp?.path)]).then(([a, b]) => { if (lxPvKey !== k) return; lxPv = { sig: a, stamp: b }; if ($('#lx-prev', el)) $('#lx-prev', el).innerHTML = sheetNow(); }).catch(() => { /* not allowed to see it */ }); };
-    const lxEsign = () => { if (esImgs) return esImgs; if (rec && rec.status !== 'draft') return null; lxPvLoad(); const why = lxUsable(lxSig()) && lxPv?.sig ? '' : lxWhy() || 'Signature space';
-      return { ...(lxPv || {}), preview: true, empty: why }; };
+      Promise.all([esignImg(sp), esignImg(stp?.path)]).then(([a, b]) => { if (lxPvKey !== k) return; lxPv = { sig: a, stamp: b }; if ($('#lx-prev', el)) drawPrev(); }).catch(() => { /* not allowed to see it */ }); };
+    const lxStampDef = () => (SGL.stamps || []).find((y) => y.company === LOEC_CMS[co] && y.path)?.layout || null;
+    const lxLayout = () => ({ sig: esBox('sig', T.cmsEsignLayout, lxSig()?.layout), stamp: esBox('stamp', T.cmsEsignLayout, lxStampDef()) });
+    const lxEsign = () => { if (esImgs) return { ...esImgs, layout: rec?.esign?.layout || lxLayout() }; if (rec && rec.status !== 'draft') return null; lxPvLoad(); const why = lxUsable(lxSig()) && lxPv?.sig ? '' : lxWhy() || 'Signature space';
+      return { ...(lxPv || {}), preview: true, empty: why, layout: lxLayout(), edit: !!(editable && lxPv && (lxPv.sig || lxPv.stamp)) }; };
     const sheetNow = () => loecSheet(loecData(G, T, co, lxEsign()), rec?.document_id);
     const ents = J ? Object.fromEntries(J.entities.map((x) => [x.id, x])) : {};
     const jdList = () => (J ? J.positions.filter((p2) => (ents[p2.entity_id]?.code || '').toUpperCase() === LOEC_CMS[co]) : []);
@@ -2773,6 +2775,7 @@
           const val = cur ? cur.id : T.cmsSignatoryName || sgOther ? 'other' : '';
           return `<label class="fld fld-2"><span>Signed for the Employer <small class="muted">— fills the Name and Designation; the e-signature can be applied when it is issued</small></span><select data-sg><option value="">Choose…</option>${list.map((x) => `<option value="${esc(x.id)}" ${x.id === val ? 'selected' : ''}>${esc(x.name)}${x.designation ? ` · ${esc(x.designation)}` : ''}${x.sig ? ' ✎' : ''}</option>`).join('')}<option value="other" ${val === 'other' ? 'selected' : ''}>Someone else — type the name</option></select></label>
             ${val ? `<label class="fld ${val !== 'other' ? 'ro' : ''}"><span>Name</span><input data-k="cmsSignatoryName" value="${v('cmsSignatoryName')}" ${val !== 'other' ? 'readonly' : ''}></label><label class="fld ${val !== 'other' ? 'ro' : ''}"><span>Designation</span><input data-k="cmsSignatoryDesignation" value="${v('cmsSignatoryDesignation')}" ${val !== 'other' ? 'readonly' : ''}></label>` : ''}`; })()}
+        ${T.cmsSignatoryId ? `<p class="small fld-2"><b>Size and place:</b> ${T.cmsEsignLayout ? 'adjusted for this letter <button type="button" class="btn xs ghost" data-lxreset>Back to the default</button>' : 'the signatory\'s default'} <span class="muted">— drag the faded signature on the letter to move it, its corner to resize</span></p>` : ''}
         ${(SGL.stamps || []).some((y) => y.company === LOEC_CMS[co] && y.path) ? `<label class="chk fld-2"><input type="checkbox" data-k="cmsEsignStamp" ${lxOn(T.cmsEsignStamp) ? 'checked' : ''}> Add the company stamp <small class="muted">— shown faded in the draft with the e-signature; confirmed when the letter is issued</small></label>` : ''}
         <fieldset class="fld fld-2"><legend>Optional clauses <small class="muted">— ticked by default on a new letter</small></legend>
           <label class="chk"><input type="checkbox" data-k="cmsClauseOt" ${lxClause(T.cmsClauseOt) ? 'checked' : ''}> 5.5 Overtime rule (authorised in advance, 1.5× / 2× / 3×, hourly rate on up to 8 hours a day)</label>
@@ -2813,6 +2816,7 @@
     const err = (m) => { const e = $('#lx-err', el); e.textContent = m || ''; e.hidden = !m; };
     const drawPrev = () => {
       $('#lx-prev', el).innerHTML = sheetNow();
+      if (editable) esDrag($('#lx-prev', el), (k, b) => { T.cmsEsignLayout = { ...(T.cmsEsignLayout || {}), [k]: b }; dirty = true; drawPrev(); const f = $('#lx-fields', el); if (f) f.innerHTML = fieldsHtml(); });
       const ch = $('#lx-check', el); if (!ch) return;
       const m = missing(); const w = wageWarn();
       ch.innerHTML = `${m.length ? `<p class="warn-box small"><b>Needed before sending for approval:</b> ${esc(m.join(', '))}.</p>` : '<p class="small ok-txt">All the terms the letter needs are filled in.</p>'}${w ? `<p class="warn-box small">${esc(w)}</p>` : ''}`;
@@ -2823,6 +2827,7 @@
     }
     if (editable) {
       const box = $('#lx-fields', el);
+      box.addEventListener('click', (e) => { if (!e.target.closest('[data-lxreset]')) return; delete T.cmsEsignLayout; dirty = true; box.innerHTML = fieldsHtml(); drawPrev(); });
       const onInput = (e) => {
         const t = e.target; if (!t.isConnected) return; dirty = true;
         if (t.dataset.k) {
@@ -2890,7 +2895,7 @@
           const ch = await esignAsk({ fields: { _signatory_id: T.cmsSignatoryId, authorized_signatory: String(T.cmsSignatoryName || '').trim(), _esign_stamp: lxOn(T.cmsEsignStamp) ? 'yes' : '' }, company: LOEC_CMS[co], person: A.name, title: `Issue ${rec.document_id}`,
             intro: `<p>The terms are frozen and the application moves to <b>Offer issued</b>. Print the letter for signing; the signed copy, verification and stamp duty are recorded in the application window. It is kept in HR Letters with the other letters.</p>` });
           if (!ch) { b.disabled = false; return; }
-          await esignApply(rec.id, ch); await API.rpc('cms_loec_issue', { p_loec: rec.id });
+          await esignApply(rec.id, ch, { sig: esBox('sig', T.cmsEsignLayout, ch?.sig?.layout), stamp: esBox('stamp', T.cmsEsignLayout, ch?.stamp?.layout) }); await API.rpc('cms_loec_issue', { p_loec: rec.id });
           b.disabled = false; toast(`${rec.document_id} issued${ch.sig || ch.stamp ? ` with ${[ch.sig && 'e-signature', ch.stamp && 'company stamp'].filter(Boolean).join(' and ')}` : ''}`); loadLoecPending(); state.lettersData = null; reload(); return;
         }
         if (act === 'revise') {
@@ -6429,11 +6434,11 @@
     return done ? out : null;
   }
   // copies of the chosen pictures kept with the letter, then recorded on it (before the letter is issued); returns the picture files
-  async function esignApply(letterId, ch) {
+  async function esignApply(letterId, ch, layout) {
     const pics = {}; let sigPath = null; let stampPath = null;
     if (ch?.sig) { const b = await esignBlob(ch.sig.sig.path); sigPath = await esignPut(`issued/${letterId}/${crypto.randomUUID()}.png`, b); pics.sig = b; }
     if (ch?.stamp) { const b = await esignBlob(ch.stamp.path); stampPath = await esignPut(`issued/${letterId}/${crypto.randomUUID()}.png`, b); pics.stamp = b; }
-    await API.rpc('cms_letter_esign', { p_id: letterId, p_sig_path: sigPath, p_stamp_path: stampPath });
+    await API.rpc('cms_letter_esign', { p_id: letterId, p_sig_path: sigPath, p_stamp_path: stampPath, ...(layout && (sigPath || stampPath) ? { p_layout: layout } : {}) });
     esignImgCache.clear(); return pics;
   }
   const esignPicture = async (blob) => { let w = 600; let h = 200; try { const bm = await createImageBitmap(blob); w = bm.width; h = bm.height; bm.close?.(); } catch (e) { /* default shape */ } return { data: await blob.arrayBuffer(), w, h }; };
@@ -6466,12 +6471,63 @@
     let k = j; while (k - 1 > from && !raw[k - 1].trim() && j - k < 3) k -= 1;
     raw.splice(k, j - k, '', SIG_KEY); return raw.join('\n');
   }
-  // opts.esign: { sig, stamp } picture URLs · opts.preview: drafts show them faded (applied only on issue) · opts.esignEmpty: why the space has no e-signature (drafts)
-  const sigBox = (o) => { const e = o?.esign || {}; const pv = !!o?.preview;
-    return `<p class="lt-sig${pv ? ' es-pv' : ''}">${e.sig ? `<img class="lt-sig-img" src="${esc(e.sig)}" alt="Signature">` : o?.esignEmpty ? `<span class="lt-sig-empty">${esc(o.esignEmpty)}</span>` : ''}${e.stamp ? `<img class="lt-stamp-img" src="${esc(e.stamp)}" alt="Company stamp">` : ''}${pv && (e.sig || e.stamp) ? '<span class="lt-pv-tag">Preview — applied on issue</span>' : ''}</p>`; };
+  // e-signature size and place, in mm from the left end of the signing line: h = height, x = across, y = how far the bottom sits above the line
+  // (negative = crossing it). Each signatory / stamp has a default; a letter may adjust it (v2026.11.19)
+  const ES_DEF = { sig: { h: 35, x: 0, y: -1.5 }, stamp: { h: 30, x: 72, y: 0 } };
+  const esBox = (k, lay, def) => { const b = (lay && lay[k]) || def || ES_DEF[k]; const d = ES_DEF[k];
+    return { h: Number.isFinite(+b.h) && +b.h > 0 ? +b.h : d.h, x: Number.isFinite(+b.x) ? +b.x : d.x, y: Number.isFinite(+b.y) ? +b.y : d.y }; };
+  // limits: 15–80 mm wide, up to 60 mm tall, no more than 3 mm below the line, no higher than 50 mm above it
+  const esClamp = (b, asp) => { const a = asp > 0 ? asp : 2; const h = Math.min(60, 80 / a, Math.max(6, 15 / a, b.h)); const w = h * a;
+    return { h, x: Math.min(165 - w, Math.max(-5, b.x)), y: Math.min(50 - h, Math.max(-3, b.y)) }; };
+  const esR = (b) => ({ h: Math.round(b.h * 10) / 10, x: Math.round(b.x * 10) / 10, y: Math.round(b.y * 10) / 10 });
+  // opts: { esign: { sig, stamp } picture URLs, layout: { sig, stamp }, preview (drafts: faded), edit (drag / resize), esignEmpty (why the space has no e-signature) }
+  // withLine: the template's signing line, drawn here so the pictures sit on it
+  const sigBox = (o, withLine) => { const e = o?.esign || {}; const pv = !!o?.preview; const L = o?.layout || {}; const sb = esBox('sig', L); const tb = esBox('stamp', L);
+    const it = (k, src, b) => `<span class="es-it" data-es="${k}" style="left:${b.x}mm;bottom:${b.y}mm;height:${b.h}mm"><img class="${k === 'sig' ? 'lt-sig-img' : 'lt-stamp-img'}" src="${esc(src)}" alt="${k === 'sig' ? 'Signature' : 'Company stamp'}">${o?.edit ? '<i class="es-h" data-esh title="Drag to resize"></i>' : ''}</span>`;
+    const parts = []; let top = 14;
+    if (e.sig) { parts.push(it('sig', e.sig, sb)); top = Math.max(top, sb.y + sb.h); }
+    else if (o?.esignEmpty) { const h = Math.min(sb.h, 22); parts.push(`<span class="lt-sig-empty" style="left:${sb.x}mm;bottom:${Math.max(0, sb.y)}mm;height:${h}mm">${esc(o.esignEmpty)}</span>`); top = Math.max(top, Math.max(0, sb.y) + h); }
+    if (e.stamp) { parts.push(it('stamp', e.stamp, tb)); top = Math.max(top, tb.y + tb.h); }
+    const tag = pv && (e.sig || e.stamp) ? `<span class="lt-pv-tag">${o?.edit ? 'Preview — drag to move, corner to resize' : 'Preview — applied on issue'}</span>` : '';
+    return `<p class="lt-sig${pv ? ' es-pv' : ''}${o?.edit ? ' es-edit' : ''}${withLine ? ' es-line' : ''}" style="height:${Math.min(52, top + 1).toFixed(1)}mm">${parts.join('')}${tag}${withLine ? '<span class="lt-sigline"></span>' : ''}</p>`; };
+  // drag to move, drag the corner to resize; done(k, box) gets the new size and place
+  function esDrag(root, done) {
+    $$('.es-edit', root).forEach((area) => {
+      const line = $('.lt-sigline', area); const ppm = () => (line ? line.getBoundingClientRect().width / 50 : (area.getBoundingClientRect().width / Math.max(1, area.offsetWidth)) * 3.7795);
+      $$('.es-it', area).forEach((it) => {
+        const k = it.dataset.es; const img = $('img', it);
+        it.addEventListener('pointerdown', (e) => {
+          if (e.button > 0) return; e.preventDefault(); e.stopPropagation();
+          const rs = e.target.hasAttribute('data-esh'); const p = ppm() || 3.78; const asp = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 2;
+          const b0 = { h: parseFloat(it.style.height), x: parseFloat(it.style.left), y: parseFloat(it.style.bottom) }; let b = { ...b0 }; const sx = e.clientX; const sy = e.clientY;
+          try { it.setPointerCapture(e.pointerId); } catch (x) { /* older browsers */ }
+          it.classList.add('on');
+          const mv = (ev) => { const dx = (ev.clientX - sx) / p; const dy = (ev.clientY - sy) / p;
+            b = esClamp(rs ? { ...b0, h: b0.h + (dx / asp - dy) / 2, y: b0.y } : { ...b0, x: b0.x + dx, y: b0.y - dy }, asp);
+            it.style.left = `${b.x}mm`; it.style.bottom = `${b.y}mm`; it.style.height = `${b.h}mm`; };
+          const up = () => { it.removeEventListener('pointermove', mv); it.removeEventListener('pointerup', up); it.removeEventListener('pointercancel', up); it.classList.remove('on');
+            if (b.h !== b0.h || b.x !== b0.x || b.y !== b0.y) done(k, esR(b)); };
+          it.addEventListener('pointermove', mv); it.addEventListener('pointerup', up); it.addEventListener('pointercancel', up);
+        });
+      });
+    });
+  }
+  // a window with a sample signature block at real size: drag to move, drag the corner to resize; resolves to the layout (or null)
+  async function esPlacer({ title, imgs, layout, company = '', name = '', desig = '', note = '', ok = 'Save' }) {
+    let L = JSON.parse(JSON.stringify(layout || {})); let out = null;
+    const draw = (w) => { const box = $('[data-esbox]', w); box.innerHTML = sigBox({ esign: imgs, layout: L, edit: true }, true); esDrag(box, (k, b) => { L = { ...L, [k]: b }; draw(w); }); };
+    const done = await modal({ title, wide: true, ok,
+      body: `${note ? `<p class="muted small">${note}</p>` : ''}<div class="es-sample-wrap"><section class="sheet letter es-sample"><div class="lt-body">
+          <p>Yours faithfully,</p><p>For and on behalf of<br>${esc(company)}</p><div data-esbox></div><p>Authorized Signatory</p><p>Name: ${esc(name)}</p><p>Designation: ${esc(desig)}</p></div></section></div>
+        <p class="muted small">Drag to move · drag the blue corner to resize. At 100% zoom this is about real size.</p>
+        <button type="button" class="btn sm ghost" data-esstd>Back to the standard size and place</button>`,
+      onOpen: (w) => { draw(w); $('[data-esstd]', w).onclick = () => { L = {}; draw(w); }; },
+      onOk: () => { out = L; } });
+    return done ? out : null;
+  }
   function letterSheet(text, co, coCode, labelOf, opts) {
     const c = co || {}; const head = LETTERHEADS[coCode] || LETTERHEADS[c.code];
-    if ((opts?.esign && (opts.esign.sig || opts.esign.stamp)) || opts?.esignEmpty) text = sigSpot(text);
+    if ((opts?.esign && (opts.esign.sig || opts.esign.stamp)) || opts?.esignEmpty || opts?.layout) text = sigSpot(text);
     const formatted=String(text).replace(/\bRM\s+(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)(?![\d.,])/g,(_,v)=>'RM '+Number(v.replaceAll(',','')).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2}));
     const raw=formatted.split('\n'), html=[];
     for(let i=0;i<raw.length;i++) { const t=raw[i].trim();
@@ -6480,7 +6536,7 @@
         if(cm&&cm[4].trim()) html.push('<p>'+richLine(cm[4].trim(),labelOf)+'</p>'); continue; } }
       // one blank line = a small gap between paragraphs; two or more stacked blank lines = full lines (signing space, v2026.11.05)
       if(!t){let n=1;while(i+1<raw.length&&!raw[i+1].trim()){n++;i++;}html.push(n===1?'<div class="lt-gap"></div>':'<div class="lt-line"></div>'.repeat(n));continue;}
-      if(t===SIG_KEY){html.push(sigBox(opts));continue;}
+      if(t===SIG_KEY){const ln=/^_{5,}$/.test((raw[i+1]||'').trim());html.push(sigBox(opts,ln));if(ln)i++;continue;}
       if(t.includes('|')&&raw[i+1]?.includes('|')){const row=(line,tag)=>'<tr>'+line.split('|').map(c=>'<'+tag+' style="border:1px solid #999;padding:6px;text-align:center">'+richLine(c.trim(),labelOf)+'</'+tag+'>').join('')+'</tr>';let body='';while(raw[i+1]?.includes('|'))body+=row(raw[++i],'td');html.push('<table style="width:100%;border-collapse:collapse;font-size:inherit"><thead>'+row(t,'th')+'</thead><tbody>'+body+'</tbody></table>');continue;}
       if(/^Appendix [AB] —/.test(t)){html.push('<h2 style="break-before:page;font-size:14pt">'+richLine(t,labelOf)+'</h2>');continue;}
       if(/^PRIVATE & CONFIDENTIAL$/i.test(t))html.push('<p class="lt-conf">'+esc(t)+'</p>');
@@ -6675,32 +6731,46 @@
     // e-signature / company stamp (v2026.11.18): pictures go where {{authorized_signature}} is, or — in templates without it —
     // just above the signing line under "For and on behalf of". imgs = { sig, stamp } with { data: ArrayBuffer, w, h }, or null:
     // then the placeholder is only taken out (space for a pen signature). Employee acknowledgements are never touched.
-    async esign(bytes, imgs) {
+    // the e-signature / stamp as floating pictures tied to the signing line, at the size and place chosen (mm from the left end of the
+    // line; y = bottom above the line); the blank lines above the line give way to one spacer that keeps room for them (v2026.11.19)
+    async esign(bytes, imgs, lay) {
       const z = await W.zip(bytes); const n = 'word/document.xml'; const d = W.xml(await z.file(n).async('string'));
       const paras = W.paras(d); const have = imgs && (imgs.sig || imgs.stamp);
-      let at = paras.find((p) => W.ptext(p).includes(SIG_KEY)); let replace = false;
-      if (at) { const t = W.ptext(at); const i = t.indexOf(SIG_KEY); W.splice(at, [{ start: i, end: i + SIG_KEY.length, text: '' }]); replace = !W.ptext(at).trim(); }
+      const isLine = (p) => p && p.localName === 'p' && /^\s*(_{5,}|[.…]{5,})/.test(W.ptext(p));
+      let at = paras.find((p) => W.ptext(p).includes(SIG_KEY));
+      if (at) { const t = W.ptext(at); const i = t.indexOf(SIG_KEY); W.splice(at, [{ start: i, end: i + SIG_KEY.length, text: '' }]); }
       if (!have) { if (!at) return bytes; z.file(n, new XMLSerializer().serializeToString(d)); return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME, compression: 'DEFLATE' }); }
-      if (!at) {
+      let line = null;
+      if (at) { let nx = at.nextSibling; while (nx && nx.localName !== 'p') nx = nx.nextSibling; if (isLine(nx)) { line = nx; if (!W.ptext(at).trim()) at.parentNode.removeChild(at); } else line = at; }
+      else {
         const from = paras.findIndex((p) => /behalf of/i.test(W.ptext(p))); if (from < 0) throw new Error('Could not find “For and on behalf of” in the Word letter to place the e-signature.');
-        for (let i = from + 1; i < paras.length; i += 1) { const t = W.ptext(paras[i]).trim(); if (/^employee\s+(acknowledg|accept|signature)/i.test(t)) break; if (/^(_{5,}|[.…]{5,})/.test(t)) { at = paras[i]; break; } }
-        if (!at) at = paras[from + (/behalf of\s*$/i.test(W.ptext(paras[from]).trim()) ? 2 : 1)] || paras[from];
-        // the blank lines left for a pen signature give way to the picture (up to two)
-        let prev = at.previousSibling; let k = 0; while (prev && prev.localName === 'p' && !W.ptext(prev).trim() && !prev.getElementsByTagNameNS(WNS, 'drawing').length && k < 2) { const x = prev.previousSibling; prev.parentNode.removeChild(prev); prev = x; k += 1; }
+        for (let i = from + 1; i < paras.length; i += 1) { const t = W.ptext(paras[i]).trim(); if (/^employee\s+(acknowledg|accept|signature)/i.test(t)) break; if (isLine(paras[i])) { line = paras[i]; break; } }
+        if (!line) line = paras[from + (/behalf of\s*$/i.test(W.ptext(paras[from]).trim()) ? 2 : 1)] || paras[from];
       }
-      let rels = await z.file('word/_rels/document.xml.rels').async('string'); let pid = 9200; const runs = [];
-      const pic = (img, key, maxW, maxH) => { if (!img) return; const r = Math.min(maxW / img.w, maxH / img.h); const cx = Math.round(img.w * r); const cy = Math.round(img.h * r);
+      const drop = isLine(line) ? 3.6 : 0;   // mm from the top of the line's paragraph to the line itself
+      // the blank lines left for a pen signature give way to the spacer
+      let prev = line.previousSibling; while (prev && prev.localName === 'p' && !W.ptext(prev).trim() && !prev.getElementsByTagNameNS(WNS, 'drawing').length) { const x = prev.previousSibling; prev.parentNode.removeChild(prev); prev = x; }
+      let rels = await z.file('word/_rels/document.xml.rels').async('string'); let pid = 9200; const runs = []; let top = 14;
+      const EMU = 36000;
+      const pic = (img, key, b0) => { if (!img) return; const asp = img.w && img.h ? img.w / img.h : 2; const b = esClamp(b0, asp); const cx = Math.round(b.h * asp * EMU); const cy = Math.round(b.h * EMU);
+        top = Math.max(top, b.y + b.h);
         const media = `media/cms-${key}-${Date.now().toString(36)}.png`; z.file(`word/${media}`, img.data); const rid = `rIdCms${key}`;
         rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`), '').replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${media}"/></Relationships>`);
         pid += 1;
-        runs.push(`<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="114300"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${pid}" name="${key === 'Sig' ? 'Signature' : 'Company stamp'}"/>`
+        runs.push(`<w:r><w:drawing><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${251659000 + pid}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">`
+          + `<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>${Math.round(b.x * EMU)}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>${Math.round((drop - b.y - b.h) * EMU)}</wp:posOffset></wp:positionV>`
+          + `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${pid}" name="${key === 'Sig' ? 'Signature' : 'Company stamp'}"/><wp:cNvGraphicFramePr/>`
           + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
           + `<pic:nvPicPr><pic:cNvPr id="0" name="${key}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
-          + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`); };
-      pic(imgs.sig, 'Sig', 1800000, 576000); pic(imgs.stamp, 'Stamp', 1260000, 936000);
-      const frag = W.xml(`<w:p xmlns:w="${WNS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0"/></w:pPr>${runs.join('')}</w:p>`);
-      const np = d.importNode(frag.documentElement, true);
-      at.parentNode.insertBefore(np, at); if (replace) at.parentNode.removeChild(at);
+          + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>`); };
+      pic(imgs.sig, 'Sig', esBox('sig', lay)); pic(imgs.stamp, 'Stamp', esBox('stamp', lay));
+      const NS = `xmlns:w="${WNS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"`;
+      const space = Math.max(4, Math.min(52, top + 1) - drop);   // room kept above the line's paragraph
+      const spacer = d.importNode(W.xml(`<w:p ${NS}><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="${Math.round(space * 56.7)}" w:lineRule="exact"/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>`).documentElement, true);
+      line.parentNode.insertBefore(spacer, line);
+      // the pictures ride on the line's paragraph (first in it), kept with what follows
+      const frag = W.xml(`<w:p ${NS}>${runs.join('')}</w:p>`).documentElement; const first = Array.from(line.childNodes).find((c) => c.localName !== 'pPr') || null;
+      Array.from(frag.childNodes).forEach((r) => line.insertBefore(d.importNode(r, true), first));
       z.file(n, new XMLSerializer().serializeToString(d)); z.file('word/_rels/document.xml.rels', rels);
       let ct = await z.file('[Content_Types].xml').async('string');
       if (!/<Default\b[^>]*Extension="png"/i.test(ct)) { ct = ct.replace(/(<Types\b[^>]*>)/, '$1<Default Extension="png" ContentType="image/png"/>'); z.file('[Content_Types].xml', ct); }
@@ -6772,6 +6842,10 @@
       await wordLibs(); const box = document.createElement('div');
       await window.docx.renderAsync(bytes, box, box, { useBase64URL: true, renderAltChunks: false, renderComments: false, ignoreLastRenderedPageBreak: false });
       box.querySelectorAll('a').forEach((a) => a.removeAttribute('href'));
+      // floating pictures (e-signature / stamp, wrapNone) come as a <div> inside the paragraph; as HTML that would end the paragraph early,
+      // so they become inline boxes measured from the top of the line, as Word does
+      box.querySelectorAll('p div').forEach((dv) => { const st = dv.getAttribute('style') || ''; if (!/width:\s*0px/.test(st) || !/position:\s*relative/.test(st)) return;
+        const sp = document.createElement('span'); sp.setAttribute('style', `${st};vertical-align:top`); while (dv.firstChild) sp.appendChild(dv.firstChild); dv.replaceWith(sp); });
       const marks = opts.marks || []; const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT); const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
       const re = new RegExp(`(\\{\\{[a-z0-9_]+\\}\\}${marks.length ? `|${marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}` : ''})`, 'g');
       nodes.forEach((n) => { if (n.parentElement?.closest('style') || !re.test(n.textContent)) return; re.lastIndex = 0;
@@ -6891,10 +6965,10 @@
         <td>${x.user_name ? esc(x.user_name) : '<span class="muted small">—</span>'}</td>
         <td>${x.sig ? `${x.sig.path ? thumb(x.sig.path, `Signature of ${x.name}`) : '<span class="tag ok xs">set</span>'}<small class="sub">${esc({ draw: 'Drawn', upload: 'Uploaded', type: 'Typed' }[x.sig.method] || '')} · ${dShort(x.sig.created_at)}</small>` : '<span class="muted small">none — signed by pen</span>'}</td>
         <td>${x.access ? (x.access.length ? x.access.map((a) => `${esc(a.name)}${a.has_esign ? '' : ' <span class="tag warn xs" title="Needs the &quot;Apply e-signatures&quot; permission">no permission</span>'}`).join('<br>') : '<span class="muted small">Only them</span>') : (x.can_use ? '<span class="tag ok xs">you may apply</span>' : '')}${x.uses ? `<small class="sub">used on ${num(x.uses)} letter${x.uses === 1 ? '' : 's'}</small>` : ''}</td>
-        <td class="nowrap">${mgr ? `<button type="button" class="btn sm ghost" data-sedit="${esc(x.id)}">Edit…</button> ` : ''}${x.can_edit ? `<button type="button" class="btn sm" data-ssig="${esc(x.id)}">${x.sig ? 'New signature…' : 'Set signature…'}</button> <button type="button" class="btn sm ghost" data-sacc="${esc(x.id)}">Who may apply…</button>${x.sig ? ` <button type="button" class="btn sm ghost" data-srm="${esc(x.id)}">Remove</button>` : ''}` : ''}</td></tr>`).join('');
+        <td class="nowrap">${mgr ? `<button type="button" class="btn sm ghost" data-sedit="${esc(x.id)}">Edit…</button> ` : ''}${x.can_edit ? `<button type="button" class="btn sm" data-ssig="${esc(x.id)}">${x.sig ? 'New signature…' : 'Set signature…'}</button> <button type="button" class="btn sm ghost" data-sacc="${esc(x.id)}">Who may apply…</button>${x.sig ? ` <button type="button" class="btn sm ghost" data-slay="${esc(x.id)}">Size and place…</button> <button type="button" class="btn sm ghost" data-srm="${esc(x.id)}">Remove</button>` : ''}` : ''}</td></tr>`).join('');
     const stamps = cos.map((c) => { const st = (S.stamps || []).find((y) => y.company === c);
       return `<tr><td><b>${esc(coShort(c) || c)}</b> <small class="muted">${esc(c)}</small></td><td>${st ? `${st.path ? thumb(st.path, `${c} stamp`) : '<span class="tag ok xs">set</span>'}<small class="sub">${dShort(st.created_at)}${st.by ? ` · ${esc(st.by)}` : ''}</small>` : '<span class="muted small">none</span>'}</td>
-        <td class="nowrap">${mgr ? `<button type="button" class="btn sm" data-stamp="${esc(c)}">${st ? 'Replace…' : 'Upload…'}</button>${st ? ` <button type="button" class="btn sm ghost" data-strm="${esc(c)}">Remove</button>` : ''}` : ''}</td></tr>`; }).join('');
+        <td class="nowrap">${mgr ? `<button type="button" class="btn sm" data-stamp="${esc(c)}">${st ? 'Replace…' : 'Upload…'}</button>${st ? ` <button type="button" class="btn sm ghost" data-stlay="${esc(c)}">Size and place…</button> <button type="button" class="btn sm ghost" data-strm="${esc(c)}">Remove</button>` : ''}` : ''}</td></tr>`; }).join('');
     box.innerHTML = `<div class="toolbar"><h4 class="sec-h" style="margin:0">Signatories</h4><span class="sp"></span>${mgr ? '<button type="button" class="btn sm primary" data-sadd>+ Add signatory…</button>' : ''}</div>
       ${S.signatories.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Signatory</th><th>Signs for</th><th>Login</th><th>E-signature</th><th>Who may apply it</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty small"><p>No signatories yet</p>${mgr ? '<span>Add the people who sign letters for the Company.</span>' : ''}</div>`}
@@ -6933,6 +7007,17 @@
       if (ok) { toast('Saved'); redo(); } }));
     $$('[data-stamp]', box).forEach((b) => b.addEventListener('click', async () => { const c = b.dataset.stamp; const blob = await stampMaker(c); if (!blob) return;
       try { const path = await esignPut(`stamp/${c}/${crypto.randomUUID()}.png`, blob); await API.rpc('cms_stamp_set', { p_company: c, p_path: path }); toast(`${c} stamp saved`); redo(); } catch (e) { toast(e.message, 'err'); } }));
+    $$('[data-slay]', box).forEach((b) => b.addEventListener('click', async () => { const x = S.signatories.find((y) => y.id === b.dataset.slay);
+      try { const img = await esignImg(x.sig.path);
+        const r = await esPlacer({ title: `${x.name}: default size and place`, imgs: { sig: img }, layout: { sig: x.layout || undefined }, company: x.companies.length === 1 ? coShort(x.companies[0]) || x.companies[0] : 'Company name', name: x.name, desig: x.designation,
+          note: 'Every new letter signed by them starts like this; a letter can still be adjusted on its own.' });
+        if (!r) return; await API.rpc('cms_signatory_layout_set', { p_signatory: x.id, p_layout: r.sig || null }); toast(`${x.name}: size and place saved`); redo(); } catch (e) { toast(e.message, 'err'); } }));
+    $$('[data-stlay]', box).forEach((b) => b.addEventListener('click', async () => { const c = b.dataset.stlay; const st = (S.stamps || []).find((y) => y.company === c);
+      try { const sx = S.signatories.find((y) => y.sig?.path && (!y.companies.length || y.companies.includes(c)));
+        const [img, sg] = await Promise.all([esignImg(st.path), sx ? esignImg(sx.sig.path).catch(() => null) : null]);
+        const r = await esPlacer({ title: `${coShort(c) || c} stamp: default size and place`, imgs: { stamp: img, sig: sg }, layout: { stamp: st.layout || undefined, sig: sx?.layout || undefined }, company: coShort(c) || c,
+          name: sx?.name || '', desig: sx?.designation || '', note: `Only the stamp is saved here${sx ? ` (${esc(sx.name)}'s signature is shown for reference)` : ''}.` });
+        if (!r) return; await API.rpc('cms_stamp_layout_set', { p_company: c, p_layout: r.stamp || null }); toast(`${c} stamp: size and place saved`); redo(); } catch (e) { toast(e.message, 'err'); } }));
     $$('[data-strm]', box).forEach((b) => b.addEventListener('click', async () => { const c = b.dataset.strm;
       if (await confirmBox('Remove company stamp', `Remove the ${esc(c)} stamp? Letters already issued keep theirs.`, 'Remove', true, () => API.rpc('cms_stamp_remove', { p_company: c }))) { toast('Stamp removed'); redo(); } }));
   }
@@ -7352,11 +7437,11 @@
       if (recorded) { st.textContent = 'signed copy'; if (pv.dataset.pdf === rec.signed_path) return; pv.innerHTML = loading();
         try { const u = await letterPdfUrl(rec.signed_path); pv.dataset.pdf = rec.signed_path; pv.innerHTML = `<iframe class="lw-pdf" src="${u}" title="Signed letter"></iframe>`; } catch (e) { pv.innerHTML = errorCard(e.message); } return; }
       const miss = missing(); st.textContent = status === 'issued' ? 'as issued' : miss.length ? `${miss.length} field${miss.length === 1 ? '' : 's'} still to fill (red)` : 'all fields filled';
-      if (t.format !== 'docx') { if (status === 'issued' && rec?.esign) loadEsImgs(); view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf, sheetOpts())}`; requestAnimationFrame(applyZoom); return; }
+      if (t.format !== 'docx') { if (status === 'issued' && rec?.esign) loadEsImgs(); view = null; pv.innerHTML = `${stamp() ? `<div class="lw-stamp">${stamp()}</div>` : ''}${letterSheet(textNow(), co, coCode, labelOf, sheetOpts())}`; if (canPlace()) esDrag(pv, placed); requestAnimationFrame(applyZoom); return; }
       try {
         let bytes;
         if (status === 'issued' && rec.docx_path) bytes = await getDocx(rec.docx_path);
-        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(srcBytes, await pvWordImgs().catch(() => null)), vals.authorized_signatory, vals.authorized_designation), vals, labelOf), coCode || co?.code); }
+        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(srcBytes, await pvWordImgs().catch(() => null), effLayout()), vals.authorized_signatory, vals.authorized_designation), vals, labelOf), coCode || co?.code); }
         view = await W.render(bytes, pv, { marks: missing().map((k) => `[${labelOf(k)}]`), stamp: stamp() }); view.frame.addEventListener('load', () => setTimeout(applyZoom, 30));
       } catch (e) { pv.innerHTML = errorCard(e.message); }
     };
@@ -7596,8 +7681,22 @@
         ${v ? esNote(cur) : `<p class="muted small">${list.length ? 'Choosing a signatory fills the Name and Designation.' : 'No signatory is set up for this company yet (HR Letters › Signatures).'}</p>`}
         ${stp0 ? `<label class="chk"><input type="checkbox" data-stp ${vals._esign_stamp === 'yes' ? 'checked' : ''}> Add the ${esc(coShort(co0) || co0)} company stamp <small class="muted">— shown faded in the draft; confirmed when the letter is issued</small></label>` : ''}
         <p class="muted small">The e-signature${stp0 ? ' and stamp' : ''} show faded in the draft where they will go; they are applied only when the letter is issued.</p>
+        ${cur && sigUsable(cur) ? `<div class="es-place small"><b>Size and place:</b> ${vals._esign_layout ? 'adjusted for this letter' : `${esc(cur.name)}'s default`}
+          <span class="muted">— ${tpl()?.format === 'docx' ? 'use Adjust' : `drag the faded signature${stp0 && vals._esign_stamp === 'yes' ? ' or stamp' : ''} on the letter to move it, its corner to resize`}</span>
+          <button type="button" class="btn xs" data-esadj>Adjust size and place…</button>
+          ${vals._esign_layout ? ` <button type="button" class="btn xs ghost" data-esreset>Back to the default</button>${cur.can_edit && vals._esign_layout.sig ? ` <button type="button" class="btn xs ghost" data-esdef>Make this ${esc(cur.name)}'s default</button>` : ''}` : ''}</div>` : ''}
         <p class="muted small">The employee's acknowledgement is always signed by hand.</p>`;
-      const sb = $('[data-stp]', box); if (sb) sb.onchange = () => { if (sb.checked) vals._esign_stamp = 'yes'; else delete vals._esign_stamp; later(); };
+      const sb = $('[data-stp]', box); if (sb) sb.onchange = () => { if (sb.checked) vals._esign_stamp = 'yes'; else delete vals._esign_stamp; drawSign(); later(); };
+      const rs = $('[data-esreset]', box); if (rs) rs.onclick = () => { delete vals._esign_layout; drawSign(); later(); };
+      const ad = $('[data-esadj]', box); if (ad) ad.onclick = async () => { try {
+        const st = stampChosen(); const [a, b] = await Promise.all([esignImg(cur.sig.path), st ? esignImg(st.path) : null]);
+        const r = await esPlacer({ title: 'Size and place on this letter', ok: 'Use on this letter', imgs: { sig: a, stamp: b }, layout: effLayout(), company: co?.name || '', name: vals.authorized_signatory, desig: vals.authorized_designation,
+          note: `Only for this letter. ${esc(cur.name)}'s default is set in HR Letters › Signatures.` });
+        if (!r) return; vals._esign_layout = { ...(r.sig ? { sig: r.sig } : {}), ...(r.stamp ? { stamp: r.stamp } : {}) }; if (!Object.keys(vals._esign_layout).length) delete vals._esign_layout; drawSign(); later();
+      } catch (e) { toast(e.message, 'err'); } };
+      const df = $('[data-esdef]', box); if (df) df.onclick = async () => { try { const b = await API.rpc('cms_signatory_layout_set', { p_signatory: cur.id, p_layout: vals._esign_layout.sig });
+        cur.layout = b; const rest = { ...vals._esign_layout }; delete rest.sig; if (Object.keys(rest).length) vals._esign_layout = rest; else delete vals._esign_layout;
+        toast(`Saved as ${cur.name}'s default size and place`); drawSign(); later(); } catch (e) { toast(e.message, 'err'); } };
       $('[data-sg]', box).onchange = (e) => { const x = list.find((y) => y.id === e.target.value);
         sgOther = e.target.value === 'other';
         if (x) { vals._signatory_id = x.id; vals.authorized_signatory = x.name; vals.authorized_designation = x.designation; }
@@ -7621,8 +7720,14 @@
       if (x.companies?.length && !x.companies.includes(esCo())) return `Signature space — ${x.name} does not sign for ${esCo()}`;
       if (!x.sig) return `Signature space — ${x.name} has no e-signature (signed by pen)`;
       return `Signature space — ${x.name}'s e-signature is applied by them or someone they allowed`; };
-    const sheetOpts = () => { if (status === 'issued') return esImgs ? { esign: esImgs } : null; pvLoad();
-      return { esign: pvImgs || {}, preview: true, esignEmpty: sigUsable(sigOf()) && pvImgs?.sig ? '' : pvWhy() || 'Signature space' }; };
+    const stampDef = () => (SG?.stamps || []).find((y) => y.company === esCo() && y.path)?.layout || null;
+    const effLayout = (f = vals) => ({ sig: esBox('sig', f._esign_layout, sigOf()?.layout), stamp: esBox('stamp', f._esign_layout, stampDef()) });
+    const canPlace = () => editable && (status === 'new' || status === 'draft');
+    const sheetOpts = () => { if (status === 'issued') return esImgs ? { esign: esImgs, layout: rec?.esign?.layout || effLayout(rec?.fields || vals) } : null; pvLoad();
+      const pics = pvImgs && (pvImgs.sig || pvImgs.stamp);
+      return { esign: pvImgs || {}, preview: true, layout: effLayout(), edit: !!(pics && canPlace()), esignEmpty: sigUsable(sigOf()) && pvImgs?.sig ? '' : pvWhy() || 'Signature space' }; };
+    // a drag on the letter: this letter's own size and place
+    const placed = (k, b) => { vals._esign_layout = { ...(vals._esign_layout || {}), [k]: b }; drawSign(); later(); };
     // Word letters: the same pictures, faded
     const fadeImg = (url) => new Promise((ok, no) => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight;
       const g = c.getContext('2d'); g.filter = 'grayscale(1)'; g.globalAlpha = 0.38; g.drawImage(im, 0, 0); c.toBlob((b) => (b ? ok(b) : no(new Error('picture'))), 'image/png'); }; im.onerror = no; im.src = url; });
@@ -7782,10 +7887,12 @@
     const need = () => { if (!personId || !tpl()) throw new Error('Choose the person and the letter.'); };
     const issueChoices = () => esignAsk({ fields: rec.fields || vals, company: coCode || co?.code || rec.company, person: rec.name });
     const doIssue = async (ch) => {
-      const t = tpl(); let path = null; const pics = await esignApply(rec.id, ch);
+      const t = tpl(); let path = null; const f1 = rec.fields || vals;
+      const lay = { sig: esBox('sig', f1._esign_layout, ch?.sig?.layout), stamp: esBox('stamp', f1._esign_layout, ch?.stamp?.layout) };
+      const pics = await esignApply(rec.id, ch, lay);
       if (t.format === 'docx') { const f0 = rec.fields || vals; const src = await getDocx(t.source_path);
         const imgs = pics.sig || pics.stamp ? { sig: pics.sig ? await esignPicture(pics.sig) : null, stamp: pics.stamp ? await esignPicture(pics.stamp) : null } : null;
-        const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs), f0.authorized_signatory, f0.authorized_designation), f0, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
+        const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs, lay), f0.authorized_signatory, f0.authorized_designation), f0, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
     // file name for print / PDF / Word: employee name - letter name - date and time
@@ -7815,7 +7922,7 @@
           try { await API.rpc('cms_letter_draft_printed', { p_id: rec?.id || null, p_person: personId, p_template: tpl().code }); } catch (e) { toast(e.message, 'err'); return; }
           const nm = letterFileName().replace(/ - (\d{4}-\d{2}-\d{2} \d{2}\.\d{2})$/, ' - DRAFT - $1');
           if (tpl().format === 'docx') { if (!view) throw new Error('The preview is still loading. Try again in a moment.'); view.print(nm); }
-          else docView(el, nm, [`<div class="lw-stamp">${esc(stamp() || 'DRAFT — NOT ISSUED')}</div>${letterSheet(textNow(), co, coCode, labelOf, sheetOpts())}`], () => render());
+          else docView(el, nm, [`<div class="lw-stamp">${esc(stamp() || 'DRAFT — NOT ISSUED')}</div>${letterSheet(textNow(), co, coCode, labelOf, { ...sheetOpts(), edit: false })}`], () => render());
           drawHistory(); return;
         }
         if (a === 'print') { if (tpl()?.format === 'docx' || rec.docx_path) { view?.print(letterFileName()); return; } if (rec.esign) { await loadEsImgs(); if (!esImgs) return; } docView(el, `${rec.title} · ${rec.name}`, [letterSheet(rec.text, co, coCode, labelOf, sheetOpts())], () => render()); return; }
