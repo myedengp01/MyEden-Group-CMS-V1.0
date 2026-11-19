@@ -22,6 +22,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-020 | 2026-11-07 | Retire the form apps' own sign-in together: once every form (SCF, OTCF, MTCF, PRFAF, TEC) is made in the CMS and stable, all form apps at once get the CMS notice / redirect and become read-only (F3) | Recorded; waits until all forms are stable in the CMS |
 | PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
 | PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | **Built in v2026.11.18-21:30 to 23:05** (phases 1–4); old MEG-EAF V2 pages switch over one by one as CLC confirms |
+| PRI-025 | 2026-11-20 | MEG-FORMS apps retired into the CMS: claims shown in each form's own layout with receipts and print; emails and approvers from the CMS; every remaining feature of MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-TEC-V2, MEG-PRFAF and the Forms Dashboard / Admin brought over; each old app switched over when CLC confirms | In progress |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -575,4 +576,17 @@ handbook and printed manuals, name tags, anything else HR/Admin adds (item types
 - **Phase 5 (CLC 19 Nov 2026: "do all"):** v2026.11.19-01:45 handbook library (EN / 中文 / BM) and each employee's handbook read only with a
   read / not-read reading report (HR, Admin, Directors); v2026.11.19-02:40 full JD in the CMS (print, bookmarks, compare), Employment Act &
   calculators at `hrlaw/`, Apply Now open / close (Super Admin), recruitment guide (EN / 中文), last links to MEG-EAF V2 removed.
+
+## PRI-025 · MEG-FORMS apps retired into the CMS — recorded 2026-11-20
+CLC 20 Nov 2026: "bring all the forms into cms, prepare to retire the old app". Decisions: (1) each claim shown in its paper form's order,
+empty OTCF days hidden by default; (2) bring over **all** features, PRFAF and TEC-V2 included; (3) approvers in emails from CMS roles;
+(4) phase 1 released on its own, then phase 2 form by form, switch-over order SCF → OTCF → MTCF → TEC → PRFAF → Dashboard / Admin,
+each old app switched only when CLC confirms.
+- **Phase 1 (v2026.11.20-02:30):** claim window in each form's layout (SCF / OTCF / MTCF), receipts and journey photos shown (storage
+  readable by CMS role, `20261120_cms_claim_files.sql`), Print / PDF in the form layout with numbered receipt pages.
+- **Phase 2 (to do):** emails link to the CMS and go to CMS approvers; signed approval PDF made by the CMS itself (it is still made by loading
+  the old MEG-OTCF / MEG-MTCF page, which retiring them would break); MTCF journey photos and rate per km; PRFAF ledgers, transfers,
+  disbursement, reconciliation, statements, CSV; TEC-V2 templates, courses, standards, PIC review, reports; the old Manage lists;
+  cross-form list with CSV, bulk done, soft delete / restore.
+- **Phase 3 (to do):** list old-app users not set up in the CMS; each old app shows "moved to the CMS" with its links kept.
 
