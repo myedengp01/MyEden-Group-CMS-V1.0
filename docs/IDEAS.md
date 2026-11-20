@@ -23,7 +23,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
 | PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | **Built in v2026.11.18-21:30 to 23:05** (phases 1–4); old MEG-EAF V2 pages switch over one by one as CLC confirms |
 | PRI-025 | 2026-11-20 | MEG-FORMS apps retired into the CMS: claims shown in each form's own layout with receipts and print; emails and approvers from the CMS; every remaining feature of MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-TEC-V2, MEG-PRFAF and the Forms Dashboard / Admin brought over; each old app switched over when CLC confirms | In progress |
-| PRI-026 | 2026-11-20 | Company Reward System: reward catalogue (incentives, allowances, awards) from the 2024 General Benefit & Award Criteria, yearly rule editions, staff applications / nominations, automatic eligibility checks from CMS records, leader → HR → Director review, payroll link with the correct statutory treatment, certificates / trophies / announcements, award history | Phases 1–2 built (certification allowance; full attendance & referral) |
+| PRI-026 | 2026-11-20 | Company Reward System: reward catalogue (incentives, allowances, awards) from the 2024 General Benefit & Award Criteria, yearly rule editions, staff applications / nominations, automatic eligibility checks from CMS records, leader → HR → Director review, payroll link with the correct statutory treatment, certificates / trophies / announcements, award history | Built: certification allowance, full attendance & referral, awards, summary report |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -642,6 +642,14 @@ block; confirmed full-time by default) and Referral (staff refer or HR records, 
 amounts — 2024 RM 300 / 400 / 500 at months 3 / 7 / 10 as the hint, blank by default — REFERRAL lines when due, lost on either side's
 resignation letter, held until the referrer is confirmed). Staff page My Rewards under the *claims* self-service part. Next: awards
 (Star Mentor / Star Employee quarterly, annual awards, Long Service, …).
+
+**Phase 3 built — v2026.11.20-18:26 (CLC: summary report "go together with next phase"):** awards catalogue (15 awards from the 2024 criteria,
+editable by Admin / Directors: criteria, prizes, Bonus / Incentive / no cash, amount blank by default, winners, who takes part), rounds,
+nominations (staff self / colleague in My Rewards, HR, departments for Best Department), eligibility shown, HR review with comment,
+Admin / Director chooses 0 … max winners (reason needed for none), winner cash as payroll Bonus / Incentive line, printable certificates,
+Long Service suggestions at 6 / 10 years. Reward Summary page with its own permission `rewards.report` (HR / Admin / Directors by
+default); amounts only with the salary permission; print / PDF / CSV. Not built yet: KPI grades pulled into the award checks (reviewers
+tick them), Facebook post / PIN tracking beyond the prize list.
 
 **Decisions (CLC 20 Nov 2026, 16:00–16:21):** full attendance: after a successful 3-month block the next starts fresh, no overlap.
 Certification: disqualified from the resignation letter date; no allowance for the period in which the letter is dated. Staff choose

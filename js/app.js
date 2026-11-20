@@ -6664,7 +6664,7 @@
 
   async function meRewardsPage(item, el) {
     el.innerHTML = `${pageHead(item)}<div id="mr-body">${loading()}</div>`;
-    let D; const load = async () => { D = await API.rpc('cms_rw_my_rewards'); };
+    let D, W = null; const load = async () => { D = await API.rpc('cms_rw_my_rewards'); try { W = await API.rpc('cms_rw_my_awards'); } catch (e) { W = null; } };
     try { await load(); } catch (e) { $('#mr-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const reload = async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); };
     const draw = () => {
@@ -6681,7 +6681,11 @@
         <section class="card"><div class="card-head"><h3>Referral incentive</h3><button type="button" class="btn sm primary" data-refer>Refer someone…</button></div>
           <p class="small muted">Refer someone for a job here. If they are hired, you receive the incentive at the end of their ${ms.map((m) => `${m.month}${m.month === 1 ? 'st' : m.month === 2 ? 'nd' : m.month === 3 ? 'rd' : 'th'}`).join(', ')} month${ms.some((m) => m.amount) ? ` (${ms.map((m) => (m.amount ? `RM ${m2(m.amount)}` : '—')).join(' / ')})` : ''}, while you both still work here${''}. You can refer from your first day; payment waits until you are confirmed.</p>
           ${R.list.length ? R.list.map((r) => `<div class="me-item"><div><b>${esc(r.new_hire || r.candidate_name || '')}</b> ${rwTag(RW_REF, r.status)}<small class="sub">${esc(r.position || r.new_hire_position || '')}${r.new_hire_start ? ` · started ${dShort(r.new_hire_start)}` : ''} · referred ${dShort(r.created_at)}${r.decide_note || r.end_reason ? ` · ${esc(r.decide_note || r.end_reason)}` : ''}</small>${rwPays(r)}</div></div>`).join('')
-            : '<div class="empty small"><p>No referrals yet</p></div>'}</section>`;
+            : '<div class="empty small"><p>No referrals yet</p></div>'}</section>
+        ${W ? `<section class="card"><div class="card-head"><h3>Awards</h3></div>
+          ${W.rounds.length ? W.rounds.map((r) => `<div class="me-item"><div><b>${esc(r.award)} · ${esc(r.label)}</b><small class="sub">${dShort(r.from)} – ${dShort(r.to)} · nominate by ${dShort(r.until)}${(r.mine || []).length ? ` · you nominated ${esc(r.mine.map((m) => m.name).join(', '))}` : ''}</small>
+              <ul class="small">${(r.criteria || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div><button type="button" class="btn sm primary" data-nom="${esc(r.id)}">Nominate…</button></div>`).join('') : '<p class="small muted">No award open for nominations now.</p>'}
+          ${W.awards.length ? `<h4 class="sec-h">${icon('sparkle')} My awards</h4>${W.awards.map((x) => `<div class="me-item"><div><b>${esc(x.award)}</b> · ${esc(x.label)}<small class="sub">${esc((x.prizes || []).join(', '))}${x.amount ? ` · RM ${m2(x.amount)}${x.pay_month ? ` in the ${rwMonth(x.pay_month)} payroll` : ''}` : ''}</small></div></div>`).join('')}` : ''}</section>` : ''}`;
       $('[data-apply]', el)?.addEventListener('click', async () => {
         const opts = []; const now = new Date(D.today); const nf = new Date(A.next_from);
         for (let d = new Date(nf.getFullYear(), nf.getMonth(), 1); new Date(d.getFullYear(), d.getMonth() + A.months, 1) <= new Date(now.getFullYear(), now.getMonth(), 1); d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
@@ -6694,6 +6698,14 @@
         if (ok) { toast('Sent to HR'); reload(); }
       });
       $$('[data-wd]', el).forEach((b) => b.addEventListener('click', async () => { try { await API.rpc('cms_rw_att_withdraw', { p_id: b.dataset.wd }); toast('Withdrawn'); reload(); } catch (e) { toast(e.message, 'err'); } }));
+      $$('[data-nom]', el).forEach((b) => b.addEventListener('click', async () => {
+        const r = W.rounds.find((x) => x.id === b.dataset.nom);
+        const ok = await modal({ title: `Nominate · ${r.award} · ${r.label}`, ok: 'Send nomination', wide: true,
+          body: `<label class="fld"><span>Who</span><select name="p">${r.self ? `<option value="${esc(W.person_id)}">Myself</option>` : ''}${r.peer ? W.colleagues.filter((c) => c.id !== W.person_id).map((c) => `<option value="${esc(c.id)}">${esc(c.name)}${c.dept ? ` · ${esc(c.dept)}` : ''}</option>`).join('') : ''}</select></label>
+            <label class="fld"><span>Why (what they did in this period)</span><textarea name="w" rows="4"></textarea></label><ul class="small">${(r.criteria || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`,
+          onOk: (fm) => API.rpc('cms_rw_nominate', { p_round: r.id, p_person: fm.p.value, p_reason: fm.w.value }) });
+        if (ok) { toast('Nomination sent'); reload(); }
+      }));
       $('[data-refer]', el).addEventListener('click', async () => {
         const ok = await modal({ title: 'Refer someone', ok: 'Send to HR',
           body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Full name</span><input name="n" required></label><label class="fld"><span>Phone or email</span><input name="c" required></label>
@@ -6718,7 +6730,7 @@
   // management tabs (inside the Reward System page)
   function rwIncTabs(ctx) {
     const { el, reloadAll } = ctx; let I = null; const f = { as: 'open', rs: 'open' };
-    const load = async () => { I = await API.rpc('cms_rw_inc_admin'); };
+    const load = async () => { I = (await API.rpc('cms_rw_inc_admin')) || { settings: { att: { months: 3, checks: [] }, ref: { milestones: [] } }, att: [], ref: [], hires: [], can_edit: false, can_boss: false }; };
     const ask = (title, label, ok = 'Save', danger = false) => new Promise((res) => { let v = null; modal({ title, ok, danger, body: `<label class="fld"><span>${esc(label)}</span><textarea name="r" rows="3" required></textarea></label>`, onOk: (fm) => { if (fm.r.value.trim().length < 3) throw new Error('Give the reason.'); v = fm.r.value.trim(); } }).then((x) => res(x ? v : null)); });
     const att = () => {
       const list = I.att.filter((c) => f.as === 'all' || (f.as === 'open' ? ['submitted', 'checked'].includes(c.status) : c.status === f.as));
@@ -6818,12 +6830,200 @@
     return { load, att, refs, settings, wire, get data() { return I; } };
   }
 
+  // ---------------------------------------------------------------- PRI-026 phase 3: awards
+  const RW_CYCLE = { quarterly: 'Quarterly', annual: 'Yearly', event: 'Event', milestone: 'Service milestone' };
+  const RW_ROUND = { open: ['warn', 'Nominations open'], review: ['warn', 'Under review'], decided: ['ok', 'Decided'], cancelled: ['', 'Cancelled'] };
+  const RW_NOM = { nominated: ['', 'Nominated'], reviewed: ['warn', 'Reviewed'], winner: ['ok', 'Winner'], not_selected: ['', 'Not selected'], withdrawn: ['', 'Withdrawn'] };
+  const rwCash = (t) => ({ BONUS: 'Bonus', INCENTIVE: 'Incentive', NONE: 'No cash' }[t] || t);
+  // the award certificate (printable)
+  function rwAwardCert(award, round, n) {
+    const co = (window.CMS_COMPANIES || []).find((c) => c.code === (n.company || 'MEG')) || window.CMS_COMPANIES?.[0] || {};
+    return `<div class="sheet rw-cert"><div class="rw-cert-in">${co.logo ? `<img src="${esc(asset(co.logo))}" alt="">` : ''}<p class="rw-cert-co">${esc(co.name || 'MyEden Group')}</p>
+      <p class="rw-cert-t">Certificate of Achievement</p><p>This certificate is proudly presented to</p><p class="rw-cert-n">${esc(n.name || n.department || '')}</p>
+      <p>for the</p><p class="rw-cert-a">${esc(award)}</p><p>${esc(round.label)}${n.note && /years/.test(n.note) ? ` · ${esc(n.note)} of service` : ''}</p>
+      <div class="rw-cert-s"><div><span></span>Director</div><div><span></span>${dShort(round.decided_at || new Date())}</div></div></div></div>`;
+  }
+  function rwAwardsTab(ctx) {
+    let A = null; const f = { st: 'open' };
+    const load = async () => { A = (await API.rpc('cms_rw_awards_admin')) || { awards: [], rounds: [], departments: [], long_service: [], can_edit: false, can_boss: false }; };
+    const ask = (title, label, ok = 'Save', danger = false) => new Promise((res) => { let v = null; modal({ title, ok, danger, body: `<label class="fld"><span>${esc(label)}</span><textarea name="r" rows="3" required></textarea></label>`, onOk: (fm) => { if (fm.r.value.trim().length < 3) throw new Error('Give the reason.'); v = fm.r.value.trim(); } }).then((x) => res(x ? v : null)); });
+    const award = (code) => A.awards.find((a) => a.code === code) || {};
+    const html = () => {
+      const rounds = A.rounds.filter((r) => f.st === 'all' || (f.st === 'open' ? ['open', 'review'].includes(r.status) : r.status === f.st));
+      return `<section class="card"><div class="toolbar"><select id="rwaw-s">${[['open', 'Open / under review'], ['decided', 'Decided'], ['cancelled', 'Cancelled'], ['all', 'All rounds']].map(([k, l]) => `<option value="${k}" ${f.st === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          ${A.can_edit ? '<button type="button" class="btn sm primary" data-ropen>+ Open a round…</button>' : ''}<span class="muted small">HR opens a round; staff nominate in My Rewards (or HR does); HR reviews against the criteria; Admin or a Director chooses the winners (none if the standard is not met).</span></div>
+        ${rounds.map((r) => { const a = award(r.award_code); const live = ['open', 'review'].includes(r.status);
+          return `<div class="rw-round"><div class="card-head"><h3>${esc(r.award)} · ${esc(r.label)} ${rwTag(RW_ROUND, r.status)}</h3>
+              <div class="btn-row">${live && A.can_edit ? `<button type="button" class="btn sm ghost" data-nadd="${esc(r.id)}">+ Nominate…</button> ${r.status === 'open' ? `<button type="button" class="btn sm ghost" data-rstat="${esc(r.id)}" data-v="review">Close nominations</button>` : `<button type="button" class="btn sm ghost" data-rstat="${esc(r.id)}" data-v="open">Reopen</button>`}` : ''}
+                ${live && A.can_boss ? ` <button type="button" class="btn sm primary" data-rdecide="${esc(r.id)}">Choose winners…</button>` : ''}
+                ${r.status === 'decided' && r.noms.some((n) => n.status === 'winner') ? ` <button type="button" class="btn sm ghost" data-rcert="${esc(r.id)}">${icon('download')}Certificates</button>` : ''}
+                ${live && A.can_edit ? ` <button type="button" class="btn sm ghost" data-rcancel="${esc(r.id)}">Cancel…</button>` : ''}</div></div>
+            <p class="small muted">${dShort(r.period_from)} – ${dShort(r.period_to)} · nominations until ${dShort(r.nominate_until)} · up to ${a.max_winners} winner${a.max_winners === 1 ? '' : 's'} · ${esc(rwCash(a.cash_type))}${a.amount ? ` RM ${m2(a.amount)}` : ''}${r.decide_note ? ` · ${esc(r.decide_note)}` : ''}</p>
+            ${r.award_code === 'LONG_SERVICE' && live && A.long_service.length && A.can_edit ? `<div class="ok-box">${icon('sparkle')}<div>${num(A.long_service.length)} staff reach 6 or 10 years by the end of next year. <button type="button" class="btn sm ghost" data-lsadd="${esc(r.id)}">Nominate them…</button></div></div>` : ''}
+            <div class="table-wrap"><table class="data compact"><thead><tr><th>Nominee</th><th>By</th><th>Why</th><th>Eligibility</th><th>Review</th><th>Status</th><th></th></tr></thead><tbody>
+            ${r.noms.filter((n) => n.status !== 'withdrawn').map((n) => `<tr><td><b>${esc(n.name || n.department || '')}</b><small class="sub">${esc([n.employee_id, n.dept].filter(Boolean).join(' · '))}</small></td>
+              <td>${esc({ self: 'Self', peer: n.nominator || 'Colleague', hr: 'HR' }[n.kind] || n.kind)}</td><td class="wrap">${esc(n.reason || '')}</td>
+              <td>${n.elig ? (n.elig.ok ? '<span class="tag ok xs">eligible</span>' : `<span class="tag bad xs">${esc(n.elig.reasons.join('; '))}</span>`) : '—'}</td>
+              <td>${n.checks ? `${Object.values(n.checks).filter(Boolean).length} / ${Object.keys(n.checks).length} criteria` : '—'}${n.comment ? `<small class="sub">${esc(n.comment)}</small>` : ''}</td>
+              <td>${rwTag(RW_NOM, n.status)}${n.status === 'winner' && n.amount ? `<small class="sub">RM ${m2(n.amount)}${n.pay_month ? ` · ${rwMonth(n.pay_month)} payroll` : ''}</small>` : ''}</td>
+              <td class="nowrap">${live && A.can_edit ? `<button type="button" class="btn sm ghost" data-nrev="${esc(n.id)}" data-r="${esc(r.id)}">Review…</button> <button type="button" class="btn sm ghost" data-nwd="${esc(n.id)}">Withdraw…</button>` : ''}</td></tr>`).join('')
+              || '<tr><td colspan="7"><div class="empty small"><p>No nominations yet</p></div></td></tr>'}</tbody></table></div></div>`; }).join('') || '<div class="empty small"><p>No rounds</p></div>'}</section>
+        <section class="card"><div class="card-head"><h3>Awards</h3></div><div class="table-wrap"><table class="data compact"><thead><tr><th>Award</th><th>Cycle</th><th>Winners</th><th>Cash</th><th>Who</th><th>Criteria</th><th></th></tr></thead><tbody>
+          ${A.awards.map((a) => `<tr class="${a.active ? '' : 'muted'}"><td><b>${esc(a.name)}</b>${a.note ? `<small class="sub">${esc(a.note)}</small>` : ''}</td><td>${esc(RW_CYCLE[a.cycle] || a.cycle)}</td><td class="num">${a.max_winners}</td>
+            <td>${esc(rwCash(a.cash_type))}${a.amount ? ` · RM ${m2(a.amount)}` : a.cash_type !== 'NONE' ? ' · set when deciding' : ''}<small class="sub">${esc((a.prizes || []).join(', '))}</small></td>
+            <td class="small">${a.team ? 'Departments' : [a.allow_probation ? 'incl. probation' : 'confirmed', a.allow_part_time ? 'full & part time' : 'full time', a.self_nominate ? 'self-nomination' : '', a.peer_nominate ? 'colleagues nominate' : ''].filter(Boolean).join(' · ')}</td>
+            <td class="small"><ul>${(a.criteria || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></td><td>${A.can_boss ? `<button type="button" class="btn sm ghost" data-aed="${esc(a.code)}">Edit…</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>`;
+    };
+    const wire = (box, again) => {
+      const re = async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } again(); };
+      $('#rwaw-s', box)?.addEventListener('change', (e) => { f.st = e.target.value; again(); });
+      $('[data-ropen]', box)?.addEventListener('click', async () => {
+        const y = new Date().getFullYear(); const q = Math.floor(new Date().getMonth() / 3); const qs = new Date(y, q * 3 - 3, 1); const qe = new Date(y, q * 3, 0);
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const ok = await modal({ title: 'Open an award round', ok: 'Open', wide: true,
+          body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Award</span><select name="a">${A.awards.filter((a) => a.active).map((a) => `<option value="${a.code}" data-cycle="${a.cycle}">${esc(a.name)} (${esc(RW_CYCLE[a.cycle])})</option>`).join('')}</select></label>
+            <label class="fld"><span>Name of the round</span><input name="l" value="Q${q === 0 ? 4 : q} ${qs.getFullYear()}"></label><span></span>
+            <label class="fld"><span>Period from</span><input name="f" type="date" value="${iso(qs)}"></label><label class="fld"><span>to</span><input name="t" type="date" value="${iso(qe)}"></label>
+            <label class="fld"><span>Nominations until</span><input name="u" type="date" value="${iso(new Date(Date.now() + 14 * 86400000))}"></label>
+            <label class="fld fld-2"><span>Note (optional)</span><input name="n"></label></div>
+            <p class="small muted">Quarterly awards: January for Oct–Dec, April for Jan–Mar, July for Apr–Jun, October for Jul–Sep.</p>`,
+          onOk: (fm) => API.rpc('cms_rw_round_open', { p: { award: fm.a.value, label: fm.l.value, from: fm.f.value, to: fm.t.value, until: fm.u.value, note: fm.n.value } }) });
+        if (ok) { toast('Round opened: staff can nominate in My Rewards'); re(); }
+      });
+      $$('[data-rstat]', box).forEach((b) => b.addEventListener('click', async () => { try { await API.rpc('cms_rw_round_set', { p_id: b.dataset.rstat, p_status: b.dataset.v, p_note: '' }); toast('Saved'); re(); } catch (e) { toast(e.message, 'err'); } }));
+      $$('[data-rcancel]', box).forEach((b) => b.addEventListener('click', async () => { const v = await ask('Cancel the round', 'Reason', 'Cancel the round', true); if (v) { try { await API.rpc('cms_rw_round_set', { p_id: b.dataset.rcancel, p_status: 'cancelled', p_note: v }); toast('Cancelled'); re(); } catch (e) { toast(e.message, 'err'); } } }));
+      $$('[data-nadd]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = A.rounds.find((x) => x.id === b.dataset.nadd); const a = award(r.award_code);
+        let pp = []; if (!a.team) { try { pp = (await loadPeople()).filter((x) => !x.last_day || daysTo(x.last_day) >= 0); } catch (e) { /* none */ } }
+        const ok = await modal({ title: `Nominate · ${r.award} · ${r.label}`, ok: 'Nominate', wide: true,
+          body: `${a.team ? `<label class="fld"><span>Department</span><select name="d">${A.departments.map((d) => `<option>${esc(d)}</option>`).join('')}</select></label>`
+            : `<label class="fld"><span>Person</span><select name="p" required><option value="">Choose…</option>${pp.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</option>`).join('')}</select></label>`}
+            <label class="fld"><span>Why</span><textarea name="w" rows="3"></textarea></label><ul class="small">${(a.criteria || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`,
+          onOk: (fm) => API.rpc('cms_rw_nom_add', { p: { round_id: r.id, person_id: fm.p?.value || '', department: fm.d?.value || '', reason: fm.w.value } }) });
+        if (ok) { toast('Nominated'); re(); }
+      }));
+      $$('[data-lsadd]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = A.rounds.find((x) => x.id === b.dataset.lsadd); const have = new Set(r.noms.filter((n) => n.status !== 'withdrawn').map((n) => n.person_id));
+        const list = A.long_service.filter((x) => !have.has(x.person_id));
+        const ok = await modal({ title: 'Long Service · nominate', ok: 'Nominate the ticked', wide: true,
+          body: list.length ? list.map((x) => `<label class="chk"><input type="checkbox" name="ls" value="${esc(x.person_id)}" data-y="${x.years}" checked> <b>${esc(x.name)}</b> · ${x.years} years on ${dShort(x.on)} (since ${dShort(x.since)})</label>`).join('') : '<p class="muted">Everyone is already nominated.</p>',
+          onOk: async (fm) => { for (const c of $$('input[name=ls]:checked', fm)) await API.rpc('cms_rw_nom_add', { p: { round_id: r.id, person_id: c.value, reason: `${c.dataset.y} years of service with MyEden Group.` } }); } });
+        if (ok) { toast('Nominated'); re(); }
+      }));
+      $$('[data-nrev]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = A.rounds.find((x) => x.id === b.dataset.r); const n = r.noms.find((x) => x.id === b.dataset.nrev); const a = award(r.award_code); const ck = a.criteria || [];
+        const ok = await modal({ title: `Review · ${n.name || n.department}`, ok: 'Save review', wide: true,
+          body: `<p class="small"><b>Why:</b> ${esc(n.reason || '')}</p>${n.elig && !n.elig.ok ? `<div class="warn-box">${icon('clock')}<div>${esc(n.elig.reasons.join('; '))}</div></div>` : ''}
+            ${ck.map((c, i) => `<label class="chk"><input type="checkbox" name="c${i}" ${n.checks?.[c] ? 'checked' : ''}> ${esc(c)}</label>`).join('')}
+            <label class="fld"><span>Leader / HR comment</span><textarea name="m" rows="3">${esc(n.comment || '')}</textarea></label>`,
+          onOk: (fm) => API.rpc('cms_rw_nom_review', { p_id: n.id, p_checks: Object.fromEntries(ck.map((c, i) => [c, fm[`c${i}`].checked])), p_comment: fm.m.value }) });
+        if (ok) { toast('Reviewed'); re(); }
+      }));
+      $$('[data-nwd]', box).forEach((b) => b.addEventListener('click', async () => { const v = await ask('Withdraw the nomination', 'Reason', 'Withdraw', true); if (v) { try { await API.rpc('cms_rw_nom_withdraw', { p_id: b.dataset.nwd, p_reason: v }); toast('Withdrawn'); re(); } catch (e) { toast(e.message, 'err'); } } }));
+      $$('[data-rdecide]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = A.rounds.find((x) => x.id === b.dataset.rdecide); const a = award(r.award_code); const list = r.noms.filter((n) => ['nominated', 'reviewed'].includes(n.status));
+        let res = null;
+        const ok = await modal({ title: `Winners · ${r.award} · ${r.label}`, ok: 'Save the decision', wide: true,
+          body: `<p class="small">Up to <b>${a.max_winners}</b>. Leave everyone unticked if the standard was not met (then say why). ${a.cash_type === 'NONE' ? 'No cash for this award.' : `Cash is paid as <b>${esc(rwCash(a.cash_type))}</b> with the salary.`}</p>
+            <div class="table-wrap"><table class="data compact"><tbody>${list.map((n) => `<tr><td><label class="chk"><input type="checkbox" name="w" value="${esc(n.id)}"> <b>${esc(n.name || n.department)}</b></label>${n.elig && !n.elig.ok ? `<small class="sub">${esc(n.elig.reasons.join('; '))}</small>` : ''}</td>
+              <td>${n.checks ? `${Object.values(n.checks).filter(Boolean).length} / ${Object.keys(n.checks).length} criteria` : 'not reviewed'}</td>
+              <td>${a.cash_type !== 'NONE' && n.person_id ? `<input name="a_${esc(n.id)}" type="number" step="0.01" min="1" placeholder="RM" value="${a.amount ?? ''}" style="width:90px">` : ''}</td></tr>`).join('') || '<tr><td>No nominations</td></tr>'}</tbody></table></div>
+            <label class="fld"><span>Note (required if no winner)</span><textarea name="n" rows="2"></textarea></label>`,
+          onOk: async (fm) => { const w = $$('input[name=w]:checked', fm).map((c) => { const n = list.find((x) => x.id === c.value); return { id: c.value, amount: fm[`a_${c.value}`]?.value || '', note: r.award_code === 'LONG_SERVICE' ? (/10 years/.test(n.reason) ? '10 years' : '6 years') : '' }; });
+            if (w.length > a.max_winners) throw new Error(`At most ${a.max_winners} winner(s).`);
+            if (!w.length && fm.n.value.trim().length < 3) throw new Error('No winner ticked: say why in the note (e.g. the standard was not met).');
+            res = await API.rpc('cms_rw_round_decide', { p_id: r.id, p_winners: w, p_note: fm.n.value }); } });
+        if (ok) { toast(`${res.winners} winner${res.winners === 1 ? '' : 's'}${res.paid ? ` · ${res.paid} paid with the salary` : ''}`); re(); }
+      }));
+      $$('[data-rcert]', box).forEach((b) => b.addEventListener('click', () => { const r = A.rounds.find((x) => x.id === b.dataset.rcert); docOverlay(`${r.award} ${r.label}`, r.noms.filter((n) => n.status === 'winner').map((n) => rwAwardCert(r.award, r, n))); }));
+      $$('[data-aed]', box).forEach((b) => b.addEventListener('click', async () => {
+        const a = award(b.dataset.aed);
+        const ok = await modal({ title: `Award · ${a.name}`, ok: 'Save', wide: true,
+          body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Name</span><input name="nm" value="${esc(a.name)}"></label>
+            <label class="fld"><span>Winners at most</span><input name="mx" type="number" min="1" max="100" value="${a.max_winners}"></label>
+            <label class="fld"><span>Cash paid as</span><select name="ct">${['BONUS', 'INCENTIVE', 'NONE'].map((c) => `<option value="${c}" ${a.cash_type === c ? 'selected' : ''}>${rwCash(c)}</option>`).join('')}</select></label>
+            <label class="fld"><span>Default amount (RM, blank = set when deciding)</span><input name="am" type="number" step="0.01" min="1" value="${a.amount ?? ''}"></label><span></span>
+            <label class="fld fld-2"><span>Criteria (one per line)</span><textarea name="cr" rows="5">${esc((a.criteria || []).join('\n'))}</textarea></label>
+            <label class="fld fld-2"><span>Prizes (one per line: certificate, trophy, PIN, Facebook post…)</span><textarea name="pz" rows="3">${esc((a.prizes || []).join('\n'))}</textarea></label>
+            <label class="chk"><input type="checkbox" name="ap" ${a.allow_probation ? 'checked' : ''}> Staff on probation may take part</label><label class="chk"><input type="checkbox" name="pt" ${a.allow_part_time ? 'checked' : ''}> Part-time staff may take part</label>
+            <label class="chk"><input type="checkbox" name="sn" ${a.self_nominate ? 'checked' : ''}> Self-nomination</label><label class="chk"><input type="checkbox" name="pn" ${a.peer_nominate ? 'checked' : ''}> Colleagues may nominate</label>
+            <label class="chk"><input type="checkbox" name="ac" ${a.active ? 'checked' : ''}> In use</label><span></span>
+            <label class="fld fld-2"><span>Note</span><textarea name="no" rows="2">${esc(a.note || '')}</textarea></label></div>`,
+          onOk: (fm) => API.rpc('cms_rw_award_save', { p: { code: a.code, name: fm.nm.value, max_winners: Number(fm.mx.value), cash_type: fm.ct.value, amount: fm.am.value,
+            criteria: fm.cr.value.split('\n').map((x) => x.trim()).filter(Boolean), prizes: fm.pz.value.split('\n').map((x) => x.trim()).filter(Boolean),
+            allow_probation: fm.ap.checked, allow_part_time: fm.pt.checked, self_nominate: fm.sn.checked, peer_nominate: fm.pn.checked, active: fm.ac.checked, note: fm.no.value } }) });
+        if (ok) { toast('Saved'); re(); }
+      }));
+    };
+    return { load, html, wire, get data() { return A; } };
+  }
+
+  // ---------------------------------------------------------------- Reward System summary report (permission "rewards.report")
+  async function rewardsSummaryPage(item, el) {
+    const today = new Date(); const y = today.getFullYear();
+    const f = { from: `${y}-01`, to: `${y}-12`, co: '' };
+    el.innerHTML = `${pageHead(item)}<section class="card"><div class="toolbar">
+        <label class="fld inline"><span>From</span><input type="month" id="rs-f" value="${f.from}"></label><label class="fld inline"><span>to</span><input type="month" id="rs-t" value="${f.to}"></label>
+        <select id="rs-c"><option value="">All companies</option>${(window.CMS_COMPANIES || []).map((c) => `<option value="${c.code}">${esc(c.short)}</option>`).join('')}</select>
+        <button type="button" class="btn sm primary" id="rs-go">Show</button><button type="button" class="btn sm ghost" id="rs-csv">${icon('download')}CSV</button><button type="button" class="btn sm ghost" id="rs-print">${icon('download')}Print / PDF</button>
+        ${can('rewards') ? '<a class="btn sm ghost" href="#/rewards">Reward System ›</a>' : ''}</div></section><div id="rs-body">${loading()}</div>`;
+    let R = null;
+    const rm = (v) => (v == null ? '—' : `RM ${m2(v)}`);
+    const tbl = (head, rows, empty = 'None') => `<div class="table-wrap"><table class="data compact"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${head.length}"><div class="empty small"><p>${empty}</p></div></td></tr>`}</tbody></table></div>`;
+    const body = () => {
+      const P = R.paid; const tot = P.by_kind.reduce((s, k) => s + Number(k.amount || 0), 0); const cnt = P.by_kind.reduce((s, k) => s + k.count, 0);
+      const months = [...new Set(P.by_month.map((x) => x.month))]; const kinds = [...new Set(P.by_month.map((x) => x.kind))];
+      const C = R.cert; const per = Object.fromEntries((C.periods || []).map((x) => [x.status, x.count]));
+      const kpi = (l, v, s = '') => `<div class="rs-kpi"><span>${esc(l)}</span><b>${v}</b>${s ? `<small>${s}</small>` : ''}</div>`;
+      return `${R.money ? '' : '<div class="warn-box">Amounts are hidden: your role cannot see salaries.</div>'}
+        <section class="card"><div class="card-head"><h3>Paid with the salary · ${rwMonth(R.from)} – ${rwMonth(R.to)}${R.company ? ` · ${esc(R.company)}` : ''}</h3></div>
+          <div class="rs-kpis">${kpi('Total', R.money ? rm(tot) : num(cnt), R.money ? `${num(cnt)} payments` : 'payments')}${P.by_kind.map((k) => kpi(k.kind, R.money ? rm(k.amount) : num(k.count), R.money ? `${num(k.count)} payments` : '')).join('')}</div>
+          ${months.length ? tbl(['Payroll month', ...kinds, 'Total'], months.map((m) => { const row = P.by_month.filter((x) => x.month === m); const g = (k) => row.find((x) => x.kind === k);
+            return [rwMonth(m), ...kinds.map((k) => (g(k) ? (R.money ? rm(g(k).amount) : num(g(k).count)) : '—')), R.money ? `<b>${rm(row.reduce((s, x) => s + Number(x.amount || 0), 0))}</b>` : num(row.reduce((s, x) => s + x.count, 0))]; })) : ''}
+          ${P.by_company.length > 1 ? `<h4 class="sec-h">By company</h4>${tbl(['Company', 'Payments', 'Amount'], P.by_company.map((c) => [esc(c.company), num(c.count), rm(c.amount)]))}` : ''}
+          <h4 class="sec-h">By person</h4>${tbl(['Person', 'Company', 'Certification', 'Full Attendance', 'Referral', 'Awards', 'Total'], P.people.map((p) => [`<b>${esc(p.name)}</b><small class="sub">${esc(p.employee_id || '')}${p.dept ? ` · ${esc(p.dept)}` : ''}</small>`, esc(p.company || ''), rm(p.cert), rm(p.att), rm(p.ref), rm(p.award), `<b>${R.money ? rm(p.total) : `${num(p.items)} payments`}</b>`]), 'Nothing paid in this period')}</section>
+        <section class="card"><div class="card-head"><h3>Coming up</h3></div>
+          <div class="rs-kpis">${kpi('Assessment periods open', num(R.coming.periods_open), R.money && R.coming.periods_open_amount ? `up to ${rm(R.coming.periods_open_amount)}` : '')}${kpi('Referral payments due in 3 months', num(R.coming.referrals.length))}</div>
+          ${R.coming.referrals.length ? tbl(['Referrer', 'New hire', 'Milestone', 'Due', 'Status', 'Amount'], R.coming.referrals.map((x) => [esc(x.referrer), esc(x.new_hire), `month ${x.milestone}`, dShort(x.due_on), rwTag(RW_PAY, x.status), rm(x.amount)])) : ''}</section>
+        <section class="card"><div class="card-head"><h3>Certification allowance &amp; assessments</h3></div>
+          <div class="rs-kpis">${kpi('Assessments taken', num(C.assessments), `${num(C.passed)} passed`)}${kpi('Pass at first try', C.first_try != null ? `${C.first_try}%` : '—', C.avg_tries != null ? `${C.avg_tries} tries on average to pass` : '')}
+            ${kpi('Periods', num(per.passed || 0) + ' passed', `${num(per.exempt || 0)} skipped (surprise) · ${num(per.lost || 0)} not passed`)}${kpi('Practice attempts', num(C.practice))}
+            ${kpi('Practical checks overdue', num(C.practical_overdue))}${kpi('Eligibility reviews due (60 days)', num(C.reviews_due))}</div>
+          ${tbl(['Certificate', 'Status', 'People'], C.enrolled.map((x) => [esc(x.type), rwEnrTag(x.status), num(x.count)]), 'No one enrolled')}
+          <h4 class="sec-h">Mastery of the question bank</h4>${tbl(['Person', 'Mastery'], C.mastery.slice(0, 30).map((x) => [esc(x.name), `${rwBar(x.mastery)}<small class="sub">${x.mastery.pct != null ? `${x.mastery.pct}%` : `${num(x.mastery.answered)} / ${num(x.mastery.total)} answered`}</small>`]), 'No attempts yet')}
+          <h4 class="sec-h">Hardest questions (at least 5 answers)</h4>${tbl(['Category', 'Question', 'Answered', 'Right'], C.hardest.map((x) => [esc(x.category), esc(x.q), num(x.answered), `${x.right_pct}%`]), 'Not enough answers yet')}</section>
+        <section class="card"><div class="card-head"><h3>Full Attendance</h3></div>
+          <div class="rs-kpis">${(R.att.by_status || []).map((x) => kpi((RW_ATT[x.status] || ['', x.status])[1], num(x.count))).join('') || kpi('Applications', '0')}</div>
+          ${tbl(['Person', 'Months', 'Amount'], R.att.qualified.map((x) => [esc(x.name), esc(x.months), rm(x.amount)]), 'No one approved in this period')}</section>
+        <section class="card"><div class="card-head"><h3>Referrals</h3></div>
+          <div class="rs-kpis">${kpi('Referrals made', num(R.ref.made))}${kpi('Hired', num(R.ref.hired))}${(R.ref.payments || []).map((x) => kpi(`Milestones ${(RW_PAY[x.status] || ['', x.status])[1].toLowerCase()}`, num(x.count), R.money ? rm(x.amount) : '')).join('')}</div>
+          ${tbl(['Referrer', 'Referrals', 'Hired'], R.ref.top.map((x) => [esc(x.name), num(x.referrals), num(x.hired)]), 'No referrals yet')}</section>
+        <section class="card"><div class="card-head"><h3>Awards</h3></div>${tbl(['Award', 'Round', 'Status', 'Nominations', 'Winners'], R.awards.map((x) => [esc(x.award), esc(x.round), rwTag(RW_ROUND, x.status), num(x.nominations), esc((x.winners || []).join(', ') || '—')]), 'No award rounds in this period')}</section>
+        <section class="card"><div class="card-head"><h3>Waiting</h3></div>${tbl(['What', 'Who', 'Since', 'Days'], R.waiting.map((x) => [esc(x.what), esc(x.who || ''), dShort(x.since), `<span class="tag ${x.days > 14 ? 'bad' : x.days > 7 ? 'warn' : ''} xs">${num(x.days)}</span>`]), 'Nothing waiting')}</section>`;
+    };
+    const run = async () => {
+      f.from = $('#rs-f', el).value || f.from; f.to = $('#rs-t', el).value || f.to; f.co = $('#rs-c', el).value;
+      $('#rs-body', el).innerHTML = loading();
+      try { R = await API.rpc('cms_rw_report', { p_from: `${f.from}-01`, p_to: `${f.to}-01`, p_company: f.co || null }); $('#rs-body', el).innerHTML = body(); }
+      catch (e) { $('#rs-body', el).innerHTML = errorCard(e.message); wireRetry(el); }
+    };
+    $('#rs-go', el).addEventListener('click', run);
+    $('#rs-print', el).addEventListener('click', () => { if (R) docOverlay(`Reward System summary ${f.from} to ${f.to}`, [`<div class="sheet rs-sheet"><h2>Reward System summary · ${rwMonth(R.from)} – ${rwMonth(R.to)}${R.company ? ` · ${esc(R.company)}` : ''}</h2>${body()}</div>`]); });
+    $('#rs-csv', el).addEventListener('click', () => {
+      if (!R) return; const rows = [['Person', 'Employee ID', 'Company', 'Department', 'Certification allowance', 'Full Attendance', 'Referral', 'Awards', 'Total', 'Payments']];
+      R.paid.people.forEach((p) => rows.push([p.name, p.employee_id || '', p.company || '', p.dept || '', p.cert ?? '', p.att ?? '', p.ref ?? '', p.award ?? '', p.total ?? '', p.items]));
+      rows.push([]); rows.push(['Payroll month', 'Type', 'Payments', 'Amount']); R.paid.by_month.forEach((x) => rows.push([x.month, x.kind, x.count, x.amount ?? '']));
+      const blob = new Blob([csvText(rows)], { type: 'text/csv;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `reward-summary-${f.from}-to-${f.to}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+    run();
+  }
+
   async function rewardsPage(item, el) {
     const params = new URLSearchParams((location.hash.split('?')[1]) || '');
     let tab = params.get('tab') || 'overview';
     el.innerHTML = `${pageHead(item)}<div class="tabs" role="tablist" id="rw-tabs"></div><div id="rw-a">${loading()}</div>`;
-    let D, Q = null, P = null; const INC = rwIncTabs({ el });
-    const load = async () => { D = await API.rpc('cms_rw_admin'); await INC.load(); };
+    let D, Q = null, P = null; const INC = rwIncTabs({ el }); const AW = rwAwardsTab({ el });
+    const load = async () => { D = await API.rpc('cms_rw_admin'); await INC.load(); await AW.load(); };
     try { await load(); } catch (e) { $('#rw-a', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const box = () => $('#rw-a', el);
     const reload = async () => { const y = pageScroller().scrollTop; try { await load(); if (tab === 'questions') Q = await API.rpc('cms_rw_questions'); loadRwPending(); loadRwIncPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
@@ -6831,7 +7031,7 @@
     const cats = () => D.categories;
     const pend = D.enrolments.filter((e) => e.status === 'pending_approval').length + D.changes.filter((c) => c.status === 'pending').length;
     const incN = (k, st) => INC.data[k].filter((x) => st.includes(x.status)).length;
-    const TABS = [['overview', `To do${pend + D.eligible.length ? ` (${pend + D.eligible.length})` : ''}`], ['attendance', `Full attendance${incN('att', ['submitted', 'checked']) ? ` (${incN('att', ['submitted', 'checked'])})` : ''}`], ['referrals', `Referrals${incN('ref', ['submitted', 'linked']) ? ` (${incN('ref', ['submitted', 'linked'])})` : ''}`], ['staff', 'Enrolled staff'], ['questions', 'Question bank'], ['practicals', 'Practical checks'], ['surprises', 'Surprises'], ['results', 'Results'], ['settings', 'Settings']];
+    const TABS = [['overview', `To do${pend + D.eligible.length ? ` (${pend + D.eligible.length})` : ''}`], ['attendance', `Full attendance${incN('att', ['submitted', 'checked']) ? ` (${incN('att', ['submitted', 'checked'])})` : ''}`], ['referrals', `Referrals${incN('ref', ['submitted', 'linked']) ? ` (${incN('ref', ['submitted', 'linked'])})` : ''}`], ['awards', `Awards${AW.data.rounds.filter((r) => ['open', 'review'].includes(r.status)).length ? ` (${AW.data.rounds.filter((r) => ['open', 'review'].includes(r.status)).length})` : ''}`], ['staff', 'Enrolled staff'], ['questions', 'Question bank'], ['practicals', 'Practical checks'], ['surprises', 'Surprises'], ['results', 'Results'], ['settings', 'Settings']];
     const drawTabs = () => {
       $('#rw-tabs', el).innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${esc(l)}</button>`).join('');
       $$('#rw-tabs [data-tab]', el).forEach((b) => b.addEventListener('click', async () => { tab = b.dataset.tab; history.replaceState(null, '', `#/rewards?tab=${tab}`); if (tab === 'questions' && !Q) { box().innerHTML = loading(); try { Q = await API.rpc('cms_rw_questions'); } catch (e) { toast(e.message, 'err'); } } draw(); }));
@@ -6942,12 +7142,12 @@
 
     const draw = () => {
       drawTabs();
-      box().innerHTML = ({ overview: tabOverview, attendance: INC.att, referrals: INC.refs, staff: tabStaff, questions: tabQuestions, practicals: tabPracticals, surprises: tabSurprises, results: tabResults, settings: () => tabSettings() + INC.settings() })[tab]();
+      box().innerHTML = ({ overview: tabOverview, attendance: INC.att, referrals: INC.refs, awards: AW.html, staff: tabStaff, questions: tabQuestions, practicals: tabPracticals, surprises: tabSurprises, results: tabResults, settings: () => tabSettings() + INC.settings() })[tab]();
       wire();
     };
     const keepFocus = (id) => { const i = $(id, el); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
     function wire() {
-      INC.wire(box(), draw);
+      INC.wire(box(), draw); AW.wire(box(), draw);
       $('#rw-q', el)?.addEventListener('input', (e) => { f.q = e.target.value; draw(); keepFocus('#rw-q'); });
       $('#rw-st', el)?.addEventListener('change', (e) => { f.st = e.target.value; draw(); });
       $('#rw-qq', el)?.addEventListener('input', (e) => { f.qq = e.target.value; draw(); keepFocus('#rw-qq'); });
@@ -10131,7 +10331,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, 'me/rewards': meRewardsPage, rewards: rewardsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, 'me/rewards': meRewardsPage, rewards: rewardsPage, 'rewards/summary': rewardsSummaryPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

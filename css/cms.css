@@ -1498,3 +1498,16 @@ code.brk { word-break: break-all; }
 .rw-m { display: inline-flex; gap: 5px; align-items: center; padding: 3px 8px; border-radius: 8px; font-size: 12px; border: 1px solid var(--line); background: var(--soft); white-space: nowrap; }
 .rw-m.ok b { color: #1f8a2e; } .rw-m.bad { border-color: rgba(229,72,110,.45); background: rgba(229,72,110,.07); } .rw-m.bad b { color: var(--rose); }
 .rw-pays { display: grid; gap: 3px; margin-top: 4px; font-size: 12.5px; } .rw-pays small { color: var(--mute); }
+.rw-round { border: 1px solid var(--line); border-radius: 12px; padding: 4px 12px 10px; margin: 0 0 12px; }
+.rw-round .card-head { flex-wrap: wrap; gap: 8px; }
+td.wrap { white-space: normal; min-width: 200px; max-width: 360px; }
+.rs-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 4px 0 12px; }
+.rs-kpi { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--soft); }
+.rs-kpi span { display: block; font-size: 12px; color: var(--mute); } .rs-kpi b { display: block; font-size: 19px; margin-top: 2px; } .rs-kpi small { display: block; font-size: 11.5px; color: var(--mute); }
+.sheet.rs-sheet { display: block; font-size: 9pt; } .sheet.rs-sheet .card { box-shadow: none; border: 1px solid #ddd; margin: 0 0 4mm; padding: 3mm; break-inside: avoid; } .sheet.rs-sheet .btn { display: none; }
+.sheet.rw-cert { display: flex; align-items: center; justify-content: center; padding: 14mm; }
+.rw-cert-in { width: 100%; min-height: 260mm; border: 3px double #b8860b; border-radius: 4mm; padding: 16mm 12mm; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3mm; }
+.rw-cert-in img { max-height: 26mm; max-width: 50mm; } .rw-cert-in .rw-cert-co { font-size: 12pt; color: #1c3d6e; font-weight: 700; margin: 0; }
+.rw-cert-in .rw-cert-t { font-size: 26pt; font-weight: 800; color: #b8860b; margin: 8mm 0 4mm; letter-spacing: .02em; } .rw-cert-in .rw-cert-n { font-size: 24pt; font-weight: 800; color: #1c3d6e; margin: 2mm 0; }
+.rw-cert-in .rw-cert-a { font-size: 18pt; font-weight: 700; margin: 0; } .rw-cert-in p { margin: 0; font-size: 12pt; }
+.rw-cert-s { display: flex; justify-content: space-around; width: 100%; margin-top: auto; padding-top: 20mm; font-size: 10pt; } .rw-cert-s span { display: block; width: 55mm; border-top: 1px solid #333; margin-bottom: 1mm; }
