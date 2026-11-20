@@ -32,6 +32,7 @@ window.CMS_MENU = [
     { route: 'me/assess', label: 'My Assessments', icon: 'check-circle', phase: 5, live: true, self: 'certs', desc: 'Certification allowance: your eligibility letter, assessments (English, 中文, Bahasa Melayu), practice, mastery and surprises.' },
     { route: 'me/rewards', label: 'My Rewards', icon: 'sparkle', phase: 5, live: true, self: 'claims', desc: 'Full Attendance reward (apply for 3 clean months in a row), referral incentives, and nominations for the awards; your awards.' },
     { route: 'me/items', label: 'My Items', icon: 'box', phase: 4, live: true, self: 'items', desc: 'Company items issued to you: confirm what you received, and hand them over when you leave.' },
+    { route: 'me/guide', label: 'Staff Guide', icon: 'help', phase: 4, live: true, self: '*', desc: 'How to use your self-service pages: profile, payslips, leave, claims, certificates, assessments, rewards and more. English, 中文, Bahasa Melayu.' },
   ] },
   { section: 'Workspace', items: [
     { route: 'dashboard', label: 'Dashboard', icon: 'home', phase: 0, desc: 'Today across MyEden Group: people, positions, applications, approvals and your tasks.' },
@@ -128,6 +129,7 @@ window.CMS_MENU = [
     { route: 'admin/audit', label: 'Audit Log', icon: 'list', phase: 0, desc: 'Every change, who made it and when.' },
     { route: 'admin/sync', label: 'Sync Check', icon: 'check-circle', phase: 0, live: true, desc: 'Forms and MEG-EAF V2 running side by side with the CMS: what to look at, and how long each has been clean. Super Admin only.' },
     { route: 'admin/export', label: 'Export All Data', icon: 'download', phase: 0, desc: 'Your own backup copy of every table (the free plan has no automatic backups).' },
+    { route: 'manual', label: 'User Manual', icon: 'help', phase: 0, live: true, desc: 'How to use every part of the CMS, chapter by chapter, with pictures. English, 中文, Bahasa Melayu. Print, PDF or the Word file. HR and above; Admin can give access to others.' },
   ] },
 ];
 

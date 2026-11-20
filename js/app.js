@@ -362,7 +362,7 @@
     const live = item.phase === 0 || item.live;
     const home = homeRoute();
     return `<div class="crumbs"><a href="#/${home}">${esc(PAGES.get(home).label)}</a>${item.group ? ` / <span>${esc(item.group)}</span>` : ''} / <span>${esc(item.label)}</span></div>
-      <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.source ? `<span class="tag src">${icon('plug')}${live ? 'Data from' : 'Now in'} ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
+      <div class="page-head"><div><h1>${esc(item.label)}</h1><p>${esc(item.desc || '')}</p></div><div class="ph-tags">${extra}${item.route !== 'manual' && item.route !== 'me/guide' ? (/^me(\/|$)/.test(item.route) && hasSelf() ? `<a class="tag help-link" href="#/me/guide?s=r-${esc(item.route.replace(/\//g, '-'))}" title="Staff Guide">? Guide</a>` : can('manual') ? `<a class="tag help-link" href="#/manual?s=r-${esc(item.route.replace(/\//g, '-'))}" title="User Manual">? Manual</a>` : '') : ''}${item.source ? `<span class="tag src">${icon('plug')}${live ? 'Data from' : 'Now in'} ${esc(item.source)}</span>` : ''}${live ? '<span class="tag live">Live</span>' : phaseTag(item.phase)}</div></div>`;
   }
   function wireRetry(el) { $$('[data-retry]', el).forEach((b) => b.addEventListener('click', render)); }
 
@@ -7285,6 +7285,85 @@
     draw();
   }
 
+  // ================================================================ USER MANUAL (HR and above) and STAFF GUIDE (self-service)
+  // The manuals live in the database and the private "cms-manual" storage bucket (never in this public code). Sections:
+  // [{ id, title, level (1 chapter, 2 topic), html }]; pictures are <img data-src="<audience>/img/<file>"> and get a short signed link.
+  const MAN_LANGS = [['en', 'English'], ['zh', '中文'], ['ms', 'Bahasa Melayu']];
+  const manLang = () => { try { return localStorage.getItem('cms.manLang') || 'en'; } catch (e) { return 'en'; } };
+  const manSetLang = (l) => { try { localStorage.setItem('cms.manLang', l); } catch (e) { /* no storage */ } };
+  const manText = (h) => { const d = document.createElement('div'); d.innerHTML = h; return (d.textContent || '').replace(/\s+/g, ' '); };
+  async function manPictures(root) {
+    const imgs = $$('img[data-src]', root); if (!imgs.length) return;
+    const paths = [...new Set(imgs.map((i) => i.dataset.src))];
+    try {
+      const { data, error } = await API.sb().storage.from('cms-manual').createSignedUrls(paths, 3600); if (error) throw error;
+      const m = new Map((data || []).map((x) => [x.path, x.signedUrl]));
+      imgs.forEach((i) => { const u = m.get(i.dataset.src); if (u) { i.src = u; i.loading = 'lazy'; } else i.replaceWith(Object.assign(document.createElement('span'), { className: 'muted small', textContent: '(picture not uploaded)' })); });
+    } catch (e) { /* pictures are optional */ }
+  }
+  async function manualPage(item, el, audience = 'hr') {
+    const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+    let aud = params.get('m') === 'staff' ? 'staff' : audience; let lang = manLang(); let q = ''; let L = null; let D = null;
+    el.innerHTML = `${pageHead(item)}<div id="man-body">${loading()}</div>`;
+    const body = () => $('#man-body', el);
+    const load = async () => { L = await API.rpc('cms_manual_list'); D = await API.rpc('cms_manual_get', { p_audience: aud, p_lang: lang }); };
+    try { await load(); } catch (e) { body().innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const goTo = (id) => { const t = id && $(`#man-${CSS.escape(id)}`, el); if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'start' }); t.classList.add('man-hit'); setTimeout(() => t.classList.remove('man-hit'), 1600); } };
+    const draw = () => {
+      const langs = MAN_LANGS.filter(([k]) => L.docs.some((d) => d.audience === aud && d.lang === k));
+      const S = D ? D.sections : []; const t = q.trim().toLowerCase();
+      const hits = t ? S.filter((s) => s.title.toLowerCase().includes(t) || manText(s.html).toLowerCase().includes(t)) : S;
+      body().innerHTML = `<section class="card man-bar"><div class="toolbar">
+          ${audience === 'hr' && L.staff ? `<div class="man-seg"><button type="button" class="btn sm ${aud === 'hr' ? 'primary' : 'ghost'}" data-aud="hr">User Manual</button><button type="button" class="btn sm ${aud === 'staff' ? 'primary' : 'ghost'}" data-aud="staff">Staff Guide</button></div>` : ''}
+          <select id="man-lang" aria-label="Language">${(langs.length ? langs : MAN_LANGS.slice(0, 1)).map(([k, l]) => `<option value="${k}" ${D && D.lang === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <label class="search-in">${icon('search')}<input id="man-q" type="search" placeholder="Search the manual" value="${esc(q)}"></label>
+          ${D ? `<button type="button" class="btn sm ghost" id="man-print">${icon('download')}Print / PDF</button>${D.word_path ? `<button type="button" class="btn sm ghost" id="man-word">${icon('download')}Word file</button>` : ''}` : ''}
+          ${L.can_edit ? '<button type="button" class="btn sm ghost" id="man-up">Upload a new edition…</button>' : ''}</div>
+          ${D ? `<p class="small muted">${esc(D.title)} · ${esc(D.version)} · updated ${dShort(D.uploaded_at)}${t ? ` · ${hits.length} section${hits.length === 1 ? '' : 's'} found` : ''}</p>` : ''}</section>
+        ${!D ? `<div class="empty"><p>The ${aud === 'hr' ? 'User Manual' : 'Staff Guide'} has not been uploaded yet.</p></div>` : `<div class="man-wrap">
+          <nav class="man-toc card" aria-label="Contents">${S.map((s) => `<a href="#" data-go="${esc(s.id)}" class="l${s.level || 1} ${t && !hits.includes(s) ? 'dim' : ''}">${esc(s.title)}</a>`).join('')}</nav>
+          <article class="man-doc card">${hits.map((s) => `<section id="man-${esc(s.id)}" class="man-sec l${s.level || 1}">${(s.level || 1) === 1 ? `<h2>${esc(s.title)}</h2>` : `<h3>${esc(s.title)}</h3>`}${s.html}</section>`).join('') || '<div class="empty small"><p>Nothing found</p></div>'}</article></div>`}`;
+      $$('[data-aud]', el).forEach((b) => b.addEventListener('click', async () => { aud = b.dataset.aud; try { D = await API.rpc('cms_manual_get', { p_audience: aud, p_lang: lang }); } catch (e) { toast(e.message, 'err'); } draw(); }));
+      $('#man-lang', el)?.addEventListener('change', async (e) => { lang = e.target.value; manSetLang(lang); try { D = await API.rpc('cms_manual_get', { p_audience: aud, p_lang: lang }); } catch (x) { toast(x.message, 'err'); } draw(); });
+      $('#man-q', el)?.addEventListener('input', (e) => { q = e.target.value; draw(); const i = $('#man-q', el); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
+      $$('[data-go]', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); goTo(a.dataset.go); }));
+      $('#man-print', el)?.addEventListener('click', async () => {
+        docOverlay(D.title, [`<div class="sheet man-print"><h1>${esc(D.title)}</h1><p class="muted">${esc(D.version)}</p>${S.map((s) => `${(s.level || 1) === 1 ? `<h2>${esc(s.title)}</h2>` : `<h3>${esc(s.title)}</h3>`}${s.html}`).join('')}</div>`]);
+        manPictures($('.doc-ov'));
+      });
+      $('#man-word', el)?.addEventListener('click', async () => {
+        try { const { data, error } = await API.sb().storage.from('cms-manual').createSignedUrl(D.word_path, 300, { download: true }); if (error) throw error; window.open(data.signedUrl, '_blank', 'noopener'); } catch (e) { toast(API.friendly ? API.friendly(e) : e.message, 'err'); }
+      });
+      $('#man-up', el)?.addEventListener('click', () => manUpload(async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); }));
+      if (D) manPictures($('.man-doc', el));
+      const s = params.get('s'); if (s && D) { params.delete('s'); setTimeout(() => goTo(s), 200); }
+    };
+    draw();
+  }
+  // a new edition: choose the files of the manual package (manual-<audience>-<lang>.json, the pictures, the Word files)
+  async function manUpload(done) {
+    let files = [];
+    const ok = await modal({ title: 'Upload a new edition of the manuals', ok: 'Upload', wide: true,
+      body: `<p class="small">Choose all the files of the manual package (or the whole folder): <code>manual-hr-en.json</code> and the other languages, the pictures and the Word files. Each manual and language is replaced; pictures with the same name are replaced.</p>
+        <label class="fld"><span>Files</span><input type="file" name="f" multiple></label><label class="fld"><span>…or a folder</span><input type="file" name="d" webkitdirectory multiple></label><p class="small" id="man-up-info"></p>`,
+      onOpen: (w) => { $$('input[type=file]', w).forEach((i) => i.addEventListener('change', (e) => { files = [...e.target.files]; const n = files.filter((x) => /^manual-(hr|staff)-(en|zh|ms)\.json$/.test(x.name)).length; $('#man-up-info', w).textContent = `${files.length} files · ${n} manual${n === 1 ? '' : 's'}`; })); },
+      onOk: async (fm) => {
+        const docs = files.filter((x) => /^manual-(hr|staff)-(en|zh|ms)\.json$/.test(x.name)); if (!docs.length) throw new Error('No manual file (manual-hr-en.json …) among the files chosen.');
+        const byName = new Map(files.map((x) => [x.name, x])); const st = $('#man-up-info', fm); const sb = API.sb().storage.from('cms-manual'); const sent = new Set();
+        const put = async (path, file, type) => { if (sent.has(path)) return; const { error } = await sb.upload(path, file, { upsert: true, contentType: type || file.type || 'application/octet-stream' }); if (error) throw new Error(`${file.name}: ${error.message}`); sent.add(path); };
+        for (const f of docs) {
+          const d = JSON.parse(await f.text()); const aud = d.audience;
+          for (const im of d.images || []) { const fl = byName.get(im); if (!fl) throw new Error(`Picture missing from the files chosen: ${im}`); st.textContent = `Uploading ${im}…`; await put(`${aud}/img/${im}`, fl); }
+          let wp = '';
+          if (d.word && byName.get(d.word)) { st.textContent = `Uploading ${d.word}…`; wp = `${aud}/${d.lang}/${d.word}`; await put(wp, byName.get(d.word), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'); }
+          st.textContent = `Saving ${d.title} (${d.lang})…`;
+          await API.rpc('cms_manual_save', { p: { audience: aud, lang: d.lang, version: d.version, title: d.title, sections: d.sections, word_path: wp } });
+        }
+      } });
+    if (ok) { toast('New edition uploaded'); done(); }
+  }
+  const meGuidePage = (item, el) => manualPage(item, el, 'staff');
+
   // ================================================================ 5d · EMPLOYEE DOCUMENTS, HR LETTERS
   const DOC_TYPES = [['contract', 'Employment contract / LOEC'], ['ic', 'IC / passport copy'], ['certificate', 'Certificate / qualification'], ['letter', 'HR letter (signed copy)'],
     ['bank', 'Bank details'], ['medical', 'Medical'], ['resignation', 'Resignation letter'], ['other', 'Other']];
@@ -10331,7 +10410,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, 'me/rewards': meRewardsPage, rewards: rewardsPage, 'rewards/summary': rewardsSummaryPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, 'me/rewards': meRewardsPage, rewards: rewardsPage, 'rewards/summary': rewardsSummaryPage, manual: manualPage, 'me/guide': meGuidePage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 

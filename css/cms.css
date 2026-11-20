@@ -1511,3 +1511,21 @@ td.wrap { white-space: normal; min-width: 200px; max-width: 360px; }
 .rw-cert-in .rw-cert-t { font-size: 26pt; font-weight: 800; color: #b8860b; margin: 8mm 0 4mm; letter-spacing: .02em; } .rw-cert-in .rw-cert-n { font-size: 24pt; font-weight: 800; color: #1c3d6e; margin: 2mm 0; }
 .rw-cert-in .rw-cert-a { font-size: 18pt; font-weight: 700; margin: 0; } .rw-cert-in p { margin: 0; font-size: 12pt; }
 .rw-cert-s { display: flex; justify-content: space-around; width: 100%; margin-top: auto; padding-top: 20mm; font-size: 10pt; } .rw-cert-s span { display: block; width: 55mm; border-top: 1px solid #333; margin-bottom: 1mm; }
+
+/* User Manual & Staff Guide (v2026.11.20) */
+.man-seg { display: inline-flex; gap: 4px; }
+.man-wrap { display: grid; grid-template-columns: 260px 1fr; gap: 14px; align-items: start; }
+.man-toc { position: sticky; top: 76px; max-height: calc(100vh - 100px); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.man-toc a { color: var(--ink); text-decoration: none; padding: 4px 8px; border-radius: 7px; } .man-toc a:hover { background: var(--soft); }
+.man-toc a.l1 { font-weight: 800; margin-top: 8px; } .man-toc a.l2 { padding-left: 18px; color: var(--mute); } .man-toc a.dim { opacity: .35; }
+.man-doc { padding: 18px 24px; line-height: 1.6; font-size: 14.5px; min-width: 0; }
+.man-doc h2 { font-size: 22px; margin: 26px 0 8px; padding-top: 10px; border-top: 2px solid var(--line); } .man-doc .man-sec:first-child h2 { border-top: 0; margin-top: 0; }
+.man-doc h3 { font-size: 17px; margin: 20px 0 6px; } .man-doc h4 { font-size: 14.5px; margin: 14px 0 4px; }
+.man-doc img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; display: block; }
+.man-doc table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 13.5px; } .man-doc th, .man-doc td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; } .man-doc th { background: var(--soft); }
+.man-doc .tip, .man-doc .imp { border-radius: 10px; padding: 10px 12px; margin: 10px 0; } .man-doc .tip { background: rgba(3,160,231,.08); border-left: 4px solid var(--sky); } .man-doc .imp { background: rgba(245,130,32,.10); border-left: 4px solid var(--orange); }
+.man-doc .fig { color: var(--mute); font-size: 12.5px; margin-top: -4px; }
+.man-sec { scroll-margin-top: 80px; } .man-sec.man-hit { outline: 3px solid rgba(44,134,240,.35); border-radius: 8px; }
+.tag.help-link { text-decoration: none; cursor: pointer; }
+.sheet.man-print { display: block; font-size: 10pt; line-height: 1.45; } .sheet.man-print img { max-width: 100%; border: 1px solid #ccc; } .sheet.man-print h2 { break-before: page; } .sheet.man-print table { border-collapse: collapse; width: 100%; } .sheet.man-print td, .sheet.man-print th { border: 1px solid #ccc; padding: 1.5mm; }
+@media (max-width: 900px) { .man-wrap { grid-template-columns: 1fr; } .man-toc { position: static; max-height: 260px; } .man-doc { padding: 14px; } }
