@@ -666,3 +666,14 @@ Director (e.g. allowance RM55 / 65 / 75 for n months), logged and notified. Engl
 recorded per attempt. Question bank v2 (7 categories, 85 questions: First Aid & CPR, Fire Safety, Food Handling, Child Safety,
 Infection Control, Child Transport, General Workplace Safety) sent for review as a PDF (not in the repo); trainer and native-speaker
 check, and video choice, still to be done. More questions to come from CLC's research.
+
+## PRI-027 · Reward System: "Enrol a person…" in one window — recorded 2026-11-20
+CLC 20 Nov 2026 ("put record 1st"): the Enrolled staff list starts empty because enrolment only starts from a **verified** certificate
+(Training & Certificates → verify → Reward System › To do › Enrol…). Idea: an **Enrol a person…** button on the Enrolled staff tab —
+choose an active person (no resignation letter); pick their verified eligible certificate (First Aid, KAP / PERMATA, SKM …) or type it
+in there (type, title, issuer, dates, number, photo / PDF), tick that it relates to the person's own JD, add a note, send for approval.
+Then unchanged: Admin / Director decides (never the person who enrolled), letter with T&C, staff acknowledge. One active enrolment per
+certificate type per person; the certificate also shows in Training & Certificates and the profile; audit-logged. Optional: **enrol
+several at once** (tick people with verified certificates, one approval request each) for the first batch before January 2027.
+Open questions for CLC: (1) does a certificate HR types in here count as verified at once, or need a second person to verify it?
+(2) build the "enrol several at once" add-on too?
