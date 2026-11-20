@@ -1529,3 +1529,7 @@ td.wrap { white-space: normal; min-width: 200px; max-width: 360px; }
 .tag.help-link { text-decoration: none; cursor: pointer; }
 .sheet.man-print { display: block; font-size: 10pt; line-height: 1.45; } .sheet.man-print img { max-width: 100%; border: 1px solid #ccc; } .sheet.man-print h2 { break-before: page; } .sheet.man-print table { border-collapse: collapse; width: 100%; } .sheet.man-print td, .sheet.man-print th { border: 1px solid #ccc; padding: 1.5mm; }
 @media (max-width: 900px) { .man-wrap { grid-template-columns: 1fr; } .man-toc { position: static; max-height: 260px; } .man-doc { padding: 14px; } }
+
+/* pick an employee (link an application to an existing employee, apply link for an employee) */
+.pe-list tr.sel td { background: rgba(3,160,231,.12); }
+ul.tight { margin: 4px 0 0 18px; padding: 0; } ul.tight li { margin: 2px 0; }

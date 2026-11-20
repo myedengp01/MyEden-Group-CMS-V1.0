@@ -2270,6 +2270,7 @@
       ['short', 'Shortlisted & offers', (r) => ['shortlisted', 'offer_preparation', 'offer_issued', 'offer_accepted', 'ready_for_onboarding'].includes(r.stage)],
       ['done', 'Hired / completed', (r) => r.stage === 'completed'],
       ['closed', 'Declined / not selected', (r) => ['rejected', 'offer_declined'].includes(r.stage)],
+      ['existing', 'Existing employees', (r) => !!r.existing || (r.matches || []).length > 0],
       ['all', 'All', () => true]];
     const f = { q: '', v: interviews ? 'short' : 'open', co: 'all' };
     const cos = [...new Set(rows.map((r) => r.company).filter(Boolean))].sort();
@@ -2291,9 +2292,9 @@
       const list = rows.filter((r) => fn(r) && (f.co === 'all' || r.company === f.co)
         && (!t || `${r.name} ${posTxt(r.position)} ${r.title || ''} ${r.email || ''} ${r.contact || ''}`.toLowerCase().includes(t)));
       $('#atable tbody', el).innerHTML = list.length ? list.map((r) => `<tr data-id="${esc(r.id)}" class="click" tabindex="0">
-          <td class="nowrap">${dShort(r.submitted_at)}</td><td><b>${esc(r.name)}</b>${r.email ? `<small class="sub">${esc(r.email)}</small>` : ''}</td>
+          <td class="nowrap">${dShort(r.submitted_at)}</td><td><b>${esc(r.name)}</b>${r.email ? `<small class="sub">${esc(r.email)}</small>` : ''}${!r.existing && (r.matches || []).length ? `<small class="sub"><span class="tag warn xs">Already an employee?</span> ${esc(r.matches.map((m) => m.employee_id || m.name).join(', '))}</small>` : ''}</td>
           <td>${esc(coShort(r.company))}</td><td>${esc(r.title || posTxt(r.position) || '—')}${r.title && r.position && r.title !== posTxt(r.position) ? `<small class="sub">applied: ${esc(posTxt(r.position))}</small>` : ''}</td>
-          <td>${appStageTag(r.stage)}</td><td>${r.loec ? esc(LOEC[r.loec] || r.loec) : '<span class="muted">—</span>'}</td>
+          <td>${r.existing ? '<span class="tag ok xs">Existing employee · linked</span>' : appStageTag(r.stage)}</td><td>${r.loec ? esc(LOEC[r.loec] || r.loec) : '<span class="muted">—</span>'}</td>
           <td class="nowrap">${r.start ? dShort(r.start) : '<span class="muted">—</span>'}</td>
           <td class="nowrap">${r.employee_id ? `<code>${esc(r.employee_id)}</code>${r.in_payroll ? '' : '<small class="sub warn-txt">not in payroll</small>'}` : '<span class="muted">—</span>'}</td></tr>`).join('')
         : '<tr><td colspan="8"><div class="empty small"><p>No applications here</p><span>Try another tab or clear the search.</span></div></td></tr>';
@@ -2452,9 +2453,19 @@
     // the offer letter can be prepared in the CMS once the decision is Approved (or the application is shortlisted / in the offer stages), until hired
     const loecOk = !a.person && (a.decision === 'Approved' || ['shortlisted', 'offer_preparation', 'offer_issued', 'offer_accepted', 'ready_for_onboarding'].includes(a.stage) || !!a.loec)
       && (can('recruitment') || can('onboarding') || isDirectorOrAdmin());
+    const X = a.existing;
     await modal({
       title: a.name, wide: true, ok: null, cancel: 'Close',
-      body: `<p class="muted small">${esc(coShort(a.company))} · submitted ${dShort(a.submitted_at)} · ${appStageTag(a.stage)}${a.decision ? ` · decision: ${esc(a.decision)}` : ''}</p>
+      body: `<p class="muted small">${esc(coShort(a.company))} · submitted ${dShort(a.submitted_at)} · ${X ? '<span class="tag ok xs">Existing employee · linked</span>' : appStageTag(a.stage)}${a.decision ? ` · decision: ${esc(a.decision)}` : ''}</p>
+        ${X ? `<div class="note ok small">${icon('users')}<span>Linked to the existing employee <b>${esc(X.name)}</b>${X.employee_id ? ` (<code>${esc(X.employee_id)}</code>)` : ''} on ${dShort(X.at)}${X.by ? ` by ${esc(X.by)}` : ''}${X.how === 'apply_link' ? ' — submitted from an apply link made for this employee' : ''}.
+            ${(X.filled || []).length ? `Filled: ${esc(X.filled.join(', '))}.` : 'No empty details to fill.'}${(X.replaced || []).length ? ` Replaced: ${esc(X.replaced.join(', '))} (${esc(X.reason || '')}).` : ''}
+            <a href="#/person?id=${esc(X.person_id)}" data-x>Open the profile</a>${a.can_unlink ? ' · <button type="button" class="btn sm ghost" data-xl-unlink>Unlink…</button>' : ''}</span></div>`
+        : a.person ? '' : `${(a.matches || []).length ? `<div class="warn-box small"><b>Already an employee?</b> This application matches ${a.matches.length === 1 ? 'a person' : 'people'} on the Employee Master:
+            <ul class="tight">${a.matches.map((m) => `<li><b>${esc(m.name)}</b> · <code>${esc(m.employee_id || 'no Employee ID')}</code> · ${esc(coShort(m.company))} · ${esc(m.status || '')}${m.title ? ` · ${esc(m.title)}` : ''} <span class="muted">(same ${esc(m.by)})</span>
+              ${a.can_link ? (m.linked_other ? ' <span class="muted">— already has another application linked</span>' : ` <button type="button" class="btn sm" data-xl-p="${esc(m.person_id)}">${icon('users')}Link to this employee…</button>`) : ''}</li>`).join('')}</ul></div>` : ''}
+          ${a.for_person ? `<p class="small">${icon('plug')}Sent from an apply link made for the existing employee <b>${esc(a.for_person.name)}</b>${a.for_person.employee_id ? ` (<code>${esc(a.for_person.employee_id)}</code>)` : ''}; it could not be linked by itself — check the details and link it.</p>` : ''}
+          ${a.unlinked ? `<p class="muted small">Unlinked from an employee on ${dShort(a.unlinked.at)}${a.unlinked.by ? ` by ${esc(a.unlinked.by)}` : ''}: ${esc(a.unlinked.reason || '')}</p>` : ''}
+          ${a.can_link && !a.loec ? `<p class="small"><button type="button" class="btn sm ghost" data-xl-search>${icon('users')}Link to an existing employee…</button> <span class="muted">for someone already employed whose application form was completed later (or made before the CMS)</span></p>` : ''}`}
         ${a.decision === 'Approved' && ['submitted', 'under_review', 'kiv'].includes(a.stage) ? '<p class="warn-box small">The decision is <b>Approved</b> in Office Use, but the stage was not moved on in MEG-EAF V2. Preparing the offer letter here moves it to Shortlisted → Preparing offer, with the steps in the history.</p>' : ''}
         <dl class="kv2">
           ${kv('Applied for', esc(posTxt(a.position)))}${kv('Approved job title', esc([a.title, a.level].filter(Boolean).join(' · ')))}${kv('JD reference', esc(a.jd_ref || ''))}
@@ -2472,9 +2483,69 @@
         <div class="btn-row">${loecOk ? `<a class="btn primary" href="#/loec?app=${esc(a.id)}" data-x>${icon('file-check')}${a.loec ? 'Open offer letter (LOEC)' : 'Prepare offer letter (LOEC)'}</a>` : ''}<a class="btn ${loecOk ? '' : 'primary'}" href="${esc(asset(`apply/?view=${encodeURIComponent(a.id)}`))}" target="_blank" rel="noopener">${icon('eye')}Full application</a>${['offer_accepted', 'ready_for_onboarding'].includes(a.stage) ? '<a class="btn" href="#/onboarding">Go to Offers &amp; Onboarding</a>' : ''}</div>
         <div id="aw-hr" class="aw-hr">${loading()}</div>
         <p class="muted small">Full application opens the form as ${esc(a.name)} submitted it (photos, IC, signature), view only, ready to print.</p>`,
-      onOpen: (wrap) => appHrBox($('#aw-hr', wrap), id, () => { changed = true; }),
+      onOpen: (wrap, close) => {
+        appHrBox($('#aw-hr', wrap), id, () => { changed = true; });
+        const done = () => { changed = true; close(null); };
+        $$('[data-xl-p]', wrap).forEach((b) => b.addEventListener('click', async () => { if (await appLinkWindow(a, b.dataset.xlP)) done(); }));
+        $('[data-xl-search]', wrap)?.addEventListener('click', async () => { const pid = await pickEmployee(`Link ${a.name} to an employee`); if (pid && await appLinkWindow(a, pid)) done(); });
+        $('[data-xl-unlink]', wrap)?.addEventListener('click', async () => {
+          const ok = await modal({ title: `Unlink · ${a.name}`, ok: 'Unlink', danger: true,
+            body: `<p>The application is detached from <b>${esc(X.name)}</b> and goes back to <b>New</b>. Details already filled on the record stay as they are.</p><label class="fld"><span>Reason</span><input name="r" required maxlength="300"></label>`,
+            onOk: async (fm) => { if (!fm.r.value.trim()) throw new Error('Give the reason.'); await API.rpc('cms_app_unlink', { p_app: a.id, p_reason: fm.r.value.trim() }); } });
+          if (ok) { toast('Application unlinked'); done(); }
+        });
+      },
     });
     if (changed && after) after();
+  }
+
+  // ---------------------------------------------------------------- applications from people already employed (v2026.11.20)
+  // pick one person from the Employee Master (search by name or Employee ID)
+  async function pickEmployee(title) {
+    let P; try { P = await API.rpc('cms_people_list'); } catch (e) { toast(e.message, 'err'); return null; }
+    let pick = null;
+    const ok = await modal({ title, ok: 'Next', wide: true,
+      body: `<label class="search-in">${icon('search')}<input id="pe-q" type="search" placeholder="Name or Employee ID" aria-label="Search people"></label>
+        <div class="table-wrap pe-list" style="max-height:360px"><table class="data compact"><tbody></tbody></table></div><p class="muted small" id="pe-sel">Choose a person.</p>`,
+      onOpen: (wrap) => {
+        const draw = (t) => { const q = t.trim().toUpperCase().replace(/\s+/g, ' ');
+          const L = P.filter((x) => !q || `${x.name} ${x.employee_id || ''}`.toUpperCase().includes(q)).slice(0, 60);
+          $('tbody', wrap).innerHTML = L.map((x) => `<tr class="click ${pick === x.id ? 'sel' : ''}" data-pe="${esc(x.id)}"><td><b>${esc(x.name)}</b></td><td><code>${esc(x.employee_id || '—')}</code></td><td>${esc(coShort(x.company_code))}</td><td>${esc(x.status || '')}</td></tr>`).join('') || '<tr><td><span class="muted">Nobody found</span></td></tr>'; };
+        draw(''); $('#pe-q', wrap).focus();
+        $('#pe-q', wrap).addEventListener('input', (e) => draw(e.target.value));
+        $('tbody', wrap).addEventListener('click', (e) => { const tr = e.target.closest('[data-pe]'); if (!tr) return; pick = tr.dataset.pe;
+          const x = P.find((y) => y.id === pick); $('#pe-sel', wrap).innerHTML = `Chosen: <b>${esc(x.name)}</b> ${x.employee_id ? `(<code>${esc(x.employee_id)}</code>)` : ''}`; draw($('#pe-q', wrap).value); });
+      },
+      onOk: async () => { if (!pick) throw new Error('Choose a person.'); } });
+    return ok ? pick : null;
+  }
+  // compare the application with the employee record, then link: empty details are filled, different ones only when ticked (with a reason)
+  async function appLinkWindow(a, personId) {
+    let V; try { V = await API.rpc('cms_app_link_preview', { p_app: a.id, p_person: personId }); } catch (e) { toast(e.message, 'err'); return false; }
+    const P = V.person; const F = V.fields.filter((x) => x.action !== 'none');
+    const fill = F.filter((x) => x.action === 'fill');
+    const ACT = { fill: ['Will be filled', 'ok'], same: ['Same', ''], differs: ['Different', 'warn'], no_payroll: ['No payroll record', ''] };
+    return modal({ title: `Link to an existing employee · ${a.name}`, wide: true, danger: false, ok: V.block ? null : 'Link…',
+      body: `<p class="small">Application of <b>${esc(V.application.name)}</b> (${esc(coShort(V.application.company))}, submitted ${dShort(V.application.submitted_at)})
+          → employee <b>${esc(P.name)}</b> · <code>${esc(P.employee_id || 'no Employee ID')}</code> · ${esc(coShort(P.company))} · ${esc(P.status || '')}${P.title ? ` · ${esc(P.title)}` : ''}${P.start ? ` · since ${dShort(P.start)}` : ''}</p>
+        ${V.block ? `<p class="form-err">${esc(V.block)}</p>` : ''}
+        ${!V.same_name && !V.block ? '<p class="warn-box small">The names are different. Link only if this is the same person.</p>' : ''}
+        <div class="table-wrap"><table class="data compact"><thead><tr><th>Detail</th><th>On the record</th><th>On the application</th><th></th></tr></thead><tbody>
+          ${F.map((x) => `<tr><td>${esc(x.label)}</td><td>${x.record ? esc(x.record) : '<span class="muted">empty</span>'}</td><td>${esc(x.application || '')}</td>
+            <td class="nowrap"><span class="tag ${ACT[x.action][1]} xs">${ACT[x.action][0]}</span>${x.action === 'differs' && x.can_replace && !V.block ? ` <label class="small"><input type="checkbox" name="rep" value="${esc(x.key)}"> replace</label>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No details to compare.</td></tr>'}</tbody></table></div>
+        ${V.auto.length ? `<p class="small">Shown on the profile from the application (where the CMS has nothing of its own): ${esc(V.auto.join(', '))}.</p>` : ''}
+        ${!V.block ? `<label class="fld" data-rr hidden><span>Reason for replacing details on the record</span><input name="reason" maxlength="300"></label>
+        <p class="muted small">Nothing else changes: no new person, Employee ID, payroll record, offer letter or handbook. The employer stays ${esc(coShort(P.company))}. The application leaves the New list as <b>Existing employee · linked</b>.</p>` : ''}`,
+      onOpen: (wrap) => { wrap.addEventListener('change', () => { const any = $$('[name=rep]:checked', wrap).length > 0; const r = $('[data-rr]', wrap); if (r) r.hidden = !any; }); },
+      onOk: async (fm) => {
+        const rep = $$('[name=rep]:checked', fm).map((i) => i.value);
+        if (rep.length && !fm.reason.value.trim()) throw new Error('Give the reason for replacing details on the record.');
+        const lines = [...fill.map((x) => x.label), ...F.filter((x) => rep.includes(x.key)).map((x) => `${x.label} (replace)`)];
+        const sure = await confirmBox('Link and fill the details?', `Link this application to <b>${esc(P.name)}</b>${P.employee_id ? ` (${esc(P.employee_id)})` : ''}.<br>${lines.length ? `These details will be written on the record: <b>${esc(lines.join(', '))}</b>.` : 'No details on the record change.'}`, 'Link');
+        if (!sure) throw new Error('Not linked.');
+        const r = await API.rpc('cms_app_link', { p: { application: a.id, person: personId, replace: rep, reason: fm.reason.value.trim() || null } });
+        toast(`${r.name}: application linked${(r.filled || []).length ? ` · filled ${r.filled.join(', ')}` : ''}`);
+      } });
   }
 
   // ---------------------------------------------------------------- PRI-024 (v2026.11.18): the MEG-EAF V2 HR Staff parts in the CMS
@@ -2510,7 +2581,7 @@
     const ST = { active: ['Active', 'ok'], used: ['Used', ''], expired: ['Expired', ''], revoked: ['Revoked', 'bad'] };
     const week = new Date(Date.now() + 8 * 36e5 + 7 * 864e5).toISOString().slice(0, 16);
     const rowsHtml = () => (D.links.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Company</th><th>Status</th><th>Valid until</th><th class="num">Used</th><th>Made by</th><th></th></tr></thead><tbody>
-      ${D.links.map((l) => `<tr><td>${esc((APPLY_CO.find((c) => c[0] === l.company) || [0, l.company])[1])}</td><td><span class="tag ${ST[l.status][1]} xs">${ST[l.status][0]}</span></td>
+      ${D.links.map((l) => `<tr><td>${esc((APPLY_CO.find((c) => c[0] === l.company) || [0, l.company])[1])}${l.for ? `<small class="sub">for <b>${esc(l.for.name)}</b>${l.for.employee_id ? ` (${esc(l.for.employee_id)})` : ''}</small>` : ''}</td><td><span class="tag ${ST[l.status][1]} xs">${ST[l.status][0]}</span></td>
         <td class="nowrap">${esc(new Date(l.expires_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td><td class="num">${esc(l.use_count)} / ${esc(l.max_uses)}</td><td>${esc(l.by || '—')}<small class="sub">${dShort(l.created_at)}</small></td>
         <td class="nowrap">${l.status === 'active' ? `<button type="button" class="btn sm" data-copy="${esc(applyUrl(`?invite=${l.token}`))}">Copy link</button>${D.can_edit ? ` <button type="button" class="btn sm ghost" data-rev="${esc(l.id)}">Revoke</button>` : ''}` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">No apply links yet.</p>');
     await modal({ title: 'Apply links', ok: null, cancel: 'Close', wide: true,
@@ -2518,7 +2589,12 @@
         <p class="muted small">Apply Now is <b>${D.mode === 'invitation_only' ? 'invitation only' : 'closed'}</b>: an applicant opens the form with the link you send them. A link is for one company (the form is set to it), valid until the date and for the number of uses you choose. Staff with Recruitment can always open the form from the CMS.</p>
         ${D.can_edit ? `<div class="grid-3 tight"><label class="fld"><span>Company</span><select name="co">${APPLY_CO.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
           <label class="fld"><span>Valid until</span><input type="datetime-local" name="exp" value="${week}"></label><label class="fld"><span>Uses</span><input type="number" name="max" min="1" max="1000" value="1"></label></div>
-          <div class="btn-row"><button type="button" class="btn primary" data-make>Make a link</button></div><div data-new></div>` : ''}
+          <div class="btn-row"><button type="button" class="btn primary" data-make>Make a link</button></div><div data-new></div>
+          <h4 class="sec-h">For an existing employee</h4>
+          <p class="muted small">For someone already employed whose application form was never completed (or who joined before the CMS). One use, their own company. When they submit, the form is linked to their record by itself: empty details are filled, nothing on the record is replaced, and a different IC number stops it (it then waits in Applications).</p>
+          <div class="grid-3 tight"><label class="fld"><span>Employee</span><button type="button" class="btn sm" data-forp>Choose…</button> <small data-forn class="muted">nobody chosen</small></label>
+          <label class="fld"><span>Valid until</span><input type="datetime-local" name="expf" value="${week}"></label></div>
+          <div class="btn-row"><button type="button" class="btn" data-makef>Make a link for this employee</button></div><div data-newf></div>` : ''}
         <h4 class="sec-h">Links</h4><div data-list>${rowsHtml()}</div>`,
       onOpen: (wrap) => {
         const wire = () => {
@@ -2530,6 +2606,16 @@
         $('[data-mode]', wrap)?.addEventListener('click', async (e) => { const m = e.target.dataset.mode;
           if (!(await ask(m === 'disabled' ? 'Close Apply Now? Apply links stop opening the form until it is opened again.' : 'Open Apply Now again? Applicants with a valid apply link can apply.', m === 'disabled' ? 'Close' : 'Open'))) return;
           try { await API.rpc('cms_apply_mode_set', { p_mode: m }); toast(m === 'disabled' ? 'Apply Now closed' : 'Apply Now open by link'); wrap.querySelector('[data-x]')?.click(); applyLinksWindow(); } catch (x) { toast(x.message, 'err'); } });
+        let forP = null;
+        $('[data-forp]', wrap)?.addEventListener('click', async () => { const id = await pickEmployee('Apply link for an existing employee'); if (!id) return; forP = id;
+          try { const P = await API.rpc('cms_people_list'); const x = P.find((y) => y.id === id); $('[data-forn]', wrap).innerHTML = `<b>${esc(x.name)}</b> ${x.employee_id ? `(${esc(x.employee_id)})` : ''}`; } catch (e) { /* name only */ } });
+        $('[data-makef]', wrap)?.addEventListener('click', async () => {
+          if (!forP) { toast('Choose the employee first.', 'err'); return; }
+          try { const r = await API.rpc('cms_apply_link_for', { p_person: forP, p_expires: new Date($('form', wrap).expf.value).toISOString() });
+            const url = applyUrl(`?invite=${r.token}`);
+            $('[data-newf]', wrap).innerHTML = `<p class="note ok small">${icon('check-circle')}<span>Link made: <code class="brk">${esc(url)}</code> <button type="button" class="btn sm" data-copy="${esc(url)}">Copy link</button></span></p>`;
+            D = await API.rpc('cms_apply_links'); $('[data-list]', wrap).innerHTML = rowsHtml(); wire();
+          } catch (e) { toast(e.message, 'err'); } });
         $('[data-make]', wrap)?.addEventListener('click', async () => {
           const f = $('form', wrap);
           try { const r = await API.rpc('cms_apply_link_create', { p_company: f.co.value, p_expires: new Date(f.exp.value).toISOString(), p_max: Number(f.max.value || 1) });
