@@ -163,7 +163,7 @@
   async function loadNotices() { try { state.notices = await API.rpc('cms_my_notices'); drawBell(); } catch (e) { /* reminders only */ } }
   const noticeTasks = () => (state.notices || []).map((n) => ({ ic: n.kind === 'esign' ? 'file-check' : 'bell', tone: 'violet', title: n.title, sub: `${n.body}${n.at ? ` · ${dShort(n.at)}` : ''}`, href: n.href || '#/dashboard', nt: String(n.id) }));
   function tasksFromDash(d) {
-    const t = [...noticeTasks(), ...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...rwTasks(), ...letterTasks()];
+    const t = [...noticeTasks(), ...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...rwTasks(), ...rwIncTasks(), ...letterTasks()];
     if (state.selfPending && can('selfservice.profile')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -3500,6 +3500,7 @@
       ['me/appraisal', 'trend', 'My Appraisal', 'Self-assessment and results', selfOn('appraisal')],
       ['me/certs', 'shield', 'My Certificates', 'Certificates and expiry dates', selfOn('certs')],
       ['me/assess', 'check-circle', 'My Assessments', 'Certification allowance, assessments and practice', selfOn('certs')],
+      ['me/rewards', 'sparkle', 'My Rewards', 'Full Attendance reward and referrals', selfOn('claims')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -6652,19 +6653,185 @@
     return t;
   }
 
+  // ---------------------------------------------------------------- PRI-026 phase 2: Full Attendance & Referral incentives
+  const RW_ATT = { submitted: ['warn', 'With HR'], checked: ['warn', 'Waiting for approval'], approved: ['ok', 'Approved'], declined: ['bad', 'Not approved'], withdrawn: ['', 'Withdrawn'] };
+  const RW_REF = { submitted: ['warn', 'With HR'], linked: ['warn', 'Waiting for approval'], approved: ['ok', 'Approved'], declined: ['bad', 'Declined'], ended: ['', 'Ended'] };
+  const RW_PAY = { waiting: ['', 'Not due yet'], held: ['warn', 'Held: referrer not confirmed'], paid: ['ok', 'Paid'], lost: ['bad', 'Not paid'] };
+  const rwTag = (map, s) => { const [t, l] = map[s] || ['', s]; return `<span class="tag ${t} xs">${esc(l)}</span>`; };
+  const rwRange = (a, n) => { const s = new Date(a); const e = new Date(s.getFullYear(), s.getMonth() + n - 1, 1); return `${rwMonth(s)} – ${rwMonth(e)}`; };
+  const rwMonthsCells = (list) => `<div class="rw-months">${(list || []).map((m) => `<span class="rw-m ${m.reasons.length ? 'bad' : 'ok'}" title="${esc(m.reasons.join('; ') || 'Clean')}">${esc(rwMonth(m.month))}<b>${m.reasons.length ? '✗' : '✓'}</b></span>`).join('')}</div>`;
+  const rwPays = (r) => (r.payments || []).length ? `<div class="rw-pays">${r.payments.map((p) => `<span>End of month ${p.milestone} (${dShort(p.due_on)}) · RM ${m2(p.amount)} ${rwTag(RW_PAY, p.status)}${p.pay_month ? ` <small>${rwMonth(p.pay_month)} payroll</small>` : ''}${p.note ? ` <small>${esc(p.note)}</small>` : ''}</span>`).join('')}</div>` : '';
+
+  async function meRewardsPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="mr-body">${loading()}</div>`;
+    let D; const load = async () => { D = await API.rpc('cms_rw_my_rewards'); };
+    try { await load(); } catch (e) { $('#mr-body', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const reload = async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); };
+    const draw = () => {
+      const A = D.att; const R = D.ref; const ms = (R.milestones || []);
+      $('#mr-body', el).innerHTML = `
+        <section class="card"><div class="card-head"><h3>Full Attendance reward</h3>${A.eligible.ok ? '<button type="button" class="btn sm primary" data-apply>Apply…</button>' : ''}</div>
+          <p class="small muted">${A.months} months in a row with no leave at all, no late arrival or early leave, and every monthly meeting and training attended. Apply after the months have ended; HR checks it and Admin or a Director approves. After a block, the next one starts fresh.${A.amount ? ` Reward: RM ${m2(A.amount)}.` : ''}</p>
+          ${A.eligible.ok ? '' : `<div class="warn-box">${icon('clock')}<div>Not in the scheme yet: ${esc(A.eligible.reasons.join('; '))}.</div></div>`}
+          <h4 class="sec-h">The last 12 months (from your leave records)</h4>${rwMonthsCells(A.grid)}
+          <p class="small">${A.suggest ? `You can apply for <b>${rwRange(A.suggest, A.months)}</b>.` : `No ${A.months} clean months in a row since ${rwMonth(A.next_from)} yet.`}</p>
+          ${A.claims.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Months</th><th>Your 3 words</th><th>Status</th><th></th></tr></thead><tbody>${A.claims.map((c) => `<tr><td class="nowrap">${rwRange(c.start_month, c.months)}</td><td>${esc(c.words || '')}</td>
+            <td>${rwTag(RW_ATT, c.status)}${c.status === 'approved' ? `<small class="sub">RM ${m2(c.amount)} · ${rwMonth(c.pay_month)} payroll</small>` : ''}${c.check_note || c.decide_note ? `<small class="sub">${esc(c.decide_note || c.check_note)}</small>` : ''}</td>
+            <td>${c.status === 'submitted' ? `<button type="button" class="btn sm ghost" data-wd="${esc(c.id)}">Withdraw</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>
+        <section class="card"><div class="card-head"><h3>Referral incentive</h3><button type="button" class="btn sm primary" data-refer>Refer someone…</button></div>
+          <p class="small muted">Refer someone for a job here. If they are hired, you receive the incentive at the end of their ${ms.map((m) => `${m.month}${m.month === 1 ? 'st' : m.month === 2 ? 'nd' : m.month === 3 ? 'rd' : 'th'}`).join(', ')} month${ms.some((m) => m.amount) ? ` (${ms.map((m) => (m.amount ? `RM ${m2(m.amount)}` : '—')).join(' / ')})` : ''}, while you both still work here${''}. You can refer from your first day; payment waits until you are confirmed.</p>
+          ${R.list.length ? R.list.map((r) => `<div class="me-item"><div><b>${esc(r.new_hire || r.candidate_name || '')}</b> ${rwTag(RW_REF, r.status)}<small class="sub">${esc(r.position || r.new_hire_position || '')}${r.new_hire_start ? ` · started ${dShort(r.new_hire_start)}` : ''} · referred ${dShort(r.created_at)}${r.decide_note || r.end_reason ? ` · ${esc(r.decide_note || r.end_reason)}` : ''}</small>${rwPays(r)}</div></div>`).join('')
+            : '<div class="empty small"><p>No referrals yet</p></div>'}</section>`;
+      $('[data-apply]', el)?.addEventListener('click', async () => {
+        const opts = []; const now = new Date(D.today); const nf = new Date(A.next_from);
+        for (let d = new Date(nf.getFullYear(), nf.getMonth(), 1); new Date(d.getFullYear(), d.getMonth() + A.months, 1) <= new Date(now.getFullYear(), now.getMonth(), 1); d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+          opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`); }
+        const ok = await modal({ title: 'Apply for the Full Attendance reward', ok: 'Send to HR',
+          body: `<label class="fld"><span>Months</span><select name="s">${opts.reverse().map((o) => `<option value="${o}" ${o === A.suggest ? 'selected' : ''}>${rwRange(o, A.months)}</option>`).join('') || '<option value="">No months to choose yet</option>'}</select></label>
+            <label class="fld"><span>3 words for these ${A.months} months</span><input name="w" maxlength="120" placeholder="e.g. Happy, busy, proud"></label>
+            <p class="small muted">By sending it you confirm you had no late arrival or early leave and attended every monthly meeting and training in these months. HR checks it.</p>`,
+          onOk: (f) => { if (!f.s.value) throw new Error('No months to choose yet.'); return API.rpc('cms_rw_att_apply', { p_start: f.s.value, p_words: f.w.value }); } });
+        if (ok) { toast('Sent to HR'); reload(); }
+      });
+      $$('[data-wd]', el).forEach((b) => b.addEventListener('click', async () => { try { await API.rpc('cms_rw_att_withdraw', { p_id: b.dataset.wd }); toast('Withdrawn'); reload(); } catch (e) { toast(e.message, 'err'); } }));
+      $('[data-refer]', el).addEventListener('click', async () => {
+        const ok = await modal({ title: 'Refer someone', ok: 'Send to HR',
+          body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Full name</span><input name="n" required></label><label class="fld"><span>Phone or email</span><input name="c" required></label>
+            <label class="fld"><span>Position</span><input name="p"></label><label class="fld fld-2"><span>Note (optional)</span><textarea name="o" rows="2"></textarea></label></div>
+            <p class="small muted">Tell the person you are passing on their contact. HR links your referral to them once they are hired.</p>`,
+          onOk: (f) => API.rpc('cms_rw_ref_submit', { p: { name: f.n.value, contact: f.c.value, position: f.p.value, note: f.o.value } }) });
+        if (ok) { toast('Sent to HR'); reload(); }
+      });
+    };
+    draw();
+  }
+  async function loadRwIncPending() { try { state.rwIncPending = await API.rpc('cms_rw_inc_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function rwIncTasks() {
+    const x = state.rwIncPending; const t = []; if (!x) return t;
+    if (x.att_check) t.push({ ic: 'calendar', tone: 'blue', title: `${num(x.att_check)} Full Attendance application${x.att_check === 1 ? '' : 's'} to check`, sub: 'Late / early leave and meetings', href: '#/rewards?tab=attendance' });
+    if (x.att_approve) t.push({ ic: 'calendar', tone: 'orange', title: `${num(x.att_approve)} Full Attendance reward${x.att_approve === 1 ? '' : 's'} to approve`, sub: 'Checked by HR', href: '#/rewards?tab=attendance' });
+    if (x.ref_link) t.push({ ic: 'users', tone: 'teal', title: `${num(x.ref_link)} referral${x.ref_link === 1 ? '' : 's'} to link to the new hire`, sub: 'Sent by staff', href: '#/rewards?tab=referrals' });
+    if (x.ref_approve) t.push({ ic: 'users', tone: 'orange', title: `${num(x.ref_approve)} referral${x.ref_approve === 1 ? '' : 's'} to approve`, sub: 'Milestone amounts', href: '#/rewards?tab=referrals' });
+    return t;
+  }
+
+  // management tabs (inside the Reward System page)
+  function rwIncTabs(ctx) {
+    const { el, reloadAll } = ctx; let I = null; const f = { as: 'open', rs: 'open' };
+    const load = async () => { I = await API.rpc('cms_rw_inc_admin'); };
+    const ask = (title, label, ok = 'Save', danger = false) => new Promise((res) => { let v = null; modal({ title, ok, danger, body: `<label class="fld"><span>${esc(label)}</span><textarea name="r" rows="3" required></textarea></label>`, onOk: (fm) => { if (fm.r.value.trim().length < 3) throw new Error('Give the reason.'); v = fm.r.value.trim(); } }).then((x) => res(x ? v : null)); });
+    const att = () => {
+      const list = I.att.filter((c) => f.as === 'all' || (f.as === 'open' ? ['submitted', 'checked'].includes(c.status) : c.status === f.as));
+      return `<section class="card"><div class="toolbar"><select id="rwa-s">${[['open', 'To check / approve'], ['approved', 'Approved'], ['declined', 'Not approved'], ['all', 'All']].map(([k, l]) => `<option value="${k}" ${f.as === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <span class="muted small">Staff apply in self-service (My Rewards). Months are checked against the payroll leave records; HR confirms late / early leave and meetings; Admin or a Director approves the amount${I.settings.att.amount ? ` (default RM ${m2(I.settings.att.amount)})` : ' (no default amount set)'}.</span></div>
+        <div class="table-wrap fill"><table class="data"><thead><tr><th>Person</th><th>Months (now)</th><th>3 words</th><th>Status</th><th></th></tr></thead><tbody>
+        ${list.map((c) => `<tr><td><b>${esc(c.name)}</b><small class="sub">${esc(c.employee_id || '')} · applied ${dShort(c.created_at)}</small></td><td>${rwMonthsCells(c.now)}</td><td>${esc(c.words || '')}</td>
+          <td>${rwTag(RW_ATT, c.status)}${c.checked_by_name ? `<small class="sub">HR: ${esc(c.checked_by_name)}</small>` : ''}${c.status === 'approved' ? `<small class="sub">RM ${m2(c.amount)} · ${rwMonth(c.pay_month)} payroll${c.allowance_id ? '' : ' · <b>add by hand: no payroll record</b>'}</small>` : ''}${c.check_note || c.decide_note ? `<small class="sub">${esc(c.decide_note || c.check_note)}</small>` : ''}</td>
+          <td class="nowrap">${c.status === 'submitted' && I.can_edit ? `<button type="button" class="btn sm primary" data-ack="${esc(c.id)}">HR check…</button>` : ''}${c.status === 'checked' && I.can_boss ? `<button type="button" class="btn sm primary" data-adec="${esc(c.id)}">Decide…</button>` : ''}</td></tr>`).join('')
+          || '<tr><td colspan="5"><div class="empty small"><p>None</p></div></td></tr>'}</tbody></table></div></section>`;
+    };
+    const refs = () => {
+      const list = I.ref.filter((r) => f.rs === 'all' || (f.rs === 'open' ? ['submitted', 'linked'].includes(r.status) : r.status === f.rs));
+      return `<section class="card"><div class="toolbar"><select id="rwr-s">${[['open', 'To link / approve'], ['approved', 'Approved'], ['declined', 'Declined'], ['ended', 'Ended'], ['all', 'All']].map(([k, l]) => `<option value="${k}" ${f.rs === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          ${I.can_edit ? '<button type="button" class="btn sm primary" data-rrec>+ Record a referral…</button>' : ''}<span class="muted small">${esc(I.settings.ref.hint || '')}</span></div>
+        <div class="table-wrap fill"><table class="data"><thead><tr><th>Referrer</th><th>Referred</th><th>Status</th><th>Milestones</th><th></th></tr></thead><tbody>
+        ${list.map((r) => `<tr><td><b>${esc(r.referrer)}</b>${r.referrer_confirmed ? '' : '<small class="sub">not confirmed yet</small>'}</td>
+          <td><b>${esc(r.new_hire || r.candidate_name || '')}</b><small class="sub">${r.new_hire ? `new hire · started ${dShort(r.new_hire_start)}` : `candidate · ${esc(r.candidate_contact || '')}`}${r.position ? ` · ${esc(r.position)}` : ''}</small></td>
+          <td>${rwTag(RW_REF, r.status)}${r.decide_note || r.end_reason ? `<small class="sub">${esc(r.decide_note || r.end_reason)}</small>` : ''}</td><td>${rwPays(r) || '—'}</td>
+          <td class="nowrap">${I.can_edit && ['submitted', 'linked'].includes(r.status) ? `<button type="button" class="btn sm ghost" data-rlink="${esc(r.id)}">${r.new_hire ? 'Change new hire…' : 'Link new hire…'}</button> ` : ''}
+            ${I.can_boss && r.status === 'linked' ? `<button type="button" class="btn sm primary" data-rdec="${esc(r.id)}">Decide…</button> ` : ''}
+            ${I.can_edit && ['submitted', 'linked', 'approved'].includes(r.status) ? `<button type="button" class="btn sm ghost" data-rend="${esc(r.id)}">End…</button>` : ''}</td></tr>`).join('')
+          || '<tr><td colspan="5"><div class="empty small"><p>None</p></div></td></tr>'}</tbody></table></div></section>`;
+    };
+    const settings = () => { const S = I.settings; const dis = I.can_boss ? '' : 'disabled';
+      return `<section class="card"><div class="card-head"><h3>Full Attendance &amp; Referral</h3></div><form id="rw-inc-set">
+        <div class="grid-2 tight"><label class="fld"><span>Full Attendance amount (RM, blank = set when approving)</span><input name="aa" type="number" step="0.01" min="1" value="${S.att.amount ?? ''}" ${dis}></label>
+          <label class="fld"><span>Months in a block</span><input name="am" type="number" min="1" max="12" value="${S.att.months}" ${dis}></label>
+          <label class="chk"><input type="checkbox" name="ap" ${S.att.allow_probation ? 'checked' : ''} ${dis}> Staff on probation may take part</label>
+          <label class="chk"><input type="checkbox" name="pt" ${S.att.allow_part_time ? 'checked' : ''} ${dis}> Part-time staff may take part</label></div>
+        <h4 class="sec-h">Referral milestones (end of the new hire's month n)</h4><p class="small muted">${esc(S.ref.hint || '')}. Blank amount = set when approving.</p>
+        <div class="grid-2 tight">${[0, 1, 2, 3].map((i) => { const m = S.ref.milestones[i] || {}; return `<label class="fld"><span>Milestone ${i + 1}: month</span><input name="rm${i}" type="number" min="1" max="60" value="${m.month ?? ''}" ${dis}></label>
+          <label class="fld"><span>Amount (RM)</span><input name="ra${i}" type="number" step="0.01" min="1" value="${m.amount ?? ''}" ${dis}></label>`; }).join('')}
+          <label class="chk fld-2"><input type="checkbox" name="hold" ${S.ref.hold_until_confirmed ? 'checked' : ''} ${dis}> Hold the payment until the referrer is confirmed</label></div>
+        ${I.can_boss ? '<div class="btn-row"><button type="submit" class="btn primary">Save</button></div>' : ''}</form></section>`; };
+    const wire = (box, again) => {
+      $('#rwa-s', box)?.addEventListener('change', (e) => { f.as = e.target.value; again(); });
+      $('#rwr-s', box)?.addEventListener('change', (e) => { f.rs = e.target.value; again(); });
+      const re = async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } loadRwIncPending(); again(); };
+      $$('[data-ack]', box).forEach((b) => b.addEventListener('click', async () => {
+        const c = I.att.find((x) => x.id === b.dataset.ack); const ck = I.settings.att.checks || [];
+        const ok = await modal({ title: `HR check · ${c.name} · ${rwRange(c.start_month, c.months)}`, ok: 'Save', wide: true,
+          body: `${rwMonthsCells(c.now)}<p class="small"><b>3 words:</b> ${esc(c.words || '')}</p>${ck.map((t, i) => `<label class="chk"><input type="checkbox" name="c${i}"> ${esc(t)}</label>`).join('')}
+            <label class="fld"><span>Note (required if not met)</span><textarea name="n" rows="2"></textarea></label><p class="small muted">Tick every item to pass it to Admin / a Director; otherwise it is marked not met.</p>`,
+          onOk: (fm) => { const checks = Object.fromEntries(ck.map((t, i) => [t, fm[`c${i}`].checked])); const pass = Object.values(checks).every(Boolean) && !c.now.some((m) => m.reasons.length);
+            if (!pass && fm.n.value.trim().length < 3) throw new Error('Not every item is met: give the reason in the note (or tick every item).');
+            return API.rpc('cms_rw_att_check', { p_id: c.id, p_ok: pass, p_checks: checks, p_note: fm.n.value }); } });
+        if (ok) { toast('Saved'); re(); }
+      }));
+      $$('[data-adec]', box).forEach((b) => b.addEventListener('click', async () => {
+        const c = I.att.find((x) => x.id === b.dataset.adec); let r = null;
+        const ok = await modal({ title: `Full Attendance · ${c.name}`, ok: 'Save decision',
+          body: `${rwMonthsCells(c.now)}<div class="grid-2 tight"><label class="fld"><span>Decision</span><select name="d"><option value="1">Approve: pay with the salary</option><option value="0">Do not approve</option></select></label>
+            <label class="fld"><span>Amount (RM)</span><input name="a" type="number" step="0.01" min="1" value="${I.settings.att.amount ?? ''}"></label>
+            <label class="fld fld-2"><span>Note (required if not approved)</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: async (fm) => { r = await API.rpc('cms_rw_att_decide', { p_id: c.id, p_approve: fm.d.value === '1', p_amount: fm.a.value ? Number(fm.a.value) : null, p_note: fm.n.value }); } });
+        if (ok) { toast(r ? `Approved: in the ${rwMonth(r.pay_month)} payroll${r.in_payroll ? '' : ' (no payroll record: add it by hand)'}` : 'Not approved'); re(); }
+      }));
+      const hireSel = (cur) => `<select name="h" required><option value="">Choose…</option>${I.hires.map((h) => `<option value="${esc(h.id)}" ${h.id === cur ? 'selected' : ''}>${esc(h.name)}${h.employee_id ? ` · ${esc(h.employee_id)}` : ''} · started ${dShort(h.start_date)}</option>`).join('')}</select>`;
+      $$('[data-rlink]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = I.ref.find((x) => x.id === b.dataset.rlink);
+        const ok = await modal({ title: `Link ${r.candidate_name || 'the referral'} to the new hire`, ok: 'Link', body: `<p class="small">Referred by ${esc(r.referrer)}${r.candidate_contact ? ` · ${esc(r.candidate_contact)}` : ''}${r.position ? ` · ${esc(r.position)}` : ''}</p><label class="fld"><span>New hire (started in the last 24 months)</span>${hireSel(r.new_hire_id)}</label>`,
+          onOk: (fm) => { if (!fm.h.value) throw new Error('Choose the new hire.'); return API.rpc('cms_rw_ref_link', { p_id: r.id, p_new_hire: fm.h.value }); } });
+        if (ok) { toast('Linked: waiting for approval'); re(); }
+      }));
+      $('[data-rrec]', box)?.addEventListener('click', async () => {
+        let pp = []; try { pp = (await loadPeople()).filter((x) => !x.last_day || daysTo(x.last_day) >= 0); } catch (e) { /* none */ }
+        const ok = await modal({ title: 'Record a referral', ok: 'Save', wide: true,
+          body: `<div class="grid-2 tight"><label class="fld"><span>Referred by</span><select name="r" required><option value="">Choose…</option>${pp.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</option>`).join('')}</select></label>
+            <label class="fld"><span>New hire</span>${hireSel(null)}</label><label class="fld fld-2"><span>Note</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: (fm) => { if (!fm.r.value || !fm.h.value) throw new Error('Choose both people.'); return API.rpc('cms_rw_ref_record', { p: { referrer_id: fm.r.value, new_hire_id: fm.h.value, note: fm.n.value } }); } });
+        if (ok) { toast('Recorded: waiting for approval'); re(); }
+      });
+      $$('[data-rdec]', box).forEach((b) => b.addEventListener('click', async () => {
+        const r = I.ref.find((x) => x.id === b.dataset.rdec); const ms = I.settings.ref.milestones;
+        const ok = await modal({ title: `Referral · ${r.referrer} → ${r.new_hire}`, ok: 'Save decision', wide: true,
+          body: `<p class="small">${esc(r.new_hire)} started ${dShort(r.new_hire_start)}. Each milestone is paid at the end of that month of their service, if both still work here (no resignation letter by then)${I.settings.ref.hold_until_confirmed ? ', once the referrer is confirmed' : ''}.</p>
+            <div class="grid-2 tight"><label class="fld fld-2"><span>Decision</span><select name="d"><option value="1">Approve</option><option value="0">Decline</option></select></label>
+            ${ms.map((m, i) => `<label class="fld"><span>Milestone ${i + 1}: end of month</span><input name="m${i}" type="number" min="1" max="60" value="${m.month}"></label><label class="fld"><span>Amount (RM)</span><input name="a${i}" type="number" step="0.01" min="1" value="${m.amount ?? ''}"></label>`).join('')}
+            <label class="fld fld-2"><span>Note (required when declining)</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: (fm) => { const approve = fm.d.value === '1'; const list = ms.map((m, i) => ({ month: Number(fm[`m${i}`].value), amount: fm[`a${i}`].value ? Number(fm[`a${i}`].value) : null }));
+            if (approve && list.some((x) => !x.amount)) throw new Error('Give every milestone amount.');
+            return API.rpc('cms_rw_ref_decide', { p_id: r.id, p_approve: approve, p_milestones: list, p_note: fm.n.value }); } });
+        if (ok) { toast('Saved'); re(); }
+      }));
+      $$('[data-rend]', box).forEach((b) => b.addEventListener('click', async () => {
+        const v = await ask('End the referral', 'Reason (payments already made stay paid)', 'End', true);
+        if (v) { try { await API.rpc('cms_rw_ref_end', { p_id: b.dataset.rend, p_reason: v }); toast('Ended'); re(); } catch (x) { toast(x.message, 'err'); } }
+      }));
+      $('#rw-inc-set', box)?.addEventListener('submit', async (e) => {
+        e.preventDefault(); const fm = e.target;
+        const ms = [0, 1, 2, 3].map((i) => ({ month: fm[`rm${i}`].value, amount: fm[`ra${i}`].value })).filter((m) => m.month);
+        try { await API.rpc('cms_rw_inc_settings_set', { p: { att: { amount: fm.aa.value, months: Number(fm.am.value), allow_probation: fm.ap.checked, allow_part_time: fm.pt.checked }, ref: { milestones: ms, hold_until_confirmed: fm.hold.checked } } }); toast('Saved'); re(); }
+        catch (x) { toast(x.message, 'err'); }
+      });
+    };
+    return { load, att, refs, settings, wire, get data() { return I; } };
+  }
+
   async function rewardsPage(item, el) {
     const params = new URLSearchParams((location.hash.split('?')[1]) || '');
     let tab = params.get('tab') || 'overview';
     el.innerHTML = `${pageHead(item)}<div class="tabs" role="tablist" id="rw-tabs"></div><div id="rw-a">${loading()}</div>`;
-    let D, Q = null, P = null;
-    const load = async () => { D = await API.rpc('cms_rw_admin'); };
+    let D, Q = null, P = null; const INC = rwIncTabs({ el });
+    const load = async () => { D = await API.rpc('cms_rw_admin'); await INC.load(); };
     try { await load(); } catch (e) { $('#rw-a', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
     const box = () => $('#rw-a', el);
-    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); if (tab === 'questions') Q = await API.rpc('cms_rw_questions'); loadRwPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); if (tab === 'questions') Q = await API.rpc('cms_rw_questions'); loadRwPending(); loadRwIncPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
     const people = async () => { if (P) return P; try { P = (await loadPeople()).filter((r) => !r.last_day || daysTo(r.last_day) >= 0); } catch (e) { P = []; } return P; };
     const cats = () => D.categories;
     const pend = D.enrolments.filter((e) => e.status === 'pending_approval').length + D.changes.filter((c) => c.status === 'pending').length;
-    const TABS = [['overview', `To do${pend + D.eligible.length ? ` (${pend + D.eligible.length})` : ''}`], ['staff', 'Enrolled staff'], ['questions', 'Question bank'], ['practicals', 'Practical checks'], ['surprises', 'Surprises'], ['results', 'Results'], ['settings', 'Settings']];
+    const incN = (k, st) => INC.data[k].filter((x) => st.includes(x.status)).length;
+    const TABS = [['overview', `To do${pend + D.eligible.length ? ` (${pend + D.eligible.length})` : ''}`], ['attendance', `Full attendance${incN('att', ['submitted', 'checked']) ? ` (${incN('att', ['submitted', 'checked'])})` : ''}`], ['referrals', `Referrals${incN('ref', ['submitted', 'linked']) ? ` (${incN('ref', ['submitted', 'linked'])})` : ''}`], ['staff', 'Enrolled staff'], ['questions', 'Question bank'], ['practicals', 'Practical checks'], ['surprises', 'Surprises'], ['results', 'Results'], ['settings', 'Settings']];
     const drawTabs = () => {
       $('#rw-tabs', el).innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${esc(l)}</button>`).join('');
       $$('#rw-tabs [data-tab]', el).forEach((b) => b.addEventListener('click', async () => { tab = b.dataset.tab; history.replaceState(null, '', `#/rewards?tab=${tab}`); if (tab === 'questions' && !Q) { box().innerHTML = loading(); try { Q = await API.rpc('cms_rw_questions'); } catch (e) { toast(e.message, 'err'); } } draw(); }));
@@ -6775,11 +6942,12 @@
 
     const draw = () => {
       drawTabs();
-      box().innerHTML = ({ overview: tabOverview, staff: tabStaff, questions: tabQuestions, practicals: tabPracticals, surprises: tabSurprises, results: tabResults, settings: tabSettings })[tab]();
+      box().innerHTML = ({ overview: tabOverview, attendance: INC.att, referrals: INC.refs, staff: tabStaff, questions: tabQuestions, practicals: tabPracticals, surprises: tabSurprises, results: tabResults, settings: () => tabSettings() + INC.settings() })[tab]();
       wire();
     };
     const keepFocus = (id) => { const i = $(id, el); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
     function wire() {
+      INC.wire(box(), draw);
       $('#rw-q', el)?.addEventListener('input', (e) => { f.q = e.target.value; draw(); keepFocus('#rw-q'); });
       $('#rw-st', el)?.addEventListener('change', (e) => { f.st = e.target.value; draw(); });
       $('#rw-qq', el)?.addEventListener('input', (e) => { f.qq = e.target.value; draw(); keepFocus('#rw-qq'); });
@@ -9963,7 +10131,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, rewards: rewardsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, 'me/rewards': meRewardsPage, rewards: rewardsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -10169,7 +10337,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadRwPending(); loadLettersPending(); loadLoecPending(); loadNotices(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadRwPending(); loadRwIncPending(); loadLettersPending(); loadLoecPending(); loadNotices(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 

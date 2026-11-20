@@ -1494,3 +1494,7 @@ code.brk { word-break: break-all; }
 .rw-letter .rw-sign > div { border-top: 1px solid #333; padding-top: 2mm; } .rw-letter .rw-sign span { display: block; font-size: 8.5pt; color: #555; } .rw-letter .rw-sign small { display: block; font-size: 8.5pt; color: #555; }
 @media (max-width: 640px) { .rw-run .rw-q { padding: 10px; } .rw-foot { flex-direction: column; align-items: stretch; } }
 .rw-ack .btn-row .btn, .rw-run .rw-foot .btn { white-space: normal; max-width: 100%; text-align: center; }
+.rw-months { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.rw-m { display: inline-flex; gap: 5px; align-items: center; padding: 3px 8px; border-radius: 8px; font-size: 12px; border: 1px solid var(--line); background: var(--soft); white-space: nowrap; }
+.rw-m.ok b { color: #1f8a2e; } .rw-m.bad { border-color: rgba(229,72,110,.45); background: rgba(229,72,110,.07); } .rw-m.bad b { color: var(--rose); }
+.rw-pays { display: grid; gap: 3px; margin-top: 4px; font-size: 12.5px; } .rw-pays small { color: var(--mute); }
