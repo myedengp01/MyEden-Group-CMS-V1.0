@@ -23,7 +23,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
 | PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | **Built in v2026.11.18-21:30 to 23:05** (phases 1–4); old MEG-EAF V2 pages switch over one by one as CLC confirms |
 | PRI-025 | 2026-11-20 | MEG-FORMS apps retired into the CMS: claims shown in each form's own layout with receipts and print; emails and approvers from the CMS; every remaining feature of MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-TEC-V2, MEG-PRFAF and the Forms Dashboard / Admin brought over; each old app switched over when CLC confirms | In progress |
-| PRI-026 | 2026-11-20 | Company Reward System: reward catalogue (incentives, allowances, awards) from the 2024 General Benefit & Award Criteria, yearly rule editions, staff applications / nominations, automatic eligibility checks from CMS records, leader → HR → Director review, payroll link with the correct statutory treatment, certificates / trophies / announcements, award history | Planning (ebp) |
+| PRI-026 | 2026-11-20 | Company Reward System: reward catalogue (incentives, allowances, awards) from the 2024 General Benefit & Award Criteria, yearly rule editions, staff applications / nominations, automatic eligibility checks from CMS records, leader → HR → Director review, payroll link with the correct statutory treatment, certificates / trophies / announcements, award history | Phase 1 built (certification allowance) |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -625,6 +625,16 @@ recorded in the CMS, T&C on staff self-service; continuing-eligibility assessmen
 standard questionnaires and practical tasks (CPR, injury recovery …); validity period of each certificate editable by Admin / Director;
 (6) annual award cash treatment selectable (Bonus / Incentive / other); (7) no LIQI / Talent Department — HR and above decide; (8) phasing
 as suggested; (9) placement in the CMS: to be elaborated.
+
+**Phase 1 built — v2026.11.20-17:38 (CLC "go with pri-026 phase 1", certification first):** Reward System page (To do, Enrolled staff,
+Question bank, Practical checks, Surprises, Results, Settings) and staff My Assessments, as decided above. Enrol (HR) → approve (Admin /
+Director, not the person who enrolled) → eligibility letter with T&C → staff acknowledge and choose the period → periods from the allowance
+start (Jan 2027) → assessment opens 14 days before the period ends, 20 weighted questions, 80 %, retakes → passed period = one-month
+`CERT_ALLOW` line (wages) in payroll; skipped (surprise) periods paid too; lost / resignation periods not. Practice, mastery, surprise
+rules (80 / 90 / 100 % → 3 / 6 / 9 months, manual by default, "give automatically" per rule) and higher-allowance surprises. Practical
+checks recorded (every 6 months), not yet blocking the allowance. Question bank filled by Import (the reviewed 85-question file stays out
+of the repo). Old FIRST_AID / SKM1 / SKM2 allowances untouched (reminder shown). Next phases: Full Attendance and Referral incentives,
+then the awards.
 
 **Decisions (CLC 20 Nov 2026, 16:00–16:21):** full attendance: after a successful 3-month block the next starts fresh, no overlap.
 Certification: disqualified from the resignation letter date; no allowance for the period in which the letter is dated. Staff choose

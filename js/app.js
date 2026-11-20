@@ -163,7 +163,7 @@
   async function loadNotices() { try { state.notices = await API.rpc('cms_my_notices'); drawBell(); } catch (e) { /* reminders only */ } }
   const noticeTasks = () => (state.notices || []).map((n) => ({ ic: n.kind === 'esign' ? 'file-check' : 'bell', tone: 'violet', title: n.title, sub: `${n.body}${n.at ? ` · ${dShort(n.at)}` : ''}`, href: n.href || '#/dashboard', nt: String(n.id) }));
   function tasksFromDash(d) {
-    const t = [...noticeTasks(), ...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...letterTasks()];
+    const t = [...noticeTasks(), ...selfTasks(), ...itemTasks(), ...leaveTasks(), ...apprTasks(), ...certTasks(), ...rwTasks(), ...letterTasks()];
     if (state.selfPending && can('selfservice.profile')) t.push({ ic: 'users', tone: 'violet', title: `${num(state.selfPending)} profile changes to approve`, sub: 'Sent by staff from My Profile', href: '#/people/selfservice?tab=requests' });
     if (!d) return t;
     const bs = d.claims_by_stage || {};
@@ -3499,6 +3499,7 @@
       ['me/leave', 'calendar', 'My Leave', 'Apply and follow your requests', selfOn('leave')],
       ['me/appraisal', 'trend', 'My Appraisal', 'Self-assessment and results', selfOn('appraisal')],
       ['me/certs', 'shield', 'My Certificates', 'Certificates and expiry dates', selfOn('certs')],
+      ['me/assess', 'check-circle', 'My Assessments', 'Certification allowance, assessments and practice', selfOn('certs')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -6471,6 +6472,449 @@
     if (x.hr_expiring) t.push({ ic: 'shield', tone: 'rose', title: `${num(x.hr_expiring)} certificate${x.hr_expiring === 1 ? '' : 's'} expiring within 30 days`, sub: 'Training & Certificates', href: '#/training' });
     if (x.hr_missing) t.push({ ic: 'shield', tone: 'orange', title: `${num(x.hr_missing)} required certificate${x.hr_missing === 1 ? '' : 's'} missing`, sub: 'Required for all staff', href: '#/training' });
     return t;
+  }
+
+  // ================================================================ PRI-026 · REWARD SYSTEM · Phase 1: certification allowance & assessments
+  // Staff: My Assessments (self-service part "certs"): acknowledge the eligibility letter and choose the assessment period, take the
+  // assessment when it opens (14 days before the period ends), practise any time, mastery, surprises, practical checks.
+  // Management: Reward System (module "rewards"): enrol verified certificates, approve (Admin / Director), period changes, question bank
+  // (3 languages, import), practical checks, surprises, results and settings. Questions are drawn and marked in the database; the
+  // correct answers are never sent to the browser before an attempt is submitted.
+  const RW_LANGS = [['en', 'English'], ['zh', '中文'], ['ms', 'Bahasa Melayu']];
+  const RWT = {
+    en: { q: 'Question', qs: 'questions', submit: 'Submit answers', all: 'Answer every question first', left: 'not answered yet', score: 'Score', passed: 'Passed', failed: 'Not passed — you can try again',
+      practice: 'Practice', assess: 'Assessment', yours: 'Your answer', right: 'Correct answer', video: 'Watch the video', back: 'Back to My Assessments', none: 'not answered',
+      mastery: 'Mastery of the question bank', sure: 'Submit your answers? You cannot change them afterwards.' },
+    zh: { q: '题目', qs: '题', submit: '提交答案', all: '请先回答所有题目', left: '题未作答', score: '得分', passed: '通过', failed: '未通过——可以再考一次',
+      practice: '练习', assess: '评估', yours: '你的答案', right: '正确答案', video: '观看视频', back: '返回我的评估', none: '未作答',
+      mastery: '题库掌握度', sure: '确定提交答案吗？提交后不能更改。' },
+    ms: { q: 'Soalan', qs: 'soalan', submit: 'Hantar jawapan', all: 'Jawab semua soalan dahulu', left: 'belum dijawab', score: 'Markah', passed: 'Lulus', failed: 'Tidak lulus — anda boleh cuba lagi',
+      practice: 'Latihan', assess: 'Penilaian', yours: 'Jawapan anda', right: 'Jawapan betul', video: 'Tonton video', back: 'Kembali ke Penilaian Saya', none: 'tidak dijawab',
+      mastery: 'Penguasaan bank soalan', sure: 'Hantar jawapan anda? Jawapan tidak boleh diubah selepas ini.' },
+  };
+  const rwLang = () => { try { return localStorage.getItem('cms.rwLang') || 'en'; } catch (e) { return 'en'; } };
+  const rwSetLang = (l) => { try { localStorage.setItem('cms.rwLang', l); } catch (e) { /* no storage */ } };
+  const rwCat = (cats, code, l = 'en') => { const c = (cats || []).find((x) => x.code === code); return c ? (c.name?.[l] || c.name?.en || code) : (code || 'All categories'); };
+  const rwEvery = (m) => ({ 1: 'Monthly', 2: 'Every 2 months', 3: 'Quarterly', 6: 'Every 6 months', 12: 'Yearly' }[m] || `Every ${m} months`);
+  const rwMonth = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—');
+  const RW_PER = { open: ['', 'Open'], passed: ['ok', 'Passed'], exempt: ['ok', 'Skipped · surprise'], lost: ['bad', 'Not passed · no allowance'], ineligible: ['', 'No allowance'] };
+  const rwPerTag = (s) => { const [t, l] = RW_PER[s] || ['', s]; return `<span class="tag ${t} xs">${esc(l)}</span>`; };
+  const RW_ENR = { pending_approval: ['warn', 'Waiting for approval'], awaiting_ack: ['warn', 'Letter issued · waiting for acknowledgement'], active: ['ok', 'Active'], ended: ['', 'Ended'], declined: ['bad', 'Declined'] };
+  const rwEnrTag = (s) => { const [t, l] = RW_ENR[s] || ['', s]; return `<span class="tag ${t} xs">${esc(l)}</span>`; };
+  const rwBar = (m) => { const p = Number(m?.progress || 0); return `<div class="rw-bar" title="${p}%"><span style="width:${Math.max(0, Math.min(100, p))}%"></span></div>`; };
+  const rwMasteryTxt = (m) => (m && m.total ? `${num(m.correct)} of ${num(m.total)} right at the latest try · ${num(m.answered)} answered${m.pct != null ? ` · <b>${m.pct}%</b>` : ' · answer every question once to get a mastery %'}` : 'No questions in the bank yet');
+
+  // the eligibility letter with T&C (printable); acknowledgement shown once given
+  function rwLetter(e, settings) {
+    const co = (window.CMS_COMPANIES || []).find((c) => c.code === (e.person?.company || 'MEG')) || window.CMS_COMPANIES?.[0] || {};
+    const tc = String(e.tc || settings?.tc || '').split(/\n+/).filter(Boolean);
+    const from = e.start_month || settings?.allowance_from;
+    return `<div class="sheet rw-letter">
+      <div class="rw-lh">${co.logo ? `<img src="${esc(asset(co.logo))}" alt="">` : ''}<div><b>${esc(co.name || 'MyEden Group')}</b></div></div>
+      <div class="rw-ref"><span>Ref: <b>${esc(e.ref_no || '(issued on approval)')}</b></span><span>Date: ${dShort(e.approved_at || new Date())}</span></div>
+      <p><b>${esc(e.name)}</b>${e.person?.employee_id ? ` (${esc(e.person.employee_id)})` : ''}<br>${esc(e.person?.position || '')}${e.person?.department ? `, ${esc(e.person.department)}` : ''}</p>
+      <p class="rw-subj">CERTIFICATION ALLOWANCE: LETTER OF ELIGIBILITY</p>
+      <p>We are pleased to confirm that your certificate <b>${esc(e.label || e.type)}</b>${e.cert?.title ? ` (${esc(e.cert.title)}${e.cert.no ? `, no. ${esc(e.cert.no)}` : ''}${e.cert.issued_on ? `, issued ${dShort(e.cert.issued_on)}` : ''})` : ''}
+        is approved as related to your job description and is eligible for the Certification Allowance of <b>RM ${m2(e.amount)}</b> for each assessment period you pass,
+        from <b>${rwMonth(from)}</b>${e.eligible_until ? `, until <b>${dShort(e.eligible_until)}</b> (reviewed before then)` : ''}, on the terms and conditions below.</p>
+      <p><b>Terms and conditions</b></p><ol class="rw-tc">${tc.map((l) => `<li>${esc(l.replace(/^\d+\.\s*/, ''))}</li>`).join('')}</ol>
+      <div class="rw-sign"><div><span>Approved by</span><b>${esc(e.approved_by || '')}</b><small>for ${esc(co.name || 'the company')}</small></div>
+        <div><span>Acknowledged by the employee</span>${e.acknowledged_at ? `<b>${esc(e.ack_name || e.name)}</b><small>${dShort(e.acknowledged_at)} in the CMS · assessment: ${esc(rwEvery(e.period_months))}</small>` : '<b>&nbsp;</b><small>Name, signature and date</small>'}</div></div>
+    </div>`;
+  }
+
+  // one attempt: the questions, then the results with every explanation
+  function rwRunner(el, a, back) {
+    const T = RWT[a.lang] || RWT.en; const ans = new Array(a.items.length).fill(null);
+    const draw = () => {
+      el.innerHTML = `<section class="card rw-run"><div class="card-head"><h3>${esc(a.kind === 'assessment' ? T.assess : T.practice)} · ${a.items.length} ${esc(T.qs)}</h3>
+          <button type="button" class="btn sm ghost" data-back>${esc(T.back)}</button></div>
+        ${a.items.map((it, i) => `<fieldset class="rw-q"><legend><span class="rw-n">${i + 1}</span>${esc(it.q)}</legend>
+          ${it.o.map((o, j) => `<label class="rw-o"><input type="radio" name="q${i}" value="${j}" ${ans[i] === j ? 'checked' : ''}><span>${String.fromCharCode(65 + j)}. ${esc(o)}</span></label>`).join('')}</fieldset>`).join('')}
+        <div class="rw-foot"><span class="muted small" id="rw-left"></span><button type="button" class="btn primary" data-submit>${esc(T.submit)}</button></div></section>`;
+      const left = () => { const n = ans.filter((x) => x === null).length; $('#rw-left', el).textContent = n ? `${n} ${T.left}` : ''; };
+      $$('input[type=radio]', el).forEach((r) => r.addEventListener('change', () => { ans[Number(r.name.slice(1))] = Number(r.value); left(); }));
+      left();
+      $('[data-back]', el).addEventListener('click', back);
+      $('[data-submit]', el).addEventListener('click', async (ev) => {
+        const miss = ans.findIndex((x) => x === null);
+        if (miss >= 0) { toast(T.all, 'err'); $$('.rw-q', el)[miss]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        if (!(await modal({ title: T.submit, body: `<p class="confirm-txt">${esc(T.sure)}</p>`, ok: T.submit }))) return;
+        ev.target.disabled = true;
+        try { const r = await API.rpc('cms_rw_submit', { p_attempt: a.id, p_answers: ans }); rwResults(el, r, back); pageScroller().scrollTop = 0; }
+        catch (x) { ev.target.disabled = false; toast(x.message, 'err'); }
+      });
+    };
+    draw();
+  }
+  function rwResults(el, r, back, who) {
+    const T = RWT[r.lang] || RWT.en;
+    const pay = r.period && r.period.status === 'passed' ? `<p class="small">Allowance RM ${m2(r.period.amount)} goes into the ${rwMonth(r.period.pay_month)} payroll.</p>` : '';
+    el.innerHTML = `<section class="card rw-run"><div class="card-head"><h3>${who ? `${esc(who)} · ` : ''}${esc(r.kind === 'assessment' ? T.assess : T.practice)} · ${dShort(r.submitted_at)}</h3>
+        <button type="button" class="btn sm ghost" data-back>${esc(T.back)}</button></div>
+      <div class="rw-score ${r.kind === 'assessment' ? (r.passed ? 'ok' : 'bad') : ''}"><b>${esc(T.score)}: ${num(r.score)} / ${num(r.total)}</b>
+        ${r.kind === 'assessment' ? `<span>${esc(r.passed ? T.passed : T.failed)} (${Number(r.pass_pct)}%)</span>` : ''}</div>${pay}
+      ${r.mastery ? `<p class="small">${esc(T.mastery)}: ${rwMasteryTxt(r.mastery)}</p>${rwBar(r.mastery)}` : ''}
+      ${r.items.map((it, i) => `<div class="rw-q done ${it.chosen === it.right ? 'right' : 'wrong'}"><div class="rw-qt"><span class="rw-n">${i + 1}</span>${esc(it.q)}</div>
+        ${it.o.map((o, j) => `<div class="rw-o ${o.ok ? 'is-right' : ''} ${it.chosen === j && !o.ok ? 'is-wrong' : ''}"><b>${String.fromCharCode(65 + j)}. ${esc(o.t)}</b>${o.ok ? ` <span class="tag ok xs">${esc(T.right)}</span>` : ''}${it.chosen === j ? ` <span class="tag xs">${esc(T.yours)}</span>` : ''}
+          ${o.why ? `<small>${esc(o.why)}</small>` : ''}</div>`).join('')}
+        ${it.chosen == null ? `<small class="muted">${esc(T.none)}</small>` : ''}
+        ${it.video ? `<a class="btn sm ghost" href="${esc(it.video)}" target="_blank" rel="noopener">${icon('eye')}${esc(T.video)}</a>` : ''}</div>`).join('')}
+      <div class="rw-foot"><button type="button" class="btn" data-back>${esc(T.back)}</button></div></section>`;
+    $$('[data-back]', el).forEach((b) => b.addEventListener('click', back));
+  }
+
+  async function meAssessPage(item, el) {
+    el.innerHTML = `${pageHead(item)}<div id="rw-body">${loading()}</div>`;
+    const body = () => $('#rw-body', el);
+    let D;
+    const load = async () => { D = await API.rpc('cms_rw_my'); };
+    try { await load(); } catch (e) { body().innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const back = async () => { try { await load(); } catch (e) { toast(e.message, 'err'); } draw(); pageScroller().scrollTop = 0; };
+    const start = async (kind, enrol, cat) => {
+      const lang = $('#rw-lang', el)?.value || rwLang(); rwSetLang(lang);
+      try { const a = await API.rpc('cms_rw_start', { p_kind: kind, p_enrol: enrol || null, p_lang: lang, p_category: cat || null }); rwRunner(body(), a, back); pageScroller().scrollTop = 0; }
+      catch (e) { toast(e.message, 'err'); }
+    };
+    const draw = () => {
+      const S = D.settings; const today = D.today;
+      const acks = D.enrolments.filter((e) => e.status === 'awaiting_ack');
+      const mine = D.enrolments.filter((e) => e.status !== 'awaiting_ack');
+      const per = (e) => { const c = e.current; if (!c) return `<small class="sub">Assessments start ${rwMonth(e.start_month)}.</small>`;
+        const open = c.status === 'open' && today >= c.opens_on;
+        return `<small class="sub">This period ${dShort(c.period_start)} – ${dShort(c.period_end)} · ${rwPerTag(c.status)}
+          ${c.status === 'open' ? (open ? ` · open now, closes ${dShort(c.period_end)}` : ` · the assessment opens ${dShort(c.opens_on)}`) : ''}
+          ${c.pay_month ? ` · RM ${m2(c.amount)} in the ${rwMonth(c.pay_month)} payroll` : ''}</small>`; };
+      body().innerHTML = `
+        ${acks.map((e) => `<section class="card rw-ack"><div class="card-head"><h3>${icon('mail')} Letter to acknowledge: ${esc(e.label)}</h3><button type="button" class="btn sm ghost" data-letter="${esc(e.id)}">Read the letter &amp; T&amp;C</button></div>
+          <p class="small">Certification Allowance <b>RM ${m2(e.amount)}</b> for each assessment period you pass${e.eligible_until ? `, eligible until ${dShort(e.eligible_until)}` : ''}. Choose how often you want to be assessed: the shorter the period, the more assessments, practice and allowance.</p>
+          <div class="grid-2 tight"><label class="fld"><span>Assessment period</span><select data-per="${esc(e.id)}">${S.periods.map((m) => `<option value="${m}">${esc(rwEvery(m))}</option>`).join('')}</select></label>
+            <label class="fld"><span>Type your full name to acknowledge</span><input data-name="${esc(e.id)}" autocomplete="name"></label></div>
+          <div class="btn-row"><button type="button" class="btn primary" data-ack="${esc(e.id)}">I have read and acknowledge the letter and T&amp;C</button></div></section>`).join('')}
+        <section class="card"><div class="card-head"><h3>My certification allowance</h3>
+          <label class="fld inline"><span>Language</span><select id="rw-lang">${RW_LANGS.map(([k, l]) => `<option value="${k}" ${rwLang() === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+          ${mine.length ? mine.map((e) => { const c = e.current; const open = e.status === 'active' && c && c.status === 'open' && today >= c.opens_on;
+            return `<div class="me-item"><div><b>${esc(e.label)}</b> ${rwEnrTag(e.status)}<small class="sub">RM ${m2(e.amount)} a period · ${esc(rwEvery(e.period_months))} · ${S.questions} questions, pass ${S.pass_pct}%${e.eligible_until ? ` · eligible until ${dShort(e.eligible_until)}` : ''}${e.ended_on ? ` · ended ${dShort(e.ended_on)}${e.end_reason ? `: ${esc(e.end_reason)}` : ''}` : ''}</small>
+              ${e.status === 'active' ? per(e) : ''}${e.change && e.change.status === 'pending' ? `<small class="sub">Change to ${esc(rwEvery(e.change.to))} waiting for approval</small>` : ''}</div>
+              <div class="btn-row">${open ? `<button type="button" class="btn sm primary" data-go="${esc(e.id)}">Start the assessment</button>` : ''}
+                ${e.status === 'active' && !(e.change && e.change.status === 'pending') ? `<button type="button" class="btn sm ghost" data-chg="${esc(e.id)}">Change period…</button>` : ''}
+                <button type="button" class="btn sm ghost" data-letter="${esc(e.id)}">Letter</button></div></div>`; }).join('')
+            : `<div class="empty small"><p>No certificate enrolled for the allowance yet. HR enrols certificates related to your job after checking them: send yours in My Certificates.</p></div>`}
+          ${D.grants.length ? `<div class="ok-box">${icon('sparkle')}<div><b>Surprise!</b> ${D.grants.map((g) => g.kind === 'skip' ? `No assessment needed ${rwMonth(g.from_month)} – ${rwMonth(g.to_month)} (allowance still paid).` : `Allowance RM ${m2(g.amount)} ${rwMonth(g.from_month)} – ${rwMonth(g.to_month)}.`).join(' ')}</div></div>` : ''}
+        </section>
+        <section class="card"><div class="card-head"><h3>Practise</h3></div>
+          <p class="small muted">Practise as often as you like: it never affects your allowance. Every answer counts towards your mastery of the question bank, and management may reward a high mastery with a surprise.</p>
+          <p class="small">${esc(RWT[rwLang()].mastery)}: ${rwMasteryTxt(D.mastery)}</p>${rwBar(D.mastery)}
+          <div class="toolbar"><select id="rw-cat" aria-label="Category"><option value="">All categories (${S.questions} questions)</option>${D.categories.filter((c) => c.count).map((c) => `<option value="${esc(c.code)}">${esc(c.name[rwLang()] || c.name.en)} (${num(c.count)})</option>`).join('')}</select>
+            <button type="button" class="btn sm primary" data-practice>Start practice</button></div></section>
+        ${D.practicals.length ? `<section class="card"><div class="card-head"><h3>Practical checks</h3></div>${D.practicals.map((p) => `<div class="me-item"><div><b>${esc(rwCat(D.categories, p.category))}</b><small class="sub">Last ${dShort(p.done_on)} · ${p.passed ? 'passed' : 'not passed'}${p.assessor_name ? ` · ${esc(p.assessor_name)}` : ''}</small></div>
+          <span class="tag ${daysTo(p.due_on) < 0 ? 'bad' : daysTo(p.due_on) < 30 ? 'warn' : ''} xs">Next by ${dShort(p.due_on)}</span></div>`).join('')}</section>` : ''}
+        <section class="card"><div class="card-head"><h3>My attempts</h3></div>
+          ${D.attempts.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Date</th><th>Kind</th><th>Score</th><th>Result</th><th></th></tr></thead><tbody>
+            ${D.attempts.map((a) => `<tr><td class="nowrap">${dShort(a.started_at)}</td><td>${a.kind === 'assessment' ? `Assessment${a.type ? ` · ${esc(a.type)}` : ''}` : `Practice · ${esc(rwCat(D.categories, a.category))}`}</td>
+              <td class="num">${a.submitted_at ? `${num(a.score)} / ${num(a.total)}` : '—'}</td><td>${!a.submitted_at ? '<span class="tag xs">Not submitted</span>' : a.kind === 'assessment' ? `<span class="tag ${a.passed ? 'ok' : 'bad'} xs">${a.passed ? 'Passed' : 'Not passed'}</span>` : ''}</td>
+              <td>${a.submitted_at ? `<button type="button" class="btn sm ghost" data-rev="${esc(a.id)}">Review</button>` : `<button type="button" class="btn sm ghost" data-resume="${esc(a.kind)}" data-cat="${esc(a.category || '')}" data-enr="${esc(D.enrolments.find((e) => e.type === a.type)?.id || '')}">Continue</button>`}</td></tr>`).join('')}</tbody></table></div>`
+            : '<div class="empty small"><p>No attempts yet</p></div>'}</section>`;
+      $('#rw-lang', el)?.addEventListener('change', (ev) => rwSetLang(ev.target.value));
+      $$('[data-letter]', el).forEach((b) => b.addEventListener('click', () => { const e = D.enrolments.find((x) => x.id === b.dataset.letter); docOverlay(`Letter ${e.ref_no || ''}`, [rwLetter(e, S)]); }));
+      $$('[data-ack]', el).forEach((b) => b.addEventListener('click', async () => {
+        const id = b.dataset.ack; const months = Number($(`[data-per="${id}"]`, el).value); const name = $(`[data-name="${id}"]`, el).value.trim();
+        if (name.length < 3) { toast('Type your full name to acknowledge.', 'err'); return; }
+        b.disabled = true;
+        try { await API.rpc('cms_rw_acknowledge', { p_enrol: id, p_months: months, p_name: name }); toast('Acknowledged'); await back(); }
+        catch (e) { b.disabled = false; toast(e.message, 'err'); }
+      }));
+      $$('[data-go]', el).forEach((b) => b.addEventListener('click', () => start('assessment', b.dataset.go)));
+      $('[data-practice]', el).addEventListener('click', () => start('practice', null, $('#rw-cat', el).value));
+      $$('[data-resume]', el).forEach((b) => b.addEventListener('click', () => start(b.dataset.resume, b.dataset.enr, b.dataset.cat)));
+      $$('[data-rev]', el).forEach((b) => b.addEventListener('click', async () => { try { rwResults(body(), await API.rpc('cms_rw_review', { p_attempt: b.dataset.rev }), back); pageScroller().scrollTop = 0; } catch (e) { toast(e.message, 'err'); } }));
+      $$('[data-chg]', el).forEach((b) => b.addEventListener('click', async () => {
+        const e = D.enrolments.find((x) => x.id === b.dataset.chg);
+        const ok = await modal({ title: `Change the assessment period · ${e.label}`, ok: 'Send for approval',
+          body: `<p class="small muted">Now: ${esc(rwEvery(e.period_months))}. The period running now keeps its length; the new one starts after it. Admin or a Director approves.</p>
+            <label class="fld"><span>New period</span><select name="m">${S.periods.filter((m) => m !== e.period_months).map((m) => `<option value="${m}">${esc(rwEvery(m))}</option>`).join('')}</select></label>
+            <label class="fld"><span>Reason</span><textarea name="r" rows="3" required></textarea></label>`,
+          onOk: (f) => API.rpc('cms_rw_period_request', { p_enrol: e.id, p_months: Number(f.m.value), p_reason: f.r.value }) });
+        if (ok) { toast('Sent for approval'); await back(); }
+      }));
+    };
+    draw();
+  }
+  async function loadRwPending() { try { state.rwPending = await API.rpc('cms_rw_pending'); drawBell(); } catch (e) { /* reminders only */ } }
+  function rwTasks() {
+    const x = state.rwPending; const t = []; if (!x) return t;
+    for (const m of x.mine || []) {
+      if (m.kind === 'ack') t.push({ ic: 'mail', tone: 'violet', title: `Acknowledge your certification allowance letter (${m.label})`, sub: 'Read the T&C and choose your assessment period', href: '#/me/assess' });
+      else t.push({ ic: 'check-circle', tone: 'orange', title: `Assessment open: ${m.label}`, sub: `Pass it by ${dShort(m.closes)} for this period's allowance`, href: '#/me/assess' });
+    }
+    if (x.to_approve) t.push({ ic: 'check-circle', tone: 'blue', title: `${num(x.to_approve)} certification allowance item${x.to_approve === 1 ? '' : 's'} to approve`, sub: 'Enrolments and period changes', href: '#/rewards' });
+    if (x.to_enrol) t.push({ ic: 'shield', tone: 'teal', title: `${num(x.to_enrol)} verified certificate${x.to_enrol === 1 ? '' : 's'} eligible for the allowance`, sub: 'Enrol them in the Reward System', href: '#/rewards' });
+    return t;
+  }
+
+  async function rewardsPage(item, el) {
+    const params = new URLSearchParams((location.hash.split('?')[1]) || '');
+    let tab = params.get('tab') || 'overview';
+    el.innerHTML = `${pageHead(item)}<div class="tabs" role="tablist" id="rw-tabs"></div><div id="rw-a">${loading()}</div>`;
+    let D, Q = null, P = null;
+    const load = async () => { D = await API.rpc('cms_rw_admin'); };
+    try { await load(); } catch (e) { $('#rw-a', el).innerHTML = errorCard(e.message); wireRetry(el); return; }
+    const box = () => $('#rw-a', el);
+    const reload = async () => { const y = pageScroller().scrollTop; try { await load(); if (tab === 'questions') Q = await API.rpc('cms_rw_questions'); loadRwPending(); } catch (e) { toast(e.message, 'err'); } draw(); requestAnimationFrame(() => { pageScroller().scrollTop = y; }); };
+    const people = async () => { if (P) return P; try { P = (await loadPeople()).filter((r) => !r.last_day || daysTo(r.last_day) >= 0); } catch (e) { P = []; } return P; };
+    const cats = () => D.categories;
+    const pend = D.enrolments.filter((e) => e.status === 'pending_approval').length + D.changes.filter((c) => c.status === 'pending').length;
+    const TABS = [['overview', `To do${pend + D.eligible.length ? ` (${pend + D.eligible.length})` : ''}`], ['staff', 'Enrolled staff'], ['questions', 'Question bank'], ['practicals', 'Practical checks'], ['surprises', 'Surprises'], ['results', 'Results'], ['settings', 'Settings']];
+    const drawTabs = () => {
+      $('#rw-tabs', el).innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${esc(l)}</button>`).join('');
+      $$('#rw-tabs [data-tab]', el).forEach((b) => b.addEventListener('click', async () => { tab = b.dataset.tab; history.replaceState(null, '', `#/rewards?tab=${tab}`); if (tab === 'questions' && !Q) { box().innerHTML = loading(); try { Q = await API.rpc('cms_rw_questions'); } catch (e) { toast(e.message, 'err'); } } draw(); }));
+    };
+    const ask = (title, label, ok = 'Save', danger = false) => new Promise((res) => { let v = null; modal({ title, ok, danger, body: `<label class="fld"><span>${esc(label)}</span><textarea name="r" rows="3" required></textarea></label>`, onOk: (f) => { if (f.r.value.trim().length < 3) throw new Error('Give the reason.'); v = f.r.value.trim(); } }).then((x) => res(x ? v : null)); });
+
+    const enrolRow = (e) => `<tr><td><b>${esc(e.name)}</b><small class="sub">${esc(e.person?.employee_id || '')}</small></td><td>${esc(e.label || e.type)}<small class="sub">${esc(rwCat(cats(), e.category))}</small></td>
+      <td>${rwEnrTag(e.status)}${e.ref_no ? `<small class="sub">${esc(e.ref_no)}</small>` : ''}</td><td class="nowrap">RM ${m2(e.amount)}<small class="sub">${e.period_months ? esc(rwEvery(e.period_months)) : '—'}</small></td>
+      <td class="nowrap">${e.current ? `${rwPerTag(e.current.status)}<small class="sub">${dShort(e.current.period_start)} – ${dShort(e.current.period_end)}</small>` : e.start_month ? `<small class="sub">from ${rwMonth(e.start_month)}</small>` : '—'}</td>
+      <td class="nowrap">${e.eligible_until ? dShort(e.eligible_until) : 'no end'}${e.eligible_until && daysTo(e.eligible_until) < 60 && ['active', 'awaiting_ack'].includes(e.status) ? ' <span class="tag warn xs">review</span>' : ''}</td>
+      <td style="min-width:120px">${rwBar(e.mastery)}<small class="sub">${e.mastery?.pct != null ? `${e.mastery.pct}%` : `${num(e.mastery?.answered || 0)} / ${num(e.mastery?.total || 0)} answered`}</small></td>
+      <td class="nowrap"><button type="button" class="btn sm ghost" data-ltr="${esc(e.id)}">Letter</button> <button type="button" class="btn sm ghost" data-per="${esc(e.id)}">Periods</button>
+        ${D.can_boss && e.status === 'pending_approval' ? ` <button type="button" class="btn sm primary" data-dec="${esc(e.id)}">Decide…</button>` : ''}
+        ${D.can_boss && ['active', 'awaiting_ack'].includes(e.status) ? ` <button type="button" class="btn sm ghost" data-rev="${esc(e.id)}">Review…</button>` : ''}
+        ${D.can_edit && ['pending_approval', 'awaiting_ack', 'active'].includes(e.status) ? ` <button type="button" class="btn sm ghost" data-end="${esc(e.id)}">End…</button>` : ''}</td></tr>`;
+    const enrolTable = (list) => `<div class="table-wrap fill"><table class="data freeze1"><thead><tr><th>Person</th><th>Certificate</th><th>Status</th><th>Allowance</th><th>This period</th><th>Eligible until</th><th>Mastery</th><th></th></tr></thead>
+      <tbody>${list.map(enrolRow).join('') || '<tr><td colspan="8"><div class="empty small"><p>None</p></div></td></tr>'}</tbody></table></div>`;
+
+    const tabOverview = () => {
+      const pe = D.enrolments.filter((e) => e.status === 'pending_approval'); const ch = D.changes.filter((c) => c.status === 'pending');
+      const ready = D.people.filter((p) => p.ready); const due = latestPracticals().filter((p) => daysTo(p.due_on) < 30);
+      return `${D.old_allowances ? `<div class="warn-box">${icon('clock')}<div><b>${num(D.old_allowances)} running First Aid / SKM allowance${D.old_allowances === 1 ? '' : 's'} in payroll</b> still use the old (travel) treatment. From ${rwMonth(D.settings.allowance_from)} the Certification Allowance is paid from here as wages; end the old allowance lines in payroll by then so nobody is paid twice.</div></div>` : ''}
+        <section class="card"><div class="card-head"><h3>Verified certificates eligible for the allowance</h3></div>
+          ${D.eligible.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Person</th><th>Certificate</th><th>Issued</th><th>Expires</th><th></th></tr></thead><tbody>
+            ${D.eligible.map((c) => `<tr><td><b>${esc(c.name)}</b><small class="sub">${esc(c.employee_id || '')}</small></td><td>${esc(c.label)}${c.title ? `<small class="sub">${esc(c.title)}</small>` : ''}</td><td class="nowrap">${dShort(c.issued_on)}</td><td class="nowrap">${c.expires_on ? dShort(c.expires_on) : '—'}</td>
+              <td>${D.can_edit ? `<button type="button" class="btn sm primary" data-enrol="${esc(c.certificate_id)}">Enrol…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+            : `<div class="empty small"><p>None waiting. Certificates come from Training &amp; Certificates once verified, for the types switched on in Settings.</p></div>`}</section>
+        <section class="card"><div class="card-head"><h3>Waiting for Admin / Director</h3></div>
+          ${pe.length ? enrolTable(pe) : '<div class="empty small"><p>No enrolments to approve</p></div>'}
+          ${ch.length ? `<h4 class="sec-h">Assessment period changes</h4><div class="table-wrap"><table class="data compact"><tbody>${ch.map((c) => `<tr><td><b>${esc(c.name)}</b><small class="sub">${esc(c.type)}</small></td><td>${esc(rwEvery(c.from))} → <b>${esc(rwEvery(c.to))}</b></td><td>${esc(c.reason)}</td><td class="nowrap">${dShort(c.requested_at)}</td>
+            <td class="nowrap">${D.can_boss ? `<button type="button" class="btn sm primary" data-chg="${esc(c.id)}" data-ok="1">Approve</button> <button type="button" class="btn sm ghost" data-chg="${esc(c.id)}">Decline…</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}</section>
+        ${ready.length ? `<section class="card"><div class="card-head"><h3>${icon('sparkle')} Mastery surprises ready</h3></div><div class="table-wrap"><table class="data compact"><tbody>
+          ${ready.map((p) => `<tr><td><b>${esc(p.name)}</b></td><td>Mastery ${p.mastery.pct}%</td><td>${esc(p.ready.label)}</td><td>${D.can_boss ? `<button type="button" class="btn sm primary" data-surp="${esc(p.person_id)}" data-rule="${esc(p.ready.id)}">Give the surprise…</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+        ${due.length ? `<section class="card"><div class="card-head"><h3>Practical checks due within 30 days</h3></div><div class="table-wrap"><table class="data compact"><tbody>
+          ${due.map((p) => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(rwCat(cats(), p.category))}</td><td class="nowrap">last ${dShort(p.done_on)}</td><td><span class="tag ${daysTo(p.due_on) < 0 ? 'bad' : 'warn'} xs">due ${dShort(p.due_on)}</span></td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
+    };
+    const latestPracticals = () => { const m = new Map(); for (const p of D.practicals) { const k = `${p.person_id}|${p.category}`; if (!m.has(k)) m.set(k, p); } return [...m.values()]; };
+    const f = { q: '', st: 'running', cat: 'all', qcat: 'all', qq: '', retired: false, kind: 'all' };
+    const tabStaff = () => {
+      const t = f.q.trim().toLowerCase();
+      const list = D.enrolments.filter((e) => (f.st === 'all' || (f.st === 'running' ? ['pending_approval', 'awaiting_ack', 'active'].includes(e.status) : e.status === f.st)) && (!t || `${e.name} ${e.person?.employee_id || ''} ${e.label}`.toLowerCase().includes(t)));
+      return `<section class="card"><div class="toolbar"><label class="search-in">${icon('search')}<input id="rw-q" type="search" placeholder="Name, Employee ID or certificate" value="${esc(f.q)}"></label>
+        <select id="rw-st"><option value="running" ${f.st === 'running' ? 'selected' : ''}>Running</option>${Object.entries(RW_ENR).map(([k, [, l]]) => `<option value="${k}" ${f.st === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}<option value="all" ${f.st === 'all' ? 'selected' : ''}>All</option></select></div>
+        ${enrolTable(list)}</section>`;
+    };
+    const tabQuestions = () => {
+      const t = f.qq.trim().toLowerCase(); const list = (Q || []).filter((q) => (f.qcat === 'all' || q.category === f.qcat) && (f.retired || !q.retired) && (!t || JSON.stringify(q.q).toLowerCase().includes(t)));
+      return `<section class="card"><div class="toolbar"><label class="search-in">${icon('search')}<input id="rw-qq" type="search" placeholder="Search questions" value="${esc(f.qq)}"></label>
+          <select id="rw-qc"><option value="all">All categories (${num((Q || []).filter((q) => !q.retired).length)})</option>${cats().map((c) => `<option value="${c.code}" ${f.qcat === c.code ? 'selected' : ''}>${esc(c.code)}. ${esc(c.name.en)} (${num(c.count)})</option>`).join('')}</select>
+          <label class="chk"><input type="checkbox" id="rw-qr" ${f.retired ? 'checked' : ''}> Show questions out of use</label>
+          ${D.can_edit ? '<button type="button" class="btn sm primary" data-qadd>+ Add question…</button> <button type="button" class="btn sm ghost" data-qimp>Import questions…</button>' : ''}</div>
+        <p class="small muted">Each assessment draws ${D.settings.questions} questions: ${D.settings.own} from the certificate's own category, the rest from the others. Answers are shuffled every time. A question out of use is kept for past attempts.</p>
+        <div class="rw-qlist">${list.map((q) => `<div class="rw-qa ${q.retired ? 'muted' : ''}"><div class="rw-qt"><span class="tag xs">${esc(q.category)}</span> <b>${esc(q.q.en)}</b>${q.retired ? ' <span class="tag xs">out of use</span>' : ''}</div>
+            <small class="sub">${esc(q.q.zh || '')}${q.q.ms ? ` · ${esc(q.q.ms)}` : ''}</small>
+            <ol type="A">${q.options.map((o, j) => `<li class="${j === q.correct ? 'is-right' : ''}">${esc(o.t.en)}${j === q.correct ? ' ✓' : ''}</li>`).join('')}</ol>
+            <small class="sub">${q.answered ? `Answered ${num(q.answered)} times · ${q.right_pct}% right` : 'Not answered yet'} · ${q.video_url ? `<a href="${esc(q.video_url)}" target="_blank" rel="noopener">video</a>` : `<span class="tag warn xs">no video yet</span>${q.video_search ? ` <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(q.video_search)}" target="_blank" rel="noopener">find one</a>` : ''}`}</small>
+            ${D.can_edit ? `<div class="btn-row"><button type="button" class="btn sm ghost" data-qed="${esc(q.id)}">Edit…</button> <button type="button" class="btn sm ghost" data-qret="${esc(q.id)}" data-v="${q.retired ? '0' : '1'}">${q.retired ? 'Back in use' : 'Out of use'}</button></div>` : ''}</div>`).join('')
+          || `<div class="empty small"><p>${(Q || []).length ? 'No questions match' : 'The question bank is empty. Import the reviewed question file or add questions.'}</p></div>`}</div></section>`;
+    };
+    const tabPracticals = () => `<section class="card"><div class="toolbar">${D.can_edit ? '<button type="button" class="btn sm primary" data-padd>+ Record a practical check…</button>' : ''}<span class="muted small">Every ${D.settings.practical_months} months per person and category.</span></div>
+      <div class="table-wrap fill"><table class="data"><thead><tr><th>Person</th><th>Category</th><th>Done</th><th>Result</th><th>Assessor</th><th>Next by</th><th></th></tr></thead><tbody>
+      ${D.practicals.map((p) => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(rwCat(cats(), p.category))}</td><td class="nowrap">${dShort(p.done_on)}</td><td><span class="tag ${p.passed ? 'ok' : 'bad'} xs">${p.passed ? 'Passed' : 'Not passed'}</span></td>
+        <td>${esc(p.assessor_name || '—')}${p.note ? `<small class="sub">${esc(p.note)}</small>` : ''}</td><td class="nowrap">${dShort(p.due_on)}</td><td>${D.can_edit ? `<button type="button" class="btn sm ghost" data-pret="${esc(p.id)}">Withdraw…</button>` : ''}</td></tr>`).join('')
+        || '<tr><td colspan="7"><div class="empty small"><p>No practical checks recorded</p></div></td></tr>'}</tbody></table></div>
+      <h4 class="sec-h">What to check</h4><div class="grid-2 tight">${cats().map((c) => `<div><b>${esc(c.code)}. ${esc(c.name.en)}</b><ul class="small">${(c.practical || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
+    const tabSurprises = () => `<section class="card"><div class="card-head"><h3>Surprise rules</h3>${D.can_boss ? '<button type="button" class="btn sm primary" data-radd>+ Add a rule…</button>' : ''}</div>
+        <p class="small muted">Mastery = the share of the whole question bank answered right at the latest try, once every question has been answered. When a person reaches a rule, it shows under To do for Admin / a Director to give (or automatically, if the rule says so). "No assessment" still pays the allowance for those months; practical checks stay due.</p>
+        <div class="table-wrap"><table class="data compact"><thead><tr><th>Rule</th><th>Mastery</th><th>Surprise</th><th>Given</th><th></th></tr></thead><tbody>
+        ${D.rules.map((r) => `<tr class="${r.active ? '' : 'muted'}"><td><b>${esc(r.label)}</b>${r.active ? '' : ' <span class="tag xs">off</span>'}</td><td>${Number(r.mastery_pct)}%</td><td>${r.kind === 'skip' ? `No assessment for ${r.months} months` : `Allowance RM ${m2(r.amount)} for ${r.months} months`}</td><td>${r.auto ? 'Automatically' : 'By Admin / Director'}</td>
+          <td>${D.can_boss ? `<button type="button" class="btn sm ghost" data-red="${esc(r.id)}">Edit…</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card"><div class="card-head"><h3>Surprises given</h3>${D.can_boss ? '<button type="button" class="btn sm primary" data-surp="">+ Give a surprise…</button>' : ''}</div>
+        <div class="table-wrap"><table class="data compact"><thead><tr><th>Person</th><th>Surprise</th><th>Months</th><th>Reason</th><th>Given</th><th></th></tr></thead><tbody>
+        ${D.grants.map((g) => `<tr class="${g.revoked_at ? 'muted' : ''}"><td><b>${esc(g.name)}</b></td><td>${g.kind === 'skip' ? 'No assessment' : `Allowance RM ${m2(g.amount)}`}${g.mastery_pct != null ? `<small class="sub">mastery ${g.mastery_pct}%</small>` : ''}</td>
+          <td class="nowrap">${rwMonth(g.from_month)} – ${rwMonth(g.to_month)}</td><td>${esc(g.reason || '')}${g.revoked_at ? `<small class="sub">Withdrawn: ${esc(g.revoke_reason || '')}</small>` : ''}</td><td class="nowrap">${dShort(g.granted_at)}<small class="sub">${esc(g.by || '')}</small></td>
+          <td>${D.can_boss && !g.revoked_at ? `<button type="button" class="btn sm ghost" data-grv="${esc(g.id)}">Withdraw…</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty small"><p>None yet</p></div></td></tr>'}</tbody></table></div></section>`;
+    const tabResults = () => {
+      const list = D.attempts.filter((a) => f.kind === 'all' || a.kind === f.kind);
+      return `<section class="card"><div class="card-head"><h3>People</h3></div><div class="table-wrap"><table class="data compact"><thead><tr><th>Person</th><th>Mastery</th><th>Attempts</th><th>Last</th><th>Allowance</th></tr></thead><tbody>
+          ${D.people.map((p) => `<tr><td><b>${esc(p.name)}</b></td><td style="min-width:140px">${rwBar(p.mastery)}<small class="sub">${p.mastery.pct != null ? `${p.mastery.pct}%` : `${num(p.mastery.answered)} / ${num(p.mastery.total)} answered`}</small></td><td class="num">${num(p.attempts)}</td><td class="nowrap">${p.last_at ? dShort(p.last_at) : '—'}</td><td>${p.enrolled ? '<span class="tag ok xs">enrolled</span>' : '<span class="muted small">no certificate · Personal Development</span>'}</td></tr>`).join('')
+            || '<tr><td colspan="5"><div class="empty small"><p>No one yet</p></div></td></tr>'}</tbody></table></div></section>
+        <section class="card"><div class="toolbar"><select id="rw-k"><option value="all">All attempts</option><option value="assessment" ${f.kind === 'assessment' ? 'selected' : ''}>Assessments</option><option value="practice" ${f.kind === 'practice' ? 'selected' : ''}>Practice</option></select></div>
+          <div class="table-wrap fill"><table class="data"><thead><tr><th>Date</th><th>Person</th><th>Kind</th><th>Language</th><th>Score</th><th>Result</th><th></th></tr></thead><tbody>
+          ${list.map((a) => `<tr><td class="nowrap">${dShort(a.submitted_at)}</td><td><b>${esc(a.name)}</b></td><td>${a.kind === 'assessment' ? `Assessment · ${esc(a.type || '')}` : `Practice · ${esc(rwCat(cats(), a.category))}`}</td><td>${esc((RW_LANGS.find((x) => x[0] === a.lang) || [, a.lang])[1])}</td>
+            <td class="num">${num(a.score)} / ${num(a.total)}</td><td>${a.kind === 'assessment' ? `<span class="tag ${a.passed ? 'ok' : 'bad'} xs">${a.passed ? 'Passed' : 'Not passed'}</span>` : ''}</td><td><button type="button" class="btn sm ghost" data-arev="${esc(a.id)}">Review</button></td></tr>`).join('')
+            || '<tr><td colspan="7"><div class="empty small"><p>No attempts yet</p></div></td></tr>'}</tbody></table></div></section>`;
+    };
+    const tabSettings = () => { const S = D.settings; const dis = D.can_boss ? '' : 'disabled';
+      return `<section class="card"><div class="card-head"><h3>Allowance and assessment</h3>${D.can_boss ? '' : '<span class="muted small">Admin or a Director can change these.</span>'}</div>
+        <form id="rw-set" class="grid-2 tight">
+          <label class="fld"><span>Default allowance per period (RM)</span><input name="amount" type="number" min="1" step="0.01" value="${esc(S.amount)}" ${dis}></label>
+          <label class="fld"><span>Allowance starts (month)</span><input name="allowance_from" type="month" value="${esc(String(S.allowance_from).slice(0, 7))}" ${dis}></label>
+          <label class="fld"><span>Periods staff may choose (months, comma-separated)</span><input name="periods" value="${esc((S.periods || []).join(', '))}" ${dis}></label>
+          <label class="fld"><span>Assessment opens (days before the period ends)</span><input name="open_days" type="number" min="1" max="60" value="${esc(S.open_days)}" ${dis}></label>
+          <label class="fld"><span>Questions per assessment</span><input name="questions" type="number" min="5" max="100" value="${esc(S.questions)}" ${dis}></label>
+          <label class="fld"><span>… of them from the certificate's own category</span><input name="own" type="number" min="0" max="100" value="${esc(S.own)}" ${dis}></label>
+          <label class="fld"><span>Pass mark (%)</span><input name="pass_pct" type="number" min="1" max="100" value="${esc(S.pass_pct)}" ${dis}></label>
+          <label class="fld"><span>Practical check every (months)</span><input name="practical_months" type="number" min="1" max="36" value="${esc(S.practical_months)}" ${dis}></label>
+          <label class="fld fld-2"><span>Terms &amp; conditions in the eligibility letter (one per line; a letter keeps the terms it was issued with)</span><textarea name="tc" rows="10" ${dis}>${esc(S.tc || '')}</textarea></label>
+          ${D.can_boss ? '<div class="fld-2 btn-row"><button type="submit" class="btn primary">Save settings</button></div>' : ''}</form></section>
+        <section class="card"><div class="card-head"><h3>Certificate types</h3></div>
+          <p class="small muted">Which certificates are eligible, the question category of their assessment, their own amount (blank = the default) and the eligibility period before review. 2024 rules: First Aid 1 year, KAP / PERMATA 1.5 years, SKM 3 years.</p>
+          <div class="table-wrap"><table class="data compact"><thead><tr><th>Certificate</th><th>Eligible</th><th>Category</th><th>Amount (RM)</th><th>Eligibility (months)</th><th></th></tr></thead><tbody>
+          ${D.cert_rules.map((r) => `<tr data-cr="${esc(r.code)}"><td><b>${esc(r.label)}</b><small class="sub">${esc(r.code)}</small></td><td><input type="checkbox" name="eligible" ${r.eligible ? 'checked' : ''} ${dis}></td>
+            <td><select name="category" ${dis}>${cats().map((c) => `<option value="${c.code}" ${r.category === c.code ? 'selected' : ''}>${c.code}. ${esc(c.name.en)}</option>`).join('')}</select></td>
+            <td><input name="amount" type="number" min="1" step="0.01" value="${r.amount ?? ''}" placeholder="${esc(S.amount)}" style="width:90px" ${dis}></td><td><input name="months" type="number" min="1" max="120" value="${r.months ?? ''}" placeholder="no end" style="width:90px" ${dis}></td>
+            <td>${D.can_boss ? `<button type="button" class="btn sm ghost" data-crs="${esc(r.code)}">Save</button>` : ''}</td></tr>`).join('')}</tbody></table></div></section>`;
+    };
+
+    const draw = () => {
+      drawTabs();
+      box().innerHTML = ({ overview: tabOverview, staff: tabStaff, questions: tabQuestions, practicals: tabPracticals, surprises: tabSurprises, results: tabResults, settings: tabSettings })[tab]();
+      wire();
+    };
+    const keepFocus = (id) => { const i = $(id, el); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
+    function wire() {
+      $('#rw-q', el)?.addEventListener('input', (e) => { f.q = e.target.value; draw(); keepFocus('#rw-q'); });
+      $('#rw-st', el)?.addEventListener('change', (e) => { f.st = e.target.value; draw(); });
+      $('#rw-qq', el)?.addEventListener('input', (e) => { f.qq = e.target.value; draw(); keepFocus('#rw-qq'); });
+      $('#rw-qc', el)?.addEventListener('change', (e) => { f.qcat = e.target.value; draw(); });
+      $('#rw-qr', el)?.addEventListener('change', (e) => { f.retired = e.target.checked; draw(); });
+      $('#rw-k', el)?.addEventListener('change', (e) => { f.kind = e.target.value; draw(); });
+      $$('[data-enrol]', el).forEach((b) => b.addEventListener('click', async () => {
+        const c = D.eligible.find((x) => x.certificate_id === b.dataset.enrol);
+        const ok = await modal({ title: `Enrol ${c.name}`, ok: 'Enrol and send for approval',
+          body: `<p class="small">${esc(c.label)}${c.title ? ` · ${esc(c.title)}` : ''}. Confirm the certificate relates to this person's own job description. Admin or a Director then approves and the eligibility letter is issued for the person to acknowledge in self-service.</p>
+            <label class="fld"><span>Note (optional)</span><textarea name="n" rows="2"></textarea></label>`,
+          onOk: (fm) => API.rpc('cms_rw_enrol', { p_certificate: c.certificate_id, p_note: fm.n.value }) });
+        if (ok) { toast('Enrolled: waiting for approval'); reload(); }
+      }));
+      $$('[data-dec]', el).forEach((b) => b.addEventListener('click', async () => {
+        const e = D.enrolments.find((x) => x.id === b.dataset.dec); let approve = true;
+        const ok = await modal({ title: `Certification allowance · ${e.name}`, ok: 'Save decision', wide: true,
+          body: `<p class="small">${esc(e.label)}${e.cert?.title ? ` · ${esc(e.cert.title)}` : ''}${e.note ? ` · note: ${esc(e.note)}` : ''}</p>
+            <div class="grid-2 tight"><label class="fld"><span>Decision</span><select name="d"><option value="1">Approve: issue the letter</option><option value="0">Decline</option></select></label><span></span>
+            <label class="fld"><span>Allowance per period (RM)</span><input name="a" type="number" step="0.01" min="1" value="${esc(e.amount)}"></label>
+            <label class="fld"><span>Eligible until</span><input name="u" type="date" value="${esc(e.eligible_until || '')}"></label>
+            <label class="fld fld-2"><span>Note (required when declining)</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: (fm) => { approve = fm.d.value === '1'; return API.rpc('cms_rw_enrol_decide', { p_id: e.id, p_approve: approve, p_note: fm.n.value, p_amount: fm.a.value ? Number(fm.a.value) : null, p_until: fm.u.value || null }); } });
+        if (ok) { toast(approve ? 'Approved: the letter is waiting for acknowledgement' : 'Declined'); reload(); }
+      }));
+      $$('[data-rev]', el).forEach((b) => b.addEventListener('click', async () => {
+        const e = D.enrolments.find((x) => x.id === b.dataset.rev);
+        const ok = await modal({ title: `Eligibility review · ${e.name}`, ok: 'Save',
+          body: `<p class="small muted">${esc(e.label)}. Extend the eligibility period after review, or change the amount for periods not yet paid.</p>
+            <div class="grid-2 tight"><label class="fld"><span>Eligible until (blank = no end)</span><input name="u" type="date" value="${esc(e.eligible_until || '')}"></label>
+            <label class="fld"><span>Allowance per period (RM)</span><input name="a" type="number" step="0.01" min="1" value="${esc(e.amount)}"></label>
+            <label class="fld fld-2"><span>Note</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: (fm) => API.rpc('cms_rw_enrol_update', { p_id: e.id, p_until: fm.u.value || null, p_amount: fm.a.value ? Number(fm.a.value) : null, p_note: fm.n.value }) });
+        if (ok) { toast('Saved'); reload(); }
+      }));
+      $$('[data-end]', el).forEach((b) => b.addEventListener('click', async () => {
+        const e = D.enrolments.find((x) => x.id === b.dataset.end);
+        const r = await ask(`End the allowance · ${e.name}`, 'Reason (e.g. certificate expired, job changed)', 'End the allowance', true);
+        if (r) { try { await API.rpc('cms_rw_enrol_end', { p_id: e.id, p_reason: r }); toast('Ended'); reload(); } catch (x) { toast(x.message, 'err'); } }
+      }));
+      $$('[data-ltr]', el).forEach((b) => b.addEventListener('click', () => { const e = D.enrolments.find((x) => x.id === b.dataset.ltr); docOverlay(`Letter ${e.ref_no || ''}`, [rwLetter(e, D.settings)]); }));
+      $$('[data-per]', el).forEach((b) => b.addEventListener('click', () => {
+        const e = D.enrolments.find((x) => x.id === b.dataset.per);
+        modal({ title: `Periods · ${e.name} · ${e.label}`, ok: null, cancel: 'Close', wide: true,
+          body: e.periods.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>Period</th><th>Opens</th><th>Status</th><th>Allowance</th></tr></thead><tbody>${e.periods.map((p) => `<tr><td class="nowrap">${dShort(p.period_start)} – ${dShort(p.period_end)}</td><td class="nowrap">${dShort(p.opens_on)}</td><td>${rwPerTag(p.status)}${p.note ? `<small class="sub">${esc(p.note)}</small>` : ''}</td><td class="nowrap">${p.pay_month ? `RM ${m2(p.amount)} · ${rwMonth(p.pay_month)} payroll` : '—'}</td></tr>`).join('')}</tbody></table></div>`
+            : `<p class="muted">No periods yet${e.start_month ? `: the first starts ${rwMonth(e.start_month)}` : ''}.</p>` });
+      }));
+      $$('[data-chg]', el).forEach((b) => b.addEventListener('click', async () => {
+        const approve = !!b.dataset.ok; let note = '';
+        if (!approve) { note = await ask('Decline the period change', 'Reason', 'Decline', true); if (!note) return; }
+        try { await API.rpc('cms_rw_period_decide', { p_id: b.dataset.chg, p_approve: approve, p_note: note }); toast(approve ? 'Approved: applies from the next period' : 'Declined'); reload(); } catch (x) { toast(x.message, 'err'); }
+      }));
+      $$('[data-surp]', el).forEach((b) => b.addEventListener('click', async () => {
+        const pp = await people(); const pre = b.dataset.surp; const rule = D.rules.find((r) => r.id === b.dataset.rule);
+        const nm = new Date(); const next = new Date(nm.getFullYear(), nm.getMonth() + 1, 1); const nextV = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+        const ok = await modal({ title: 'Give a surprise', ok: 'Give', wide: true,
+          body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Person</span><select name="p" required><option value="">Choose…</option>${(pre && !pp.some((x) => x.id === pre) ? [{ id: pre, name: D.people.find((x) => x.person_id === pre)?.name }] : []).concat(pp).map((x) => `<option value="${esc(x.id)}" ${x.id === pre ? 'selected' : ''}>${esc(x.name)}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</option>`).join('')}</select></label>
+            <label class="fld"><span>Surprise</span><select name="k"><option value="skip" ${!rule || rule.kind === 'skip' ? 'selected' : ''}>No assessment (allowance still paid)</option><option value="rate" ${rule?.kind === 'rate' ? 'selected' : ''}>Higher allowance</option></select></label>
+            <label class="fld"><span>Amount per period (higher allowance)</span><input name="a" type="number" step="0.01" min="1" value="${esc(rule?.amount || '')}"></label>
+            <label class="fld"><span>From (month)</span><input name="f" type="month" value="${nextV}"></label>
+            <label class="fld"><span>For how many months</span><input name="m" type="number" min="1" max="36" value="${esc(rule?.months || 3)}"></label>
+            <label class="fld fld-2"><span>Reason (shown to the person)</span><input name="r" value="${esc(rule ? rule.label : '')}"></label></div>`,
+          onOk: (fm) => { if (!fm.p.value) throw new Error('Choose the person.'); return API.rpc('cms_rw_grant', { p: { person_id: fm.p.value, kind: fm.k.value, amount: fm.a.value, from: fm.f.value ? `${fm.f.value}-01` : '', months: Number(fm.m.value), rule_id: rule?.id || '', reason: fm.r.value } }); } });
+        if (ok) { toast('Surprise given'); reload(); }
+      }));
+      $$('[data-grv]', el).forEach((b) => b.addEventListener('click', async () => {
+        const r = await ask('Withdraw the surprise', 'Reason (periods already paid stay paid)', 'Withdraw', true);
+        if (r) { try { await API.rpc('cms_rw_grant_revoke', { p_id: b.dataset.grv, p_reason: r }); toast('Withdrawn'); reload(); } catch (x) { toast(x.message, 'err'); } }
+      }));
+      const ruleForm = (r) => modal({ title: r ? 'Edit the rule' : 'Add a surprise rule', ok: 'Save', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Name</span><input name="l" value="${esc(r?.label || '')}" required></label>
+          <label class="fld"><span>When mastery reaches (%)</span><input name="p" type="number" min="1" max="100" value="${esc(r?.mastery_pct ?? 80)}"></label>
+          <label class="fld"><span>Surprise</span><select name="k"><option value="skip" ${!r || r.kind === 'skip' ? 'selected' : ''}>No assessment</option><option value="rate" ${r?.kind === 'rate' ? 'selected' : ''}>Higher allowance</option></select></label>
+          <label class="fld"><span>For how many months</span><input name="m" type="number" min="1" max="36" value="${esc(r?.months ?? 3)}"></label>
+          <label class="fld"><span>Amount per period (higher allowance)</span><input name="a" type="number" step="0.01" min="1" value="${esc(r?.amount ?? '')}"></label>
+          <label class="chk"><input type="checkbox" name="au" ${r?.auto ? 'checked' : ''}> Give it automatically</label><label class="chk"><input type="checkbox" name="ac" ${!r || r.active ? 'checked' : ''}> In use</label></div>`,
+        onOk: (fm) => API.rpc('cms_rw_rule_save', { p: { id: r?.id || '', label: fm.l.value, pct: Number(fm.p.value), kind: fm.k.value, months: Number(fm.m.value), amount: fm.a.value, auto: fm.au.checked, active: fm.ac.checked } }) });
+      $('[data-radd]', el)?.addEventListener('click', async () => { if (await ruleForm(null)) { toast('Saved'); reload(); } });
+      $$('[data-red]', el).forEach((b) => b.addEventListener('click', async () => { if (await ruleForm(D.rules.find((x) => x.id === b.dataset.red))) { toast('Saved'); reload(); } }));
+      $('[data-padd]', el)?.addEventListener('click', async () => {
+        const pp = await people(); const today = new Date().toISOString().slice(0, 10);
+        const ok = await modal({ title: 'Record a practical check', ok: 'Save', wide: true,
+          body: `<div class="grid-2 tight"><label class="fld fld-2"><span>Person</span><select name="p" required><option value="">Choose…</option>${pp.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.employee_id ? ` · ${esc(x.employee_id)}` : ''}</option>`).join('')}</select></label>
+            <label class="fld"><span>Category</span><select name="c">${cats().map((c) => `<option value="${c.code}">${c.code}. ${esc(c.name.en)}</option>`).join('')}</select></label>
+            <label class="fld"><span>Date</span><input name="d" type="date" max="${today}" value="${today}"></label>
+            <label class="fld"><span>Result</span><select name="r"><option value="1">Passed</option><option value="0">Not passed</option></select></label>
+            <label class="fld"><span>Assessor</span><input name="a"></label><label class="fld fld-2"><span>Note</span><textarea name="n" rows="2"></textarea></label></div>`,
+          onOk: (fm) => { if (!fm.p.value) throw new Error('Choose the person.'); return API.rpc('cms_rw_practical_add', { p: { person_id: fm.p.value, category: fm.c.value, done_on: fm.d.value, passed: fm.r.value === '1', assessor: fm.a.value, note: fm.n.value } }); } });
+        if (ok) { toast('Recorded'); reload(); }
+      });
+      $$('[data-pret]', el).forEach((b) => b.addEventListener('click', async () => {
+        const r = await ask('Withdraw the practical check record', 'Reason (e.g. recorded for the wrong person)', 'Withdraw', true);
+        if (r) { try { await API.rpc('cms_rw_practical_retire', { p_id: b.dataset.pret, p_reason: r }); toast('Withdrawn'); reload(); } catch (x) { toast(x.message, 'err'); } }
+      }));
+      $$('[data-arev]', el).forEach((b) => b.addEventListener('click', async () => {
+        try { const r = await API.rpc('cms_rw_review', { p_attempt: b.dataset.arev }); rwResults(box(), r, () => draw(), r.name); pageScroller().scrollTop = 0; } catch (x) { toast(x.message, 'err'); }
+      }));
+      const qForm = (q) => modal({ title: q ? 'Edit the question' : 'Add a question', ok: 'Save', wide: true,
+        body: `<div class="grid-2 tight"><label class="fld"><span>Category</span><select name="cat">${cats().map((c) => `<option value="${c.code}" ${q?.category === c.code ? 'selected' : ''}>${c.code}. ${esc(c.name.en)}</option>`).join('')}</select></label>
+          <label class="fld"><span>Correct answer</span><select name="k">${[0, 1, 2].map((j) => `<option value="${j}" ${q?.correct === j ? 'selected' : ''}>${String.fromCharCode(65 + j)}</option>`).join('')}</select></label></div>
+          ${RW_LANGS.map(([l, ln]) => `<fieldset class="rw-fs"><legend>${esc(ln)}${l === 'en' ? ' (required)' : ''}</legend>
+            <label class="fld"><span>Question</span><textarea name="q_${l}" rows="2">${esc(q?.q?.[l] || '')}</textarea></label>
+            ${[0, 1, 2].map((j) => `<div class="grid-2 tight"><label class="fld"><span>Answer ${String.fromCharCode(65 + j)}</span><input name="o${j}_${l}" value="${esc(q?.options?.[j]?.t?.[l] || '')}"></label>
+              <label class="fld"><span>Why (explanation)</span><input name="w${j}_${l}" value="${esc(q?.options?.[j]?.why?.[l] || '')}"></label></div>`).join('')}</fieldset>`).join('')}
+          <div class="grid-2 tight"><label class="fld"><span>Video link (approved, https://…)</span><input name="v" value="${esc(q?.video_url || '')}"></label>
+            <label class="fld"><span>Video search words (to find one)</span><input name="vs" value="${esc(q?.video_search || '')}"></label></div>`,
+        onOk: (fm) => { const o = [0, 1, 2].map((j) => ({ t: Object.fromEntries(RW_LANGS.map(([l]) => [l, fm[`o${j}_${l}`].value.trim()])), why: Object.fromEntries(RW_LANGS.map(([l]) => [l, fm[`w${j}_${l}`].value.trim()])) }));
+          return API.rpc('cms_rw_question_save', { p: { id: q?.id || '', category: fm.cat.value, q: Object.fromEntries(RW_LANGS.map(([l]) => [l, fm[`q_${l}`].value.trim()])), options: o, correct: Number(fm.k.value), video_url: fm.v.value.trim(), video_search: fm.vs.value.trim() } }); } });
+      $('[data-qadd]', el)?.addEventListener('click', async () => { if (await qForm(null)) { toast('Question added'); Q = null; reload(); } });
+      $$('[data-qed]', el).forEach((b) => b.addEventListener('click', async () => { if (await qForm(Q.find((x) => x.id === b.dataset.qed))) { toast('Saved'); reload(); } }));
+      $$('[data-qret]', el).forEach((b) => b.addEventListener('click', async () => { try { await API.rpc('cms_rw_question_retire', { p_id: b.dataset.qret, p_retire: b.dataset.v === '1' }); toast(b.dataset.v === '1' ? 'Out of use' : 'Back in use'); reload(); } catch (x) { toast(x.message, 'err'); } }));
+      $('[data-qimp]', el)?.addEventListener('click', async () => {
+        let items = null;
+        const ok = await modal({ title: 'Import questions', ok: 'Import',
+          body: `<p class="small">Choose the question file (.json) prepared for the CMS. Questions already in the bank (same category and English question) are skipped, so the same file can be imported again safely.</p>
+            <label class="fld"><span>File</span><input type="file" name="f" accept=".json,application/json"></label><p class="small muted" id="rw-imp-info"></p>`,
+          onOpen: (w) => { $('input[type=file]', w).addEventListener('change', async (e) => { const fl = e.target.files[0]; items = null; const info = $('#rw-imp-info', w);
+            try { const j = JSON.parse(await fl.text()); if (!Array.isArray(j)) throw new Error('not a list'); items = j; info.textContent = `${j.length} questions in the file.`; } catch (x) { info.textContent = 'This is not a question file.'; } }); },
+          onOk: async () => { if (!items) throw new Error('Choose the question file.'); const r = await API.rpc('cms_rw_question_import', { p: items }); toast(`${r.added} added · ${r.skipped} already there${r.bad ? ` · ${r.bad} not valid` : ''}`); } });
+        if (ok) { Q = null; reload(); }
+      });
+      $('#rw-set', el)?.addEventListener('submit', async (e) => {
+        e.preventDefault(); const fm = e.target;
+        try { await API.rpc('cms_rw_settings_set', { p: { amount: Number(fm.amount.value), allowance_from: `${fm.allowance_from.value}-01`, periods: fm.periods.value.split(/[,\s]+/).filter(Boolean).map(Number), open_days: Number(fm.open_days.value),
+          questions: Number(fm.questions.value), own: Number(fm.own.value), pass_pct: Number(fm.pass_pct.value), practical_months: Number(fm.practical_months.value), tc: fm.tc.value } }); toast('Settings saved'); reload(); }
+        catch (x) { toast(x.message, 'err'); }
+      });
+      $$('[data-crs]', el).forEach((b) => b.addEventListener('click', async () => {
+        const tr = b.closest('tr');
+        try { await API.rpc('cms_rw_cert_rule_save', { p: { code: b.dataset.crs, eligible: $('[name=eligible]', tr).checked, category: $('[name=category]', tr).value, amount: $('[name=amount]', tr).value, months: $('[name=months]', tr).value } }); toast('Saved'); reload(); }
+        catch (x) { toast(x.message, 'err'); }
+      }));
+    }
+    if (tab === 'questions') { try { Q = await API.rpc('cms_rw_questions'); } catch (e) { Q = []; } }
+    draw();
   }
 
   // ================================================================ 5d · EMPLOYEE DOCUMENTS, HR LETTERS
@@ -9519,7 +9963,7 @@
     'payroll/companies': payingPage, 'payroll/increments': incrementsPage, 'time/hours': hoursPage,
     applications: applicationsPage, interviews: applicationsPage, jd: jdPage, positions: jdPage, onboarding: onboardingPage, handbook: handbookPage, hrlaw: hrlawPage,
     'admin/roles': rolesPage, 'admin/audit': auditPage, 'admin/export': exportPage, 'admin/sync': syncPage,
-    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
+    careers: careersPage, loec: loecPage, 'reports/movement': movementPage, documents: documentsPage, letters: lettersPage, reports: reportsPage, 'people/directory': directoryPage, 'people/add': addPersonPage, person: profilePage, ...Object.fromEntries(Object.keys(MYP_PAGES).map((r) => [r, mypPage])), training: trainingPage, 'me/certs': meCertsPage, 'me/assess': meAssessPage, rewards: rewardsPage, performance: appraisalsPage, 'performance/probation': probationPage, 'me/appraisal': meAppraisalPage, me: meHomePage, 'me/leave': meLeavePage, 'leave/requests': leaveRequestsPage, calendar: calendarPage, 'me/items': meItemsPage, 'me/claims': meClaimsPage, 'me/claims/scf': meScfPage, 'me/claims/otcf': meOtcfPage, 'me/claims/mtcf': meMtcfPage, 'me/claims/tec': meTecPage, tutor: tutorHomePage, 'people/tutors': tutorsPage, purchasing: prListPage, 'purchasing/pr': prFormPage, 'purchasing/events': prEventsPage, 'purchasing/books': prBooksPage, 'purchasing/reports': prReportsPage, 'purchasing/settings': prSettingsPage, 'me/handbook': meHandbookPage, assets: itemsPage, 'me/profile': meProfilePage, 'me/payslips': mePayslipsPage, 'me/salary': meSalaryPage, 'people/selfservice': selfServicePage,
     overtime: claimsPage, 'forms/scf': claimsPage, 'forms/mtcf': claimsPage, 'forms/tec': claimsPage, 'forms/prfaf': claimsPage,
   };
 
@@ -9725,7 +10169,7 @@
     if (!state.access || (!state.access.roles.length && !hasSelf())) { noRoleScreen(); return; }
     const cur = location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (fresh && !canRoute(cur)) history.replaceState(null, '', `${location.pathname}${location.search}#/${homeRoute()}`);   // signed in somewhere this login cannot open
-    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadLettersPending(); loadLoecPending(); loadNotices(); drawBell();
+    buildShell(); render(); loadIncrSummary(); loadRecruitSummary(); loadResignSummary(); loadPayApproval(); loadSelfPending(); loadItemsPending(); loadLeavePending(); loadApprPending(); loadCertsPending(); loadRwPending(); loadLettersPending(); loadLoecPending(); loadNotices(); drawBell();
     if (canRoute('dashboard') && (location.hash.replace(/^#\/?/, '').split('?')[0] || 'dashboard') !== 'dashboard') API.rpc('cms_dashboard').then((d) => { state.dash = d; drawBell(); }).catch(() => {});
   }
 
