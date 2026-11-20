@@ -625,3 +625,19 @@ recorded in the CMS, T&C on staff self-service; continuing-eligibility assessmen
 standard questionnaires and practical tasks (CPR, injury recovery …); validity period of each certificate editable by Admin / Director;
 (6) annual award cash treatment selectable (Bonus / Incentive / other); (7) no LIQI / Talent Department — HR and above decide; (8) phasing
 as suggested; (9) placement in the CMS: to be elaborated.
+
+**Decisions (CLC 20 Nov 2026, 16:00–16:21):** full attendance: after a successful 3-month block the next starts fresh, no overlap.
+Certification: disqualified from the resignation letter date; no allowance for the period in which the letter is dated. Staff choose
+an assessment period per certificate (monthly / bi-monthly / quarterly / other) before the allowance starts; RM50 is earned per period
+passed; the assessment opens 14 days before the period ends, retake until passed; not passed by the end of the period → that period's
+allowance is lost; changing the period needs a reason and Admin / Director approval. One assessment per certificate; 20 random
+questions, weighted 10 from the certificate's own category + 10 from the others (all 7 categories apply to every staff member and
+department); pass mark 80 %; the same bank is reused with order and answers shuffled; every attempt kept. Each answer carries an
+explanation and each question an approved video link (Admin-editable, broken-link check). Practical check every 6 months by default
+(editable). Staff without an eligible certificate may take assessments: no allowance, counted for the Personal Development Award.
+Practice after passing; mastery = share of the bank answered correctly at the latest try, once every question is answered: 80 % → no
+assessment for 3 months, 90 % → 6, 100 % → 9 (allowance paid; practical still due), all editable; other surprises set by Admin /
+Director (e.g. allowance RM55 / 65 / 75 for n months), logged and notified. English, Simplified Chinese and Bahasa Melayu; language
+recorded per attempt. Question bank v2 (7 categories, 85 questions: First Aid & CPR, Fire Safety, Food Handling, Child Safety,
+Infection Control, Child Transport, General Workplace Safety) sent for review as a PDF (not in the repo); trainer and native-speaker
+check, and video choice, still to be done. More questions to come from CLC's research.
