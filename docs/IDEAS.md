@@ -614,3 +614,14 @@ KPI, team attendance, departments E1, E3, E6, E7, E8, E10, Driver & Chef (others
 Payroll already has FULL_ATT, REFERRAL, INCENTIVE (EPF / SOCSO / EIS / PCB) and BONUS (EPF / PCB); the certification allowances FIRST_AID,
 SKM1, SKM2 are set up with travel treatment (no EPF / SOCSO / EIS) — to be checked with the accountant.
 
+**Decisions (CLC 20 Nov 2026, 15:08):** (1) amounts blank by default, set by management, editable by Admin / Director only; (2) full attendance:
+any leave breaks "all working days"; rolling 3 months that restart after a failed month (fail in month 1 → 2-3-4; month 2 → 3-4-5; month 3 →
+4-5-6); (3) probationers and part-timers excluded by default, only Admin / Director may change it; (4) referral the same for every position,
+Admin / Director editable; (5) certification RM50 per certificate by default, statutory fix of the certification allowances from 2027:
+only certificates related to the person's own JD (First Aid, fire safety, etc.); a researched course library per department / JD category;
+staff confirm with management first that a course is eligible (if not, it may still count for the Personal Development Award); disqualified
+from the start of the resignation notice period whatever the date; an eligibility letter with T&C and acknowledgement for each certificate,
+recorded in the CMS, T&C on staff self-service; continuing-eligibility assessment monthly (period settable: bi-monthly, quarterly …) with
+standard questionnaires and practical tasks (CPR, injury recovery …); validity period of each certificate editable by Admin / Director;
+(6) annual award cash treatment selectable (Bonus / Incentive / other); (7) no LIQI / Talent Department — HR and above decide; (8) phasing
+as suggested; (9) placement in the CMS: to be elaborated.
