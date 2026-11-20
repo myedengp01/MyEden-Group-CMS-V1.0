@@ -23,6 +23,7 @@ into that release and this entry is updated with the version and how it was impl
 | PRI-023 | 2026-11-18 | Probation assessment on the JD KPIs: 5-check rubric per KPI (1 point each), automatic total and % (score ÷ (criteria × 5) × 100), automatic E/S/A/I/U grade, pass = S; below S → 3-month extension with PIP reviewed monthly; still below after that → end the contract or extend again (management); letters suggested from the result; a dedicated Probation Reviews page for HOD / manager / HR / Director with permissions, results written to the employee record | **Phase 1 built in v2026.11.18-18:35**; phase 2 (checks for all 228 KPI areas, 3 letter templates) to do |
 | PRI-024 | 2026-11-18 | MEG-EAF V2 retired into the CMS: the offer letter (LOEC) issued through HR Letters like every other letter (same wording and format); the Apply Now form and the HR Staff page inside the CMS; the Employee Handbook administration too; all EAF data in the CMS so that nothing is missed and forms are opened from the CMS in future | **Built in v2026.11.18-21:30 to 23:05** (phases 1–4); old MEG-EAF V2 pages switch over one by one as CLC confirms |
 | PRI-025 | 2026-11-20 | MEG-FORMS apps retired into the CMS: claims shown in each form's own layout with receipts and print; emails and approvers from the CMS; every remaining feature of MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-TEC-V2, MEG-PRFAF and the Forms Dashboard / Admin brought over; each old app switched over when CLC confirms | In progress |
+| PRI-026 | 2026-11-20 | Company Reward System: reward catalogue (incentives, allowances, awards) from the 2024 General Benefit & Award Criteria, yearly rule editions, staff applications / nominations, automatic eligibility checks from CMS records, leader → HR → Director review, payroll link with the correct statutory treatment, certificates / trophies / announcements, award history | Planning (ebp) |
 
 ## PRI-001 · Salary increment reminder — built in v2026.10.19-16:10
 - **Payroll › Increments & Reviews** lists active staff: current salary, last increment (+/− amount and month), review
@@ -592,4 +593,24 @@ each old app switched only when CLC confirms.
   (one released RM 300 pending reconciliation, one draft) — CLC to decide. The old Manage lists of suppliers / banks / OTCF staff are not
   used by the CMS forms (they take people and banks from the Employee Master and payroll).
 - **Phase 3 (to do):** list old-app users not set up in the CMS; each old app shows "moved to the CMS" with its links kept.
+
+## PRI-026 · Company Reward System — recorded 2026-11-20
+CLC 20 Nov 2026 (ebp): add a Company Reward System to the CMS based on *2024 General Benefit & Award Criteria* (18 slides) and the Google
+*Attendance Reward Application Form* (name, months applied, "3 words for your last 3 months"). Categories: Referral Incentive (Recruitment),
+Attendance Incentive (Full Attendance Reward), Certification Allowance, Star Mentor & Star Employee, Rising Star, Personal Development,
+Most Contribution, Best Employee of the Year, Best Department, Most Valuable Employee, Best Appearance, Long Service, Best Dress (Annual
+Dinner), Smiley Face, Most Loving, Behind The Scene, Book of Record. Each with Award (certificate, trophy, …) and / or Incentive / Allowance,
+criteria to be fulfilled, management review before approval, payroll link (how much, when paid), EA / EPF / SOCSO / EIS / PCB-compliant terms.
+Source rules (2024): referral RM300 / 400 / 500 at end of the new hire's 3rd / 7th / 10th month (RM1,200), referrer may join from day one
+but is paid only after confirmation; full attendance = no late / early leave, all working days, monthly meetings & trainings, 3 consecutive
+months, must apply, full-time & confirmed only; certification RM50 / month from the month after the certificate date, First Aid 1 yr,
+SKM 3 yrs, KAP 1.5 yrs, job-related only, diploma / degree / master excluded, relevance checked by C-level; Star Mentor & Star Employee
+quarterly (Jan: Oct–Dec, Apr: Jan–Mar, Jul: Apr–Jun, Oct: Jul–Sep), KPI S / E, meeting & training attendance, behaviour & attitude, self-
+nomination / recommendation, leader comment → C-level review, no award if the standard is not met, 0–4 winners, tie → biggest improvement
+(KPI, 1-2-1 goal), FT & PT count, temporary workers do not, winners get an FB post and a PIN; 2024 award criteria: probationers & part-
+timers take part in no award; Rising Star ≤ 18 months after confirmation, KPI S / E 6 times, not more than 3 "I"; Best Department: department
+KPI, team attendance, departments E1, E3, E6, E7, E8, E10, Driver & Chef (others), error rate ≤ 6 %, parent feedback, damage (< RM500 minor:
+−5 KPI points for every member that month; ≥ RM500 major: −10); Long Service 2,190 days (6 yrs) and 3,650 days (10 yrs).
+Payroll already has FULL_ATT, REFERRAL, INCENTIVE (EPF / SOCSO / EIS / PCB) and BONUS (EPF / PCB); the certification allowances FIRST_AID,
+SKM1, SKM2 are set up with travel treatment (no EPF / SOCSO / EIS) — to be checked with the accountant.
 
