@@ -677,3 +677,14 @@ certificate type per person; the certificate also shows in Training & Certificat
 several at once** (tick people with verified certificates, one approval request each) for the first batch before January 2027.
 Open questions for CLC: (1) does a certificate HR types in here count as verified at once, or need a second person to verify it?
 (2) build the "enrol several at once" add-on too?
+
+## PRI-028 · Monthly assessment of new staff by a senior — recorded 2026-11-24
+CLC 24 Nov 2026 (PRI, ebp): a part where a **senior** does a **monthly assessment of newly onboarded staff**, to monitor whether the new
+staff member is meeting the KPI / management expectations. CLC will provide the **assessment criteria**. A **senior permission** for the
+task; **HR and above can view**, give **feedback and comments**.
+- **Plan given 24 Nov 2026 (waiting for CLC's criteria and answers):** the senior is assigned per new staff member (default: the person
+  they report to, or a named senior / mentor); a monthly form opens each month from the start date until confirmation (or a set number of
+  months); scores and comments per criterion, overall rating, strengths, concerns, support needed; the new staff member may see and
+  acknowledge it (to decide); HR and above see all, comment and give feedback back to the senior; trend across months, flags for a low or
+  falling score, reminders for overdue assessments; the monthly results feed the Probation Review (PRI-023) as evidence; Timeline, Audit
+  Log; new permission module (assess as senior / view / comment).
