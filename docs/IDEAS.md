@@ -688,3 +688,15 @@ task; **HR and above can view**, give **feedback and comments**.
   acknowledge it (to decide); HR and above see all, comment and give feedback back to the senior; trend across months, flags for a low or
   falling score, reminders for overdue assessments; the monthly results feed the Probation Review (PRI-023) as evidence; Timeline, Audit
   Log; new permission module (assess as senior / view / comment).
+
+## PRI-029 · "Change login email…" for a person's CMS login — recorded 2026-11-26
+CLC 26 Nov 2026 ("build 2 as well, ebp"), after Nicole Lim Jia Xuan's sign-in email changed (fixed by hand the same day: her CMS access moved
+to the login she already had, the CMS-made login retired and blocked, a set-password link sent to a mistyped address cancelled).
+- **Plan given:** Change login email… on the Employee Profile (and Self-service Access, tutors): current login (created / last used / roles),
+  new email typed twice, reason; checks (format, not another person's email, not former staff); **if the new address already has a login,
+  offer "Use this existing login"** (move the link and roles, retire and block the old login); updates the Employee Master, payroll and
+  personal-profile email that still show the old one; keeps password, roles, parts, history; never-used login → set-password email to the
+  new address; login in use → notice to the new and the old address; when HR approves a My Profile email change, a tick "Also change their
+  CMS login to this email"; Audit Log, Timeline, invite record; a server function with the service key (permission checked in the database).
+- **Waiting for CLC:** (1) who may do it — Admin / Super Admin only, or HR too; (2) login in use — change at once, or only after the person
+  confirms from the new address; (3) the tick on approved My Profile email changes — yes / no.
