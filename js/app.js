@@ -3857,6 +3857,74 @@
     }
     return data;
   }
+  // ---------------------------------------------------------------- PRI-029 change login email (v2026.11.26)
+  async function loginEmailCall(body) {
+    const { data, error } = await API.sb().functions.invoke('cms-login-email', { body });
+    if (error) { let why = error.message || String(error); try { const b = await error.context.json(); if (b && b.error) why = b.error; } catch (x) { /* keep it */ } throw new Error(why); }
+    return data;
+  }
+  const LEM_DONE = {
+    confirm: (r) => `A confirmation link was sent to ${r.new_email}. Nothing changes until they open it (48 hours).`,
+    direct: (r) => `Login email changed to ${r.new_email}; a set-password email was sent there.${r.warning ? ' ' + r.warning : ''}`,
+    existing: (r) => `CMS access moved to their existing login ${r.new_email}; the old login is blocked.`,
+  };
+  // who: { person_id } or { tutor_id }; opts.email / opts.reason / opts.source prefill (approved My Profile change)
+  async function loginEmailWindow(who, opts = {}, after) {
+    let I; try { I = await API.rpc('cms_login_email_info', { p_person: who.person_id || null, p_tutor: who.tutor_id || null }); } catch (e) { toast(e.message, 'err'); return false; }
+    if (!I?.can) { toast('Changing login emails needs the permission Change login email.', 'err'); return false; }
+    const T = I.target; const P = I.pending;
+    if (!T.user_id) { toast(`${T.name} has no CMS login yet: use Invite to the CMS.`, 'err'); return false; }
+    const loginBox = `<table class="data compact kv"><tbody><tr><th>Login email</th><td><b>${esc(T.login_email)}</b></td></tr>
+      <tr><th>Created</th><td>${dShort(T.created)}</td></tr><tr><th>Last signed in</th><td>${T.last_sign_in ? dShort(T.last_sign_in) : '<span class="muted">never</span>'}</td></tr>
+      <tr><th>Roles</th><td>${esc((T.roles || []).join(', ') || '—')}</td></tr></tbody></table>`;
+    if (P) {
+      let act = null;
+      await modal({ title: `Login email · ${T.name}`, ok: null, cancel: 'Close',
+        body: `${loginBox}<div class="note warn small">${icon('mail')}<span>Waiting for confirmation from <b>${esc(P.new_email)}</b> — asked ${dShort(P.requested_at)}${P.by ? ` by ${esc(P.by)}` : ''}; link sent ${P.sent_count} time(s), ${P.expired ? '<b>expired</b>' : `valid until ${dShort(P.expires_at)}`}. Nothing changes until they open it.</span></div>
+          <div class="btn-row"><button type="button" class="btn" data-lem-resend>${icon('mail')}Send the link again</button> <button type="button" class="btn ghost" data-lem-cancel>Cancel the change…</button></div>`,
+        onOpen: (wrap, close) => {
+          $('[data-lem-resend]', wrap).addEventListener('click', async () => { try { await loginEmailCall({ action: 'resend', id: P.id }); toast(`New link sent to ${P.new_email}`); act = 1; close(null); } catch (e) { toast(e.message, 'err'); } });
+          $('[data-lem-cancel]', wrap).addEventListener('click', async () => {
+            const ok = await modal({ title: 'Cancel the login email change', ok: 'Cancel the change', danger: true, cancel: 'Keep it',
+              body: `<p>The link sent to <b>${esc(P.new_email)}</b> stops working. ${esc(T.name)} keeps signing in with ${esc(T.login_email)}.</p><label class="fld"><span>Reason (optional)</span><input name="r" maxlength="300"></label>`,
+              onOk: async (fm) => { await API.rpc('cms_login_email_cancel', { p_id: P.id, p_reason: fm.r.value.trim() || null }); } });
+            if (ok) { toast('Change cancelled'); act = 1; close(null); }
+          });
+        } });
+      if (act && after) after();
+      return !!act;
+    }
+    let R = null;
+    const ok = await modal({ title: `Change login email · ${T.name}`, ok: 'Change…',
+      body: `${loginBox}
+        <div class="grid-2 tight"><label class="fld"><span>New login email</span><input name="e1" type="email" required maxlength="160" autocomplete="off" value="${esc(opts.email || '')}"></label>
+        <label class="fld"><span>Type it again</span><input name="e2" type="email" required maxlength="160" autocomplete="off" value="${esc(opts.email || '')}"></label></div>
+        <label class="fld"><span>Reason</span><input name="reason" required maxlength="300" value="${esc(opts.reason || '')}"></label>
+        <div data-lem-mode class="small"></div>
+        <p class="muted small">${T.used ? 'This login is in use: a confirmation link goes to the new address and <b>nothing changes until they open it</b>. The old address is told afterwards.'
+          : 'This login was never used: the email changes at once and a set-password email goes to the new address.'} They keep their password, roles, self-service and history; the Employee Master, payroll and profile email that still show the old address follow.</p>`,
+      onOpen: (wrap) => {
+        const chk = async () => { const v = wrap.querySelector('[name=e1]').value.trim(); const box = $('[data-lem-mode]', wrap); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { box.innerHTML = ''; return; }
+          try { const m = await API.rpc('cms_login_email_check', { p_new: v, p_person: who.person_id || null, p_tutor: who.tutor_id || null });
+            box.innerHTML = m.mode === 'existing' ? `<div class="note warn">${icon('users')}<span><b>${esc(v)}</b> already has a confirmed login${m.existing?.name ? ` (“${esc(m.existing.name)}”)` : ''}${m.existing?.last_sign_in ? `, last used ${dShort(m.existing.last_sign_in)}` : ''}. <b>Use this existing login</b>: their CMS access (link and roles) moves to it and the old login is blocked. They sign in with that login's own password.</span></div>`
+              : `<span class="tag ${m.mode === 'confirm' ? 'warn' : 'ok'} xs">${m.mode === 'confirm' ? 'Confirmation from the new address needed' : 'Changes at once'}</span>`;
+          } catch (e) { box.innerHTML = `<p class="form-err">${esc(e.message)}</p>`; } };
+        wrap.querySelector('[name=e1]').addEventListener('change', chk); if (opts.email) chk();
+      },
+      onOk: async (fm) => {
+        const a = fm.e1.value.trim().toLowerCase(); const b = fm.e2.value.trim().toLowerCase();
+        if (a !== b) throw new Error('The two emails are not the same.');
+        if (!fm.reason.value.trim()) throw new Error('Give the reason.');
+        const m = await API.rpc('cms_login_email_check', { p_new: a, p_person: who.person_id || null, p_tutor: who.tutor_id || null });
+        const what = m.mode === 'existing' ? `Move ${esc(T.name)}'s CMS access to the existing login <b>${esc(a)}</b> and block the old login (${esc(T.login_email)})?`
+          : m.mode === 'confirm' ? `Send a confirmation link to <b>${esc(a)}</b>? ${esc(T.name)}'s login changes from ${esc(T.login_email)} only when they open it.`
+          : `Change ${esc(T.name)}'s login from ${esc(T.login_email)} to <b>${esc(a)}</b> now and send a set-password email there?`;
+        if (!await confirmBox('Change login email', what, m.mode === 'confirm' ? 'Send the link' : 'Change it')) throw new Error('Not changed.');
+        R = await loginEmailCall({ action: 'start', ...who, email: a, reason: fm.reason.value.trim(), source: opts.source || 'profile' });
+      } });
+    if (ok && R) { toast(LEM_DONE[R.mode] ? LEM_DONE[R.mode](R) : 'Done'); if (after) after(); }
+    return !!(ok && R);
+  }
   function inviteWhat(I) {
     const d = I?.defaults || {}; const parts = (d.parts || []).map((p) => (PARTS.find((x) => x[0] === p) || [p, p])[1]);
     return `<ul class="plan small"><li>An email from <b>MyEden Group &lt;noreply@mail.myeden.group&gt;</b> to choose a password (none if they already use a login).</li>
@@ -3972,7 +4040,7 @@
             <span class="muted small">An invite emails them a link to choose a password, links the login to their record and switches on: ${esc((I.defaults?.parts || []).map((p) => (PARTS.find((x) => x[0] === p) || [p, p])[1]).join(', ') || 'nothing')}.</span></div>` : ''}
           <div class="table-wrap fill"><table class="data freeze2 ss-grid"><thead><tr>${selAll(list)}<th>Name</th><th>Login</th>${PARTS.map(([k, l, d, ph]) => `<th class="ctr" title="${esc(d)}">${esc(l)}${ph ? `<small class="sub">${ph}</small>` : ''}</th>`).join('')}</tr></thead><tbody>
           ${list.map((r) => `<tr>${selBox(r)}${who(r)}<td>${r.login ? `<small>${esc(r.login)}</small>${inv(r).signed_in === false ? `<small class="sub warn-txt">not signed in yet${inv(r).invited_at ? ` · invited ${dShort(inv(r).invited_at)}` : ''}</small>` : ''}` : '<span class="tag warn xs">No login</span>'}
-              ${I?.can_invite && needsInvite(r) ? `<button type="button" class="btn xs" data-inv1="${esc(r.person_id)}">${r.login ? 'Send again' : 'Invite'}</button>` : ''}</td>
+              ${I?.can_invite && needsInvite(r) ? `<button type="button" class="btn xs" data-inv1="${esc(r.person_id)}">${r.login ? 'Send again' : 'Invite'}</button>` : ''}${r.login && can('users.email') ? ` <button type="button" class="btn xs ghost" data-lem1="${esc(r.person_id)}" title="Change login email">${icon('mail')}</button>` : ''}</td>
             ${PARTS.map(([k, , , ph]) => `<td class="ctr"><input type="checkbox" class="sw" data-part="${k}" data-p="${esc(r.person_id)}" ${r.parts.includes(k) ? 'checked' : ''} ${!edit || ph ? 'disabled' : ''} aria-label="${esc(k)} for ${esc(r.name)}"></td>`).join('')}</tr>`).join('')
           || `<tr><td colspan="${PARTS.length + 3}"><div class="empty small"><p>No one here</p></div></td></tr>`}</tbody></table></div>
           <p class="muted small">Everything is off until you switch it on. A person needs a login linked to their record (Users, Roles &amp; Access) to see their self-service. Payslips and EA forms also need each month / year released (next tab). Leave stays off while leave runs in the other system.</p>`;
@@ -3984,6 +4052,7 @@
           } catch (e) { c.checked = !c.checked; toast(e.message, 'err'); }
         }));
         $$('[data-inv1]', box).forEach((b) => b.addEventListener('click', () => { const r = S.people.find((x) => x.person_id === b.dataset.inv1); inviteWindow([invRow(r)], I, reload); }));
+        $$('[data-lem1]', box).forEach((b) => b.addEventListener('click', () => loginEmailWindow({ person_id: b.dataset.lem1 }, {}, reload)));
         $('[data-invall]', box)?.addEventListener('click', () => inviteWindow(S.people.filter((r) => r.status !== 'former' && !r.login).map(invRow), I, reload));
         $('[data-invsel]', box)?.addEventListener('click', () => {
           const pick = S.people.filter((r) => f.sel.has(r.person_id) && needsInvite(r));
@@ -4053,12 +4122,19 @@
           catch (e) { toast(e.message, 'err'); }
         }));
         $$('[data-dec]', box).forEach((b) => b.addEventListener('click', async () => {
-          const q = S.requests.find((x) => x.id === b.dataset.id); const approve = b.dataset.dec === '1';
+          const q = S.requests.find((x) => x.id === b.dataset.id); const approve = b.dataset.dec === '1'; let lemAfter = false;
           const ok = await modal({ title: `${approve ? 'Approve' : 'Reject'} · ${q.name}`, ok: approve ? 'Approve and update the record' : 'Reject', danger: !approve,
             body: `${approve ? '<p>The new details replace the old ones in the Employee Master and payroll record. The change is logged.</p>' : ''}
-              <label class="fld"><span>${approve ? 'Note (optional)' : 'Reason (the staff member sees it)'}</span><input name="note" maxlength="300" ${approve ? '' : 'required'}></label>`,
-            onOk: async (fm) => { if (!approve && !fm.note.value.trim()) throw new Error('Give the reason for rejecting.'); await API.rpc('cms_profile_decide', { p_id: q.id, p_approve: approve, p_note: fm.note.value || null }); } });
-          if (ok) { toast(`${q.name}: change ${approve ? 'approved' : 'rejected'}`); reload(); }
+              <label class="fld"><span>${approve ? 'Note (optional)' : 'Reason (the staff member sees it)'}</span><input name="note" maxlength="300" ${approve ? '' : 'required'}></label>
+              ${approve && q.changes.email && can('users.email') ? `<label class="chk"><input type="checkbox" name="lem" checked> Also change their CMS login to <b>${esc(q.changes.email)}</b> <span class="muted small">(if their login is in use, they confirm it from the new address first)</span></label>` : ''}`,
+            onOk: async (fm) => { if (!approve && !fm.note.value.trim()) throw new Error('Give the reason for rejecting.'); await API.rpc('cms_profile_decide', { p_id: q.id, p_approve: approve, p_note: fm.note.value || null }); lemAfter = !!(fm.lem && fm.lem.checked); } });
+          if (ok) { toast(`${q.name}: change ${approve ? 'approved' : 'rejected'}`);
+            if (approve && lemAfter) {
+              try { const r = await loginEmailCall({ action: 'start', person_id: q.person_id, email: q.changes.email, reason: 'Approved My Profile email change', source: 'request' });
+                toast(LEM_DONE[r.mode] ? LEM_DONE[r.mode](r) : 'Login email change started'); }
+              catch (e) { toast(`Login email not changed: ${e.message}`, 'err'); }
+            }
+            reload(); }
         }));
       }
       fitTables();
@@ -4995,7 +5071,7 @@
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Tutor</th><th>Company</th><th>Contact</th><th>CMS sign-in</th><th class="num">Claims</th><th></th></tr></thead><tbody>
           ${list.map((t) => `<tr data-id="${esc(t.id)}"><td><b>${esc(t.name)}</b>${t.courses.length ? `<small class="sub">${esc(t.courses.join(', '))}</small>` : ''}</td><td>${esc(t.company)}</td>
             <td>${t.email ? esc(t.email) : '<span class="muted">no email</span>'}${t.phone ? `<small class="sub">${esc(t.phone)}</small>` : ''}</td><td>${signTag(t)}</td><td class="num">${num(t.claims)}</td>
-            <td class="row-acts nowrap">${L.can_edit ? `<button type="button" class="btn xs" data-edit>Edit</button>${t.active && t.email && !t.signed_in ? `<button type="button" class="btn xs" data-inv>${t.login ? 'Send again' : 'Invite'}</button>` : ''}` : ''}${t.active && can('tec', 'C') ? `<a class="btn xs ghost" href="#/me/claims/tec?tutor=${esc(t.id)}" title="Make a tuition claim for this tutor">New claim</a>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+            <td class="row-acts nowrap">${L.can_edit ? `<button type="button" class="btn xs" data-edit>Edit</button>${t.active && t.email && !t.signed_in ? `<button type="button" class="btn xs" data-inv>${t.login ? 'Send again' : 'Invite'}</button>` : ''}` : ''}${t.active && t.login && can('users.email') ? `<button type="button" class="btn xs ghost" data-lem title="Change login email">${icon('mail')}</button>` : ''}${t.active && can('tec', 'C') ? `<a class="btn xs ghost" href="#/me/claims/tec?tutor=${esc(t.id)}" title="Make a tuition claim for this tutor">New claim</a>` : ''}</td></tr>`).join('')}</tbody></table></div>`
           : `<div class="empty small"><p>${L.tutors.length ? 'No tutors here' : 'No tutors yet'}</p><span>${L.can_edit ? 'Add outside tutors who claim tuition (TEC), then invite them to sign in.' : 'An Admin adds tutors.'}</span></div>`}</section>
         <p class="muted small">Invite sends an email from MyEden Group &lt;noreply@mail.myeden.group&gt; to choose a password. A tutor sees only their own tuition claims. Staff who also teach claim from My Claims, not as tutors.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
@@ -5004,6 +5080,7 @@
       $$('tr[data-id]', el).forEach((tr) => {
         const t = L.tutors.find((x) => x.id === tr.dataset.id);
         $('[data-edit]', tr)?.addEventListener('click', () => edit(t));
+        $('[data-lem]', tr)?.addEventListener('click', () => loginEmailWindow({ tutor_id: t.id }, {}, async () => { await load(); draw(); }));
         $('[data-inv]', tr)?.addEventListener('click', () => confirmBox(`${t.login ? 'Send the invite again' : 'Invite'} · ${t.name}`,
           `An email goes to <b>${esc(t.email)}</b> to choose a password for the MyEden Group CMS. They get the <b>Tutor</b> role: only their own tuition claims.`, 'Send invite', false,
           async () => { const r = await tutorInvite(t); toast(INV_MODE[r.mode] || 'Invite sent'); await load(); draw(); }));
@@ -9892,7 +9969,7 @@
             <span class="muted small">${esc(H.unit_name || H.unit || H.department || '')}${H.company ? ` · ${esc(coShort(H.company) || H.company)}` : ''}${H.start ? ` · since ${dShort(H.start)}${svc(H.start) ? ` (${svc(H.start)})` : ''}${H.status === 'former' && H.last_day ? ` to ${dShort(H.last_day)}` : ''}` : ''}</span></div>
           <p class="small">${H.boss ? `Reports to <a href="#/person?id=${esc(H.boss_id)}"><b>${esc(H.boss)}</b></a>` : '<span class="muted">Reports to: not set</span>'}${D.edited ? ` <span class="muted">· details last changed by ${esc(D.edited.by || '')} ${dShort(D.edited.at)}</span>` : ''}</p>
         </div>
-        <div class="pf-acts"><span id="pf-inv"></span>${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
+        <div class="pf-acts"><span id="pf-inv"></span><span id="pf-lem"></span>${isSuper() ? `<button type="button" class="btn" data-master>${icon('lock')}Edit master record</button>` : ''}${C.letters ? `<a class="btn" href="#/letters?ws=new&person=${esc(H.id)}">${icon('file-check')}New letter</a>` : ''}<a class="btn ghost" href="#/people">‹ View People</a></div>
       </section>
       <div class="seg pf-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div id="pf-body"></div>`;
@@ -9907,6 +9984,13 @@
       const slot = $('#pf-inv', el); if (!slot) return;
       slot.innerHTML = `<button type="button" class="btn">${icon('mail')}${x.login ? 'Send the CMS invite again' : 'Invite to the CMS'}</button>`;
       $('button', slot).addEventListener('click', () => inviteWindow([{ person_id: pid, name: H.name, email: x.email || null }], I, () => { slot.innerHTML = '<span class="tag ok">Invited</span>'; }));
+    })();
+    // PRI-029: change the login email (permission Change login email)
+    if (can('users.email') && H.status !== 'former') (async () => {
+      let LI; try { LI = await API.rpc('cms_login_email_info', { p_person: pid, p_tutor: null }); } catch (e) { return; }
+      if (!LI?.can || !LI.target?.user_id) return; const slot = $('#pf-lem', el); if (!slot) return;
+      slot.innerHTML = `<button type="button" class="btn">${icon('mail')}${LI.pending ? 'Login email: waiting…' : 'Change login email…'}</button>`;
+      $('button', slot).addEventListener('click', () => loginEmailWindow({ person_id: pid }, {}, () => profilePage(item, el)));
     })();
     const body = $('#pf-body', el);
     const P = D.personal || {}; const F = D.family || {}; const B = D.background || {}; const E = D.employment || {};

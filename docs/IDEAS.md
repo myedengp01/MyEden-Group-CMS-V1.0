@@ -689,7 +689,7 @@ task; **HR and above can view**, give **feedback and comments**.
   falling score, reminders for overdue assessments; the monthly results feed the Probation Review (PRI-023) as evidence; Timeline, Audit
   Log; new permission module (assess as senior / view / comment).
 
-## PRI-029 · "Change login email…" for a person's CMS login — recorded 2026-11-26
+## PRI-029 · "Change login email…" for a person's CMS login — recorded 2026-11-26 · built in v2026.11.26-22:42
 CLC 26 Nov 2026 ("build 2 as well, ebp"), after Nicole Lim Jia Xuan's sign-in email changed (fixed by hand the same day: her CMS access moved
 to the login she already had, the CMS-made login retired and blocked, a set-password link sent to a mistyped address cancelled).
 - **Plan given:** Change login email… on the Employee Profile (and Self-service Access, tutors): current login (created / last used / roles),
@@ -704,3 +704,7 @@ to the login she already had, the CMS-made login retired and blocked, a set-pass
   pending-change record with a one-time link (48 h) emailed to the new address by the CMS mail service (Resend, like claim emails);
   the change happens only when the link is opened; the old address is told afterwards; a never-used login changes at once with a
   set-password email to the new address (that email is the confirmation); cancel / resend while pending; waiting list for Admin.
+- **Built in v2026.11.26-22:42 (CLC "go"):** as planned and decided: permission `users.email`; Employee Profile button, Self-service Access row
+  and Tutors row buttons; never used → at once + set-password email; in use → one-time link (48 h) to the new address, page
+  `app/confirm-email.html` (button press, so mail scanners cannot confirm), notice to the old address; Use this existing login; resend /
+  cancel; tick on approved My Profile email changes (holders of the permission only); own login and Admin logins protected.
