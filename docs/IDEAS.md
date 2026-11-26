@@ -698,5 +698,9 @@ to the login she already had, the CMS-made login retired and blocked, a set-pass
   personal-profile email that still show the old one; keeps password, roles, parts, history; never-used login → set-password email to the
   new address; login in use → notice to the new and the old address; when HR approves a My Profile email change, a tick "Also change their
   CMS login to this email"; Audit Log, Timeline, invite record; a server function with the service key (permission checked in the database).
-- **Waiting for CLC:** (1) who may do it — Admin / Super Admin only, or HR too; (2) login in use — change at once, or only after the person
-  confirms from the new address; (3) the tick on approved My Profile email changes — yes / no.
+- **Decisions (CLC 26 Nov 2026, 21:26):** (1) Admin / Super Admin by default; Admin may give HR (or anyone) the permission; (2) a login in
+  use changes **only after the person confirms from the new address**; (3) when an **Admin / Super Admin** (holder of the permission)
+  approves a My Profile email change, a tick "Also change their CMS login to this email". Refined plan given the same evening (ebp):
+  pending-change record with a one-time link (48 h) emailed to the new address by the CMS mail service (Resend, like claim emails);
+  the change happens only when the link is opened; the old address is told afterwards; a never-used login changes at once with a
+  set-password email to the new address (that email is the confirmation); cancel / resend while pending; waiting list for Admin.
