@@ -41,6 +41,7 @@
   const acts = (module) => (state.access?.permissions?.[module] || '');
   const can = (module, a = 'V') => !!state.access?.is_super_admin || acts(module).includes(a);
   const selfOn = (part) => !!state.self?.parts?.includes(part);
+  const CLAIM_PARTS = ['claims_scf', 'claims_otcf', 'claims_mtcf', 'claims_tec'];   // each claim form is switched on per person (v2026.11.27)
   const hasSelf = () => !!state.self?.parts?.length;
   const canRoute = (route) => {
     const it = PAGES.get(route);
@@ -3563,7 +3564,11 @@
     ['ea', 'EA forms', 'EA forms HR releases year by year'],
     ['salary', 'Salary history', 'Their salary and each change'],
     ['items', 'Items', 'My Items: confirm items received, hand them over when leaving'],
-    ['claims', 'Claims', 'My Claims: their SCF / OTCF / MTCF claims and status'],
+    ['claims_scf', 'SCF', 'Staff Claim (SCF): may make their own staff claims (v2026.11.27: each claim form is switched on separately)'],
+    ['claims_otcf', 'OTCF', 'Overtime Claim (OTCF): may make their own overtime claims'],
+    ['claims_mtcf', 'MTCF', 'Mileage Claim (MTCF): may make their own mileage claims'],
+    ['claims_tec', 'TEC', 'Tuition Claim (TEC): may make their own tuition claims (tutors use their tutor login)'],
+    ['rewards', 'Rewards', 'My Rewards: Full Attendance reward, referrals and award nominations'],
     ['leave', 'Leave', 'My Leave: apply for leave (not in use yet: leave runs in the other system)'],
     ['handbook', 'Handbook', 'My Handbook: open the handbook and see what they acknowledged'],
     ['certs', 'Certificates', 'My Certificates: their certificates and expiry; send a new certificate to HR'],
@@ -3596,13 +3601,13 @@
       ['me/profile', 'users', 'My Profile', 'Your details; send changes to HR', selfOn('profile')],
       ['me/payslips', 'wallet', 'My Payslips & EA', s.payslips ? `${s.payslips} payslip${s.payslips === 1 ? '' : 's'} released${(s.new_payslips || []).length ? ` · ${s.new_payslips.length} new` : ''}` : 'Released by HR month by month', selfOn('payslips') || selfOn('ea')],
       ['me/salary', 'trend', 'My Salary History', 'Your salary and each change', selfOn('salary')],
-      ['me/claims', 'file-check', 'My Claims', 'Staff, overtime and mileage claims', selfOn('claims')],
+      ['me/claims', 'file-check', 'My Claims', 'Staff, overtime, mileage and tuition claims', CLAIM_PARTS.some(selfOn)],
       ['me/handbook', 'shield', 'My Handbook', 'Read and acknowledge', selfOn('handbook')],
       ['me/leave', 'calendar', 'My Leave', 'Apply and follow your requests', selfOn('leave')],
       ['me/appraisal', 'trend', 'My Appraisal', 'Self-assessment and results', selfOn('appraisal')],
       ['me/certs', 'shield', 'My Certificates', 'Certificates and expiry dates', selfOn('certs')],
       ['me/assess', 'check-circle', 'My Assessments', 'Certification allowance, assessments and practice', selfOn('certs')],
-      ['me/rewards', 'sparkle', 'My Rewards', 'Full Attendance reward and referrals', selfOn('claims')],
+      ['me/rewards', 'sparkle', 'My Rewards', 'Full Attendance reward and referrals', selfOn('rewards')],
       ['me/items', 'box', 'My Items', state.itemsPending?.mine_to_confirm ? `${state.itemsPending.mine_to_confirm} to confirm` : 'Company items issued to you', selfOn('items')],
     ].filter((x) => x[4]);
     el.innerHTML = `${pageHead(item)}
@@ -5784,15 +5789,14 @@
     const tone = { approval: 'warn', processing: 'blue', payment: 'blue', paid: 'ok', disapproved: 'bad', draft: '' };
     const draw = () => {
       const list = rows.filter(V.find((x) => x[0] === f.v)[2]);
-      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).map(([k, [app, l]]) => (['scf', 'otcf', 'mtcf', 'tec'].includes(k) ? `<a class="btn ${k === 'tec' ? '' : 'primary'}" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`
-          : `<a class="btn" href="${esc(window.CMS_SOURCES[app])}" target="_blank" rel="noopener">${icon('plus')}New ${esc(l)}</a>`)).join('')}</div>
+      $('#mc-body', el).innerHTML = `<div class="btn-row">${Object.entries(CLAIM_APPS).filter(([k]) => selfOn(`claims_${k}`)).map(([k, [app, l]]) => `<a class="btn ${k === 'tec' ? '' : 'primary'}" href="#/me/claims/${k}">${icon('plus')}New ${esc(l)}</a>`).join('')}</div>
         <section class="card"><div class="toolbar"><div class="seg">${V.map(([k, l, fn]) => `<button type="button" data-v="${k}" class="${f.v === k ? 'on' : ''}">${l} <span>${rows.filter(fn).length}</span></button>`).join('')}</div></div>
         ${list.length ? `<div class="table-wrap"><table class="data"><thead><tr><th>Claim</th><th>Sent</th><th class="num">Amount</th><th>Where it is</th></tr></thead><tbody>
           ${list.map((r) => `<tr${CLAIM_ROUTE[r.form] ? ` class="click" data-scf="${esc(CLAIM_ROUTE[r.form])}|${esc(r.id)}" tabindex="0"` : ''}><td><b>${esc(r.form_name)}</b><small class="sub">${esc(r.serial_no)}</small>${CLAIM_ROUTE[r.form] && r.stage === 'draft' ? `<small class="sub"><a href="#/me/claims/${esc(CLAIM_ROUTE[r.form])}?id=${esc(r.id)}">${r.status === 'Returned for changes' ? 'Change and send again ›' : 'Continue ›'}</a></small>` : ''}</td><td class="nowrap">${dShort(r.submitted_at)}</td>
             <td class="num nowrap">${r.unit === 'RM' ? m2(r.amount) : `${num(r.amount)} ${esc(r.unit)}`}</td>
             <td><span class="tag ${tone[r.stage] || ''} xs">${esc(r.status)}</span>${r.paid_at ? `<small class="sub">paid ${dShort(r.paid_at)}</small>` : r.approved_at && r.stage !== 'disapproved' ? `<small class="sub">approved ${dShort(r.approved_at)}${r.approved_by ? ` · ${esc(r.approved_by)}` : ''}</small>` : ''}
               ${r.note ? `<small class="sub">${esc(r.note)}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>`
-          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. Staff (SCF), overtime (OTCF), mileage (MTCF) and tuition (TEC) claims are made here in the CMS.</span></div>'}</section>
+          : '<div class="empty small"><p>No claims here</p><span>Start a new claim with the buttons above. The claim forms you can use are switched on for you by HR.</span></div>'}</section>
         <p class="muted small">Amounts in RM, overtime in hours. Approved claims are paid with your salary or by transfer, as shown on your payslip.</p>`;
       $$('[data-v]', el).forEach((b) => b.addEventListener('click', () => { f.v = b.dataset.v; draw(); }));
       $$('[data-scf]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.closest('a')) return; const [fm, cid] = tr.dataset.scf.split('|'); location.hash = `#/me/claims/${fm}?id=${cid}`; }));
