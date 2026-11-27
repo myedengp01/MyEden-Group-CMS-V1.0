@@ -720,3 +720,7 @@ include the claimant's name and the claim month where there is one.
   photo pages) into one print module per form used by every print in the CMS (My Claims, the claim pages, Action Center, the signed PDFs
   emailed on approval); side-by-side comparison pages (original vs CMS, same sample claim) sent to CLC for approval before switching;
   one file-name rule for all forms (waiting for CLC's choice).
+- **Decisions (CLC 27 Nov 2026, 08:35):** (1) one name pattern for all forms: `<FORM> - <CLAIMANT> - <Mon YYYY> - <serial>[ - <decision>]`;
+  (2) month as proposed: SCF period from–to (`Oct-Nov 2026`), OTCF / TEC claim month, MTCF the month(s) of the trips, Purchase request
+  the request date's month; (3) decision included (Approved / Disapproved / Paid …); (4) scope: SCF, OTCF, MTCF, TEC and Purchase requests
+  only (old PRFAF records, HR letters, payslips and EA forms unchanged).
