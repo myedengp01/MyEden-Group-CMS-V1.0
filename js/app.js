@@ -7617,6 +7617,7 @@
   // Letters: draft → submit → approve (Admin / Super Admin / Director, never the drafter) → issue (HR / Admin / Super Admin / Director).
   // Templates: text (with [b] [i] [u]) or a Word file whose {{placeholders}} are filled inside the .docx, keeping its layout.
   const LONG_KEYS = /(details|areas|objectives|description|expectations|summary|evidence|allegation|particulars|conditions|information|process|findings|correspondence|resources|targets|gaps|actions|instructions|basis|arrangements|considered)/;
+  const optionalKeys = (L) => new Set((L?.placeholders || []).filter((p) => p.required === false).map((p) => p.key));
   const tplKeys = (body) => [...new Set([...String(body || '').matchAll(/\{\{([a-z0-9_]+)\}\}/g)].map((m) => m[1]))];
   // positions, departments / centres and the signatory's name always print in capitals, however they were typed (stored values unchanged)
   const CAP_KEYS = new Set(['position', 'current_position', 'new_position', 'jd_title', 'department', 'current_department', 'new_department', 'jd_department', 'authorized_signatory']);
@@ -7922,10 +7923,12 @@
       z.file(n, new XMLSerializer().serializeToString(d));
       return z.generateAsync({ type: 'uint8array', mimeType: DOCX_MIME });
     },
-    async fill(bytes, values, labelOf) {
+    async fill(bytes, values, labelOf, optional) {
       bytes = await W.cond(bytes, values);
       const r = await W.edit(bytes, (p, text, d) => {
         const only = text.trim().match(/^\{\{([a-z0-9_]+)\}\}$/); const multi = only && values[only[1]] != null && String(values[only[1]]).includes('\n');
+        // an optional placeholder left empty on a line of its own (e.g. address line 2): the line is left out (v2026.11.27)
+        if (only && optional?.has(only[1]) && String(values[only[1]] ?? '').trim() === '') { p.parentNode.removeChild(p); return 1; }
         if (multi) {   // e.g. {{jd_responsibilities}}: one paragraph per line, each a copy of the template paragraph
           const lines = String(values[only[1]]).split(/\r?\n/).filter((l) => l.trim() !== ''); const at = text.indexOf('{{'); const tmpl = p.cloneNode(true);
           const rg = (t) => [{ start: at, end: at + only[0].length, text: t }];
@@ -8702,7 +8705,7 @@
       try {
         let bytes;
         if (status === 'issued' && rec.docx_path) bytes = await getDocx(rec.docx_path);
-        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(srcBytes, await pvWordImgs().catch(() => null), effLayout()), vals.authorized_signatory, vals.authorized_designation), vals, labelOf), coCode || co?.code); }
+        else { const path = t.source_path; if (srcFor !== path) { pv.innerHTML = loading(); srcBytes = await getDocx(path); srcFor = path; } bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(srcBytes, await pvWordImgs().catch(() => null), effLayout()), vals.authorized_signatory, vals.authorized_designation), vals, labelOf, optionalKeys(L)), coCode || co?.code); }
         view = await W.render(bytes, pv, { marks: missing().map((k) => `[${labelOf(k)}]`), stamp: stamp() }); view.frame.addEventListener('load', () => setTimeout(applyZoom, 30));
       } catch (e) { pv.innerHTML = errorCard(e.message); }
     };
@@ -9154,7 +9157,7 @@
       const pics = await esignApply(rec.id, ch, lay);
       if (t.format === 'docx') { const f0 = rec.fields || vals; const src = await getDocx(t.source_path);
         const imgs = pics.sig || pics.stamp ? { sig: pics.sig ? await esignPicture(pics.sig) : null, stamp: pics.stamp ? await esignPicture(pics.stamp) : null } : null;
-        const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs, lay), f0.authorized_signatory, f0.authorized_designation), f0, labelOf), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
+        const bytes = await W.letterhead(await W.fill(await W.signBlock(await W.esign(src, imgs, lay), f0.authorized_signatory, f0.authorized_designation), f0, labelOf, optionalKeys(L)), coCode || co?.code || rec.company); path = await putDocx('issued', bytes, rec.id); }
       await API.rpc('cms_letter_issue', { p_id: rec.id, p_docx_path: path });
     };
     // file name for print / PDF / Word: employee name - letter name - date and time
