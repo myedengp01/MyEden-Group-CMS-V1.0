@@ -708,3 +708,15 @@ to the login she already had, the CMS-made login retired and blocked, a set-pass
   and Tutors row buttons; never used → at once + set-password email; in use → one-time link (48 h) to the new address, page
   `app/confirm-email.html` (button press, so mail scanners cannot confirm), notice to the old address; Use this existing login; resend /
   cancel; tick on approved My Profile email changes (holders of the permission only); own login and Admin logins protected.
+
+## PRI-030 · Form printouts identical to the original apps, file name with claimant and month — recorded 2026-11-27
+CLC 27 Nov 2026 (ebp): for all the forms in the CMS, the printout must look the same as the original app's, and the printout / PDF name must
+include the claimant's name and the claim month where there is one.
+- Today: SCF / OTCF / MTCF / TEC print with a common CMS sheet (claimSheets in the Action Center; docView in My Claims) named only
+  "<FORM> <serial>"; Purchase requests "Purchase request <PR no>". The originals (myedengp01/MEG-SCF, MEG-OTCF, MEG-MTCF, MEG-TEC-V2,
+  MEG-PRFAF) each have their own print / PDF layout and name: SCF `<Claimant>-<Serial>-<MonYYYY or Mon-MonYYYY>`, OTCF
+  `OTCF_<Name>_<Month>_<Year>` (+ `_Approved` / `_Disapproved` on decided PDFs), MTCF `MTCF_<Name>_<Year>` (+ status), PRFAF `<name>_<status>`.
+- Plan given 27 Nov 2026: port each original's print layout (page size, header, fields, tables, totals, signature blocks, footers, receipt /
+  photo pages) into one print module per form used by every print in the CMS (My Claims, the claim pages, Action Center, the signed PDFs
+  emailed on approval); side-by-side comparison pages (original vs CMS, same sample claim) sent to CLC for approval before switching;
+  one file-name rule for all forms (waiting for CLC's choice).
