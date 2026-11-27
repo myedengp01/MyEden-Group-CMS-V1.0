@@ -1927,27 +1927,30 @@
 
     function drawLogins() {
       const t = filter.q.trim().toLowerCase();
-      const list = users.filter((u) => (filter.show === 'all' || (filter.show === 'role' && u.roles.length) || (filter.show === 'sugg' && u.suggestions.length) || (filter.show === 'none' && !u.roles.length))
+      // blocked logins (e.g. retired after a login email change) only under "Blocked" (v2026.11.27)
+      const live = users.filter((u) => !u.blocked); const blocked = users.filter((u) => u.blocked);
+      if (filter.show === 'blocked' && !blocked.length) filter.show = 'all';
+      const list = (filter.show === 'blocked' ? blocked : live).filter((u) => (filter.show === 'all' || filter.show === 'blocked' || (filter.show === 'role' && u.roles.length) || (filter.show === 'sugg' && u.suggestions.length) || (filter.show === 'none' && !u.roles.length))
         && (!t || `${u.name} ${u.email} ${u.person?.name || ''} ${u.person?.employee_id || ''}`.toLowerCase().includes(t)));
-      const c = { all: users.length, role: users.filter((u) => u.roles.length).length, sugg: users.filter((u) => u.suggestions.length).length, none: users.filter((u) => !u.roles.length).length };
+      const c = { all: live.length, role: live.filter((u) => u.roles.length).length, sugg: live.filter((u) => u.suggestions.length).length, none: live.filter((u) => !u.roles.length).length, blocked: blocked.length };
       return `
         <section class="card">
           <div class="toolbar">
             <label class="search-in">${icon('search')}<input id="uq" type="search" placeholder="Name or email" value="${esc(filter.q)}" aria-label="Search logins"></label>
-            <div class="seg">${[['all', 'All'], ['role', 'With a role'], ['sugg', 'Has suggestions'], ['none', 'No access']].map(([k, l]) => `<button type="button" data-show="${k}" class="${filter.show === k ? 'on' : ''}">${l} <span>${c[k]}</span></button>`).join('')}</div>
+            <div class="seg">${[['all', 'All'], ['role', 'With a role'], ['sugg', 'Has suggestions'], ['none', 'No access'], ...(c.blocked ? [['blocked', 'Blocked']] : [])].map(([k, l]) => `<button type="button" data-show="${k}" class="${filter.show === k ? 'on' : ''}">${l} <span>${c[k]}</span></button>`).join('')}</div>
           </div>
           <p class="muted small">${matrix.can_grant ? 'Accept a suggestion with one click, add any role, or give one person extra permissions on top of their roles. Suggestions come from MEG-EAF V2 and MEG-FORMS permissions and from the person’s JD position; nothing is granted until you accept it. Only a Super Admin gives the Super Admin role, and nobody changes their own access.' : 'Only Admin and Super Admin can grant or remove roles.'}</p>
           <div class="ulist">${list.map((u) => `
             <article class="urow" data-u="${esc(u.id)}">
               <div class="u-main"><span class="avatar ${u.roles.length ? '' : 'off'}">${esc(initials(u.name))}</span>
-                <div class="u-id"><b>${esc(u.name)}</b><small>${esc(u.email)} · last sign-in ${ago(u.last_sign_in_at)}${u.profile_status === 'pending' ? ' · <span class="st st-onboarding">pending</span>' : ''}</small>
+                <div class="u-id"><b>${esc(u.name)}</b><small>${esc(u.email)} · last sign-in ${ago(u.last_sign_in_at)}${u.blocked ? ' · <span class="st st-former">blocked</span>' : u.profile_status === 'pending' ? ' · <span class="st st-onboarding">pending</span>' : ''}</small>
                   <div class="u-person">${u.person ? `${icon('users')}<span>${esc(u.person.name)} · ${esc(u.person.employee_id || 'no ID')} · ${esc(coShort(u.person.company_code))}${u.person.title ? ' · ' + esc(u.person.title) : ''}</span>${canLink ? '<button type="button" class="lnk" data-act="unlink">Unlink</button>' : ''}`
                     : u.suggested_person ? `${icon('users')}<span class="muted">Same email as ${esc(u.suggested_person.name)} (${esc(u.suggested_person.employee_id || 'no ID')})</span>${canLink ? '<button type="button" class="lnk" data-act="link-sugg">Link</button>' : ''}`
-                    : `<span class="muted">Not linked to a person</span>${canLink ? '<button type="button" class="lnk" data-act="link">Link to person…</button>' : ''}`}</div></div></div>
+                    : `<span class="muted">Not linked to a person</span>${canLink && !u.blocked ? '<button type="button" class="lnk" data-act="link">Link to person…</button>' : ''}`}</div></div></div>
               <div class="u-roles">${u.roles.map((r) => `<span class="role-chip r-${esc(r.code)}" title="${esc(r.note || '')}">${esc(roleName(r.code))}<em>${esc(scopeTxt(r.companies))}</em>${grantOn(u) && (sup || r.code !== 'super_admin') ? `<button type="button" data-act="revoke" data-role="${esc(r.code)}" aria-label="Remove ${esc(roleName(r.code))}">${icon('x')}</button>` : ''}</span>`).join('') || '<span class="muted small">No CMS role · cannot use the CMS</span>'}
                 ${Object.keys(extra[u.id] || {}).length ? `<span class="role-chip r-extra" title="${esc(Object.keys(extra[u.id]).map((k) => (matrix.modules.find((m) => m.code === k) || {}).label || k).join(', '))}">+${Object.keys(extra[u.id]).length} extra permission${Object.keys(extra[u.id]).length === 1 ? '' : 's'}</span>` : ''}
-                ${grantOn(u) ? `<button type="button" class="btn sm ghost" data-act="add">${icon('plus')}Add role</button><button type="button" class="btn sm ghost" data-act="extra">${icon('lock')}Extra permissions</button>` : ''}</div>
-              ${u.suggestions.length ? `<div class="u-sugg"><span class="lbl">${icon('sparkle')}Suggested</span>${u.suggestions.map((s, i) => `<span class="sugg"><span><b>${esc(roleName(s.role))}</b> · ${esc(scopeTxt(s.companies))}<small>${esc(s.reason)}</small></span>${grantOn(u) && (sup || s.role !== 'super_admin') ? `<button type="button" class="btn sm primary" data-act="accept" data-i="${i}">Accept</button>` : ''}</span>`).join('')}</div>` : ''}
+                ${u.blocked ? '<small class="muted">Blocked login — cannot sign in</small>' : grantOn(u) ? `<button type="button" class="btn sm ghost" data-act="add">${icon('plus')}Add role</button><button type="button" class="btn sm ghost" data-act="extra">${icon('lock')}Extra permissions</button>` : ''}</div>
+              ${u.suggestions.length && !u.blocked ? `<div class="u-sugg"><span class="lbl">${icon('sparkle')}Suggested</span>${u.suggestions.map((s, i) => `<span class="sugg"><span><b>${esc(roleName(s.role))}</b> · ${esc(scopeTxt(s.companies))}<small>${esc(s.reason)}</small></span>${grantOn(u) && (sup || s.role !== 'super_admin') ? `<button type="button" class="btn sm primary" data-act="accept" data-i="${i}">Accept</button>` : ''}</span>`).join('')}</div>` : ''}
             </article>`).join('') || '<div class="empty small"><p>No logins match</p></div>'}</div>
         </section>`;
     }
