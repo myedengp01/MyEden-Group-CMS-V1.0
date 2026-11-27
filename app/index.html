@@ -29,7 +29,7 @@
     // Always run the latest release: ask the server for the current version (never from cache),
     // then load the app files tagged with that version so the browser cannot reuse an older copy.
     (function () {
-      var files = ['version', 'config', 'api', 'icons', 'menu', 'claim-pdf', 'app'];
+      var files = ['version', 'config', 'api', 'icons', 'menu', 'form-print', 'claim-pdf', 'app'];
       function load(v) {
         var css = document.getElementById('cms-css'); if (css) css.href = '../css/cms.css?v=' + v;
         files.forEach(function (f) { var s = document.createElement('script'); s.src = '../js/' + f + '.js?v=' + v; s.async = false; document.body.appendChild(s); });

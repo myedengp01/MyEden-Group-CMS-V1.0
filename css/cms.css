@@ -1452,6 +1452,16 @@ code.brk { word-break: break-all; }
   .doc-ov .sheet:last-child { break-after: auto; page-break-after: auto; }
 }
 .claim-sheet .cp-ref { font-weight: 700; color: #1c3d6e; }
+/* form printouts in the original apps' layouts (js/form-print.js, PRI-030) */
+.fp-ov .print-bar .fp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-ov .fp-pages { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px; }
+.fp-ov .fp-page { display: block; width: min(210mm, 100%); height: auto; background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, .15); }
+.fp-ov .fp-wait { padding: 40px 0; }
+@media print {
+  .fp-ov .fp-pages { display: block; padding: 0; }
+  .fp-ov .fp-page { width: 210mm; box-shadow: none; break-after: page; page-break-after: always; }
+  .fp-ov .fp-page:last-child { break-after: auto; page-break-after: auto; }
+}
 .ac-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 12px 0; }
 .ac-lists h4 { margin: 0 0 4px; }
 

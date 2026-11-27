@@ -724,3 +724,13 @@ include the claimant's name and the claim month where there is one.
   (2) month as proposed: SCF period from–to (`Oct-Nov 2026`), OTCF / TEC claim month, MTCF the month(s) of the trips, Purchase request
   the request date's month; (3) decision included (Approved / Disapproved / Paid …); (4) scope: SCF, OTCF, MTCF, TEC and Purchase requests
   only (old PRFAF records, HR letters, payslips and EA forms unchanged).
+- **Built v2026.11.27-09:17** (CLC approved the comparison 27 Nov 2026 09:03, with one change: OTCF days with no claim show no 0.00; CLC 09:05: a claimed
+  day with 0 hours shows 0.00, Total Hours shows 0.00 when nothing is claimed). How: `js/form-print.js` holds each original's renderer
+  (OTCF `makeReadOnlySheetHtml` "original-form approved output", MTCF `makeReadOnlySheetHtml` + `generateCompletePdf` journey pages,
+  SCF `buildPrintPages` + `appendLoadedReceiptPages`, TEC `page-template.html` as printed, PRFAF `buildPrfafSheetHtml`) fed from the CMS
+  records; `css/form-print.css` is each app's own CSS for the printout, collected from the running app and scoped to `.fp-<form>`. The
+  pages are drawn in a separate frame (no CMS styles), captured with html2canvas and placed on A4 the way each app placed them; the
+  viewer, Print and Download PDF and the signed PDFs all use those pages. Used by `claimPrint` (Action Center), `scfPrint` /
+  `otcfPrint` / `mtcfPrint` / `tecPrint` (My Claims and claim pages), `prPrint` and `claim-pdf.js`. Comparison PDF sent 27 Nov 2026 08:57.
+  Known: self-service views do not carry the approval token (removed earlier on purpose), so a claimant's own printout leaves
+  Signature / Approval Token empty; SCF bank account shows masked (••••1234) in self-service.

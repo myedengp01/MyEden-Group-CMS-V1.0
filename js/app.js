@@ -1378,7 +1378,20 @@
     }
     return sheets;
   }
-  async function claimPrint(form, c, co, serial) { docOverlay(`${String(form).toUpperCase()} ${serial || c.serial_no || ''}`, await claimSheets(form, c, co, serial)); }
+  // SCF / OTCF / MTCF / TEC / purchase requests print in the original apps' own layouts (js/form-print.js, PRI-030 v2026.11.27)
+  async function claimPrint(form, c, co, serial) {
+    if (window.CMS_FORM_PRINT?.supported(form)) { window.CMS_FORM_PRINT.open(form, { ...c, company_code: c.company_code || co, serial_no: c.serial_no || serial }); return; }
+    docOverlay(`${String(form).toUpperCase()} ${serial || c.serial_no || ''}`, await claimSheets(form, c, co, serial));
+  }
+  // the same, for a page that shows a claim as its printout: the printout opens over the page; closing it goes back
+  function formPrint(el, form, r, back) {
+    if (!window.CMS_FORM_PRINT?.supported(form)) return false;
+    document.body.classList.remove('doc-mode');
+    el.innerHTML = `<div class="card"><p class="muted">The printout is open. <button type="button" class="btn sm" data-fpo>Open it again</button> <button type="button" class="btn sm ghost" data-fpb>‹ Back</button></p></div>`;
+    const show = () => window.CMS_FORM_PRINT.open(form, r, { onClose: back });
+    $('[data-fpo]', el).addEventListener('click', show); $('[data-fpb]', el).addEventListener('click', () => back());
+    show(); return true;
+  }
   window.CMS_CLAIM_SHEETS = claimSheets;
   // a full-screen print view above everything (opened from a window)
   function docOverlay(title, sheets) {
@@ -4556,6 +4569,7 @@
   }
   // printable copy with receipts (claimant keeps it; same content as the SCF app's printout)
   async function scfPrint(el, r, back) {
+    if (formPrint(el, 'scf', r, back)) return;
     const lines = r.line_items || [];
     const recs = lines.flatMap((l, i) => (l.receipts || []).map((x) => ({ ...x, n: i + 1 })));
     const urls = await Promise.all(recs.map((x) => scfThumb(x.path).catch(() => '')));
@@ -4703,6 +4717,7 @@
     });
   }
   function otcfPrint(el, r, back) {
+    if (formPrint(el, 'otcf', r, back)) return;
     const items = (r.line_items || []).filter((x) => x.from || x.to || x.remarks || parseFloat(x.actualHrs) > 0);
     const st = { draft: 'Draft (not submitted)', submitted: 'Waiting for approval', approved: `Approved${r.approved_by_name ? ` by ${r.approved_by_name}` : ''}`, disapproved: `Not approved${r.disapproval_reason ? `: ${r.disapproval_reason}` : ''}` }[r.status] || r.status;
     const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>OVERTIME CLAIM FORM (OTCF)</h2><p>${esc(r.company_code)} · ${esc(MONTHS[(r.month || 1) - 1])} ${esc(r.year)}</p></div><div class="scf-sn"><code>${esc(r.serial_no)}</code><small>${esc(r.submission_date || '')}</small></div></div>
@@ -4825,6 +4840,7 @@
     });
   }
   function mtcfPrint(el, r, back) {
+    if (formPrint(el, 'mtcf', r, back)) return;
     const st = { draft: 'Draft (not submitted)', submitted: 'Waiting for approval', approved: `Approved${r.approved_by_name ? ` by ${r.approved_by_name}` : ''}`, disapproved: `Not approved${r.disapproval_reason ? `: ${r.disapproval_reason}` : ''}` }[r.status] || r.status;
     const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>MILEAGE TRACKING &amp; CLAIM FORM (MTCF)</h2><p>${esc(r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.serial_no)}</code><small>${esc(r.date_of_claim || '')}</small></div></div>
         <dl class="scf-kv"><div><dt>Claimant</dt><dd>${esc(r.claimant_name)}</dd></div><div><dt>Period</dt><dd>${dShort(r.start_date)} – ${dShort(r.end_date)}</dd></div>
@@ -5003,6 +5019,7 @@
     });
   }
   function tecPrint(el, r, back) {
+    if (formPrint(el, 'tec', r, back)) return;
     const pages = r.pages || [];
     const st = { draft: 'Draft (not submitted)', submitted: 'With the PIC', done: `Checked${r.done_by_name ? ` by ${r.done_by_name}` : ''}` }[r.status] || r.status;
     const per = new Map(); pages.forEach((p) => per.set(p.course_name, (per.get(p.course_name) || 0) + 1));
@@ -5565,6 +5582,7 @@
   }
 
   function prPrint(el, r) {
+    if (formPrint(el, 'pr', r, () => { location.hash = `#/purchasing/pr?id=${r.id}&v=${Date.now()}`; })) return;
     const items = r.items || [];
     const sheet = `<section class="sheet scf-sheet"><div class="scf-ph"><div><h2>PURCHASE REQUEST</h2><p>${esc(r.company_name || r.company_code)}</p></div><div class="scf-sn"><code>${esc(r.pr_no)}</code><small>${esc(PR_ST[r.status]?.[0] || r.status)}</small></div></div>
       <dl class="scf-kv"><div><dt>Purchaser</dt><dd>${esc(r.requester_name)}</dd></div><div><dt>Department</dt><dd>${esc(r.department || '—')}</dd></div><div><dt>Category</dt><dd>${esc(r.category || '—')}</dd></div>
