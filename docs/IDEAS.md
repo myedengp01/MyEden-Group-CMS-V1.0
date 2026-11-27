@@ -709,7 +709,7 @@ to the login she already had, the CMS-made login retired and blocked, a set-pass
   `app/confirm-email.html` (button press, so mail scanners cannot confirm), notice to the old address; Use this existing login; resend /
   cancel; tick on approved My Profile email changes (holders of the permission only); own login and Admin logins protected.
 
-## PRI-030 · Form printouts identical to the original apps, file name with claimant and month — recorded 2026-11-27
+## PRI-030 · Form printouts identical to the original apps, file name with claimant and month — recorded 2026-11-27 · built in v2026.11.27-09:17
 CLC 27 Nov 2026 (ebp): for all the forms in the CMS, the printout must look the same as the original app's, and the printout / PDF name must
 include the claimant's name and the claim month where there is one.
 - Today: SCF / OTCF / MTCF / TEC print with a common CMS sheet (claimSheets in the Action Center; docView in My Claims) named only
